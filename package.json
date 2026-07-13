@@ -1,0 +1,28 @@
+{
+  "name": "pitantir",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -b && pnpm --filter @pitantir/web typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "dev": "pnpm --filter @pitantir/web dev",
+    "dev:worker": "pnpm --filter @pitantir/worker dev",
+    "start:worker": "pnpm --filter @pitantir/worker start",
+    "build:web": "pnpm --filter @pitantir/web build",
+    "db:migrate": "pnpm --filter @pitantir/db migrate",
+    "db:generate": "pnpm --filter @pitantir/db db:generate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^22.15.29",
+    "eslint": "^9.28.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1",
+    "vitest": "^3.2.1"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
