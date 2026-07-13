@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./identity": {
+      "types": "./src/identity/index.ts",
+      "default": "./src/identity/index.ts"
     }
   },
   "scripts": {
@@ -14,9 +18,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pitantir/shared": "workspace:*"
+    "@pitantir/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5.8.3"
   }
 }

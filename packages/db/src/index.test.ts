@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { dbPackageLabel } from "./index.js";
+import { PACKAGE_NAME } from "./index.js";
 
 describe("@pitantir/db", () => {
-  it("references the shared workspace package", () => {
-    expect(dbPackageLabel()).toBe("@pitantir/db (uses @pitantir/shared)");
+  it("exports the package name constant", () => {
+    expect(PACKAGE_NAME).toBe("@pitantir/db");
   });
 });

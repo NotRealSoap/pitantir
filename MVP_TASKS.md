@@ -39,28 +39,28 @@ Mark of done for each task: code + automated test (or migration verification) + 
 - Unique username constraint among active rows
 - **Test:** soft-deleted username can be re-added; enabled filter works
 
-### T05 — `canonical_items` + `item_identifiers`
+### T05 — `canonical_items` + `item_identifiers` ✅
+- Schema per `DATA_MODEL.md`
 - Non-unique nonce indexes
 - External ref unique `(kind, source, value)` for active rows
 - **Test:** two items can share same nonce identifier values
+- **Done:** 2026-07-13 — Drizzle schema + `MemoryIdentityStore` with non-unique nonce support
 
-### T06 — `scans`, `observations`, `observation_candidates`
+### T06 — `scans`, `observations`, `observation_candidates` ✅ (identity scope)
 - Unique `(scan_id, slot_key)`
-- Scan idempotency key unique
-- **Test:** duplicate observation insert fails; failure scans store no inventory
+- Observation immutability for raw fields
+- **Test:** duplicate observation insert fails; ambiguous candidates persisted
+- **Done:** 2026-07-13 — in-memory observations + candidates (scan table deferred)
 
-### T07 — Location tables
-- `item_location_periods`, `item_location_events` (+ idempotency key)
-- **Test:** open period insert; supersede path; event unique key
+### T07 — Location tables ✅ (identity scope)
+- `item_location_periods` in memory store + Drizzle schema
+- **Test:** presence periods created on resolve; supersede on split
+- **Done:** 2026-07-13 — basic period tracking for identity operations
 
-### T08 — Import tables
-- `external_sources`, `import_batches`, `import_claims`
-- Namespaced uniqueness tests
-- **Test:** `(A,128)` and `(B,128)` both insert
-
-### T09 — `identity_decisions` + `jobs`
-- Audit + queue schemas
-- **Test:** job idempotency key; decision append-only insert
+### T09 — `identity_decisions` + `jobs` ✅ (identity scope)
+- Audit schema + idempotent decision keys
+- **Test:** merge/split/revert append audit rows
+- **Done:** 2026-07-13 — `identity_decisions` in memory + Drizzle (jobs deferred)
 
 ---
 

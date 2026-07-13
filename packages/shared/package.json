@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./identity": {
+      "types": "./src/identity/index.ts",
+      "default": "./src/identity/index.ts"
     }
   },
   "scripts": {
@@ -15,5 +19,8 @@
   },
   "devDependencies": {
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }
