@@ -53,27 +53,24 @@ function KeySection({
   }
 
   return (
-    <section
-      style={{
-        marginTop: "1.5rem",
-        padding: "1rem",
-        border: "1px solid #ddd",
-        borderRadius: "6px",
-        maxWidth: "36rem",
-      }}
-    >
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
-      <p style={{ color: "#555" }}>{description}</p>
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        {title}
+      </h2>
+      <p className="muted">{description}</p>
       <p>
         Status:{" "}
-        {configured === null ? "Checking…" : configured ? "configured" : "not configured"}
+        <span className="chip">
+          {configured === null ? "Checking…" : configured ? "configured" : "not configured"}
+        </span>
       </p>
       <form
+        className="form-stack"
+        style={{ marginTop: "0.75rem", maxWidth: "100%" }}
         onSubmit={(event) => {
           event.preventDefault();
           void save();
         }}
-        style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}
       >
         <label>
           API key
@@ -83,11 +80,10 @@ function KeySection({
             value={apiKeyInput}
             onChange={(event) => setApiKeyInput(event.target.value)}
             placeholder="Paste key (never shown again)"
-            style={{ display: "block", width: "100%", marginTop: "0.25rem" }}
             required
           />
         </label>
-        <button type="submit" disabled={saving || apiKeyInput.trim().length < 8}>
+        <button type="submit" className="primary" disabled={saving || apiKeyInput.trim().length < 8}>
           {saving ? "Saving…" : configured ? "Replace key" : "Save key"}
         </button>
       </form>
@@ -121,13 +117,13 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <main>
-      <h1>Settings</h1>
-      <p>
+    <>
+      <h1 className="page-title">Settings</h1>
+      <p className="page-lede">
         Server-only API keys for local/dev. Keys are written to <code>.env.local</code> and never
         returned to the browser.
       </p>
-      <p style={{ color: "#555" }}>
+      <p className="muted">
         Current inventory source for the worker: <code>{inventorySource}</code>
       </p>
 
@@ -152,9 +148,11 @@ export default function SettingsPage() {
         }}
       />
 
-      <section style={{ marginTop: "1.5rem", maxWidth: "36rem", color: "#555" }}>
-        <h2>Notes</h2>
-        <ul>
+      <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
+        <h2 className="section-title" style={{ marginTop: 0 }}>
+          Notes
+        </h2>
+        <ul className="muted">
           <li>Do not deploy this settings endpoint to a public host without auth.</li>
           <li>
             After saving the Hypixel key, restart the worker. Username-only accounts resolve UUID
@@ -162,6 +160,6 @@ export default function SettingsPage() {
           </li>
         </ul>
       </section>
-    </main>
+    </>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ItemListRow } from "@pitantir/db";
+import { pantColorFromNonce, pantColorLabel } from "@pitantir/shared/inventory";
 
 export default function ItemsPage() {
   const [items, setItems] = useState<ItemListRow[]>([]);
@@ -57,24 +58,18 @@ export default function ItemsPage() {
   }, []);
 
   return (
-    <main>
-      <h1>Items</h1>
-      <p>
-        Canonical mystic items (and books) created from scans. Nonces are the primary tracking key —
-        filter by nonce, category, or location.
+    <>
+      <h1 className="page-title">Items</h1>
+      <p className="page-lede">
+        Canonical mystic items tracked by nonce. Filter the catalog, then open an item for
+        ownership history.
       </p>
 
       <form
+        className="filters filters-wide"
         onSubmit={(event) => {
           event.preventDefault();
           void load();
-        }}
-        style={{
-          display: "grid",
-          gap: "0.5rem",
-          gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
-          maxWidth: "48rem",
-          marginTop: "1rem",
         }}
       >
         <input
@@ -106,45 +101,47 @@ export default function ItemsPage() {
           <option value="known">Location known</option>
           <option value="unknown">Location unknown</option>
         </select>
-        <button type="submit">Apply filters</button>
+        <button type="submit" className="primary">
+          Apply filters
+        </button>
       </form>
 
       {error ? (
-        <p role="alert" style={{ color: "#a00" }}>
+        <p role="alert" className="alert">
           {error}
         </p>
       ) : null}
-      {loading ? <p>Loading…</p> : <p>{items.length} item(s)</p>}
+      {loading ? <p className="muted">Loading…</p> : <p className="muted">{items.length} item(s)</p>}
 
-      <ul style={{ listStyle: "none", padding: 0, marginTop: "1rem" }}>
-        {items.map((item) => (
-          <li
-            key={item.id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              padding: "0.75rem",
-              marginBottom: "0.5rem",
-              maxWidth: "42rem",
-            }}
-          >
-            <div>
-              <Link href={`/items/${item.id}`}>
-                <strong>{item.displayName ?? item.primaryNonce ?? item.id.slice(0, 8)}</strong>
-              </Link>
-            </div>
-            <div>
-              {item.category} · {item.identityConfidence} ·{" "}
-              {item.locationKnown
-                ? `on ${item.currentAccountUsername ?? item.currentAccountId}`
-                : "location unknown"}
-            </div>
-            <div style={{ fontSize: "0.9rem", color: "#555" }}>
-              Nonce: <code>{item.primaryNonce ?? "—"}</code>
-            </div>
-          </li>
-        ))}
+      <ul className="mystic-list">
+        {items.map((item) => {
+          const pant = pantColorFromNonce(item.primaryNonce);
+          return (
+            <li key={item.id} className="mystic-card">
+              <div className="mystic-card-top">
+                <Link href={`/items/${item.id}`} className="mystic-title">
+                  {item.displayName ?? item.primaryNonce ?? item.id.slice(0, 8)}
+                </Link>
+                <div className="meta-row">
+                  {pant ? <span className={`chip pants-${pant}`}>{pantColorLabel(pant)}</span> : null}
+                  <span className="chip">{item.identityConfidence}</span>
+                </div>
+              </div>
+              <div className="meta-row">
+                <span className="chip">
+                  Nonce <strong>{item.primaryNonce ?? "—"}</strong>
+                </span>
+                <span className="chip">{item.category}</span>
+                <span className="chip">
+                  {item.locationKnown
+                    ? `on ${item.currentAccountUsername ?? item.currentAccountId}`
+                    : "location unknown"}
+                </span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
-    </main>
+    </>
   );
 }

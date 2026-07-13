@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { AccountHistory, PublicScanSummary } from "@pitantir/db";
+import { MysticItemCard } from "../../../src/components/MysticItemCard";
 
 function formatWhen(value: string | Date | null | undefined): string {
   if (!value) return "—";
@@ -14,15 +15,7 @@ function formatWhen(value: string | Date | null | undefined): string {
 function ScanRow({ scan }: { scan: PublicScanSummary }) {
   const isFailure = scan.status === "failure";
   return (
-    <li
-      style={{
-        border: "1px solid #ddd",
-        borderRadius: "6px",
-        padding: "0.75rem",
-        marginBottom: "0.5rem",
-        background: isFailure ? "#fff5f5" : "#fff",
-      }}
-    >
+    <li className={`scan-card${isFailure ? " is-failure" : ""}`}>
       <div>
         <strong>{scan.status}</strong>
         {" · "}
@@ -30,21 +23,17 @@ function ScanRow({ scan }: { scan: PublicScanSummary }) {
         {" · processing: "}
         {scan.processingStatus}
       </div>
-      <div>Created: {formatWhen(scan.createdAt)}</div>
-      <div>Observed: {formatWhen(scan.observedAt)}</div>
-      {scan.status === "success" ? (
-        <div>Items extracted: {scan.itemCount ?? 0}</div>
-      ) : null}
+      <div className="muted">Created: {formatWhen(scan.createdAt)}</div>
+      <div className="muted">Observed: {formatWhen(scan.observedAt)}</div>
+      {scan.status === "success" ? <div>Items extracted: {scan.itemCount ?? 0}</div> : null}
       {isFailure ? (
-        <div role="status" style={{ color: "#a00", marginTop: "0.35rem" }}>
+        <div role="status" className="alert" style={{ marginTop: "0.35rem" }}>
           Failure: {scan.errorCode ?? "unknown"}
           {scan.errorMessage ? ` — ${scan.errorMessage}` : ""}
-          <div style={{ fontSize: "0.9rem", color: "#666" }}>
-            No inventory stored (failed scan ≠ empty inventory).
-          </div>
+          <div className="muted">No inventory stored (failed scan ≠ empty inventory).</div>
         </div>
       ) : null}
-      <div style={{ fontSize: "0.85rem", color: "#666", marginTop: "0.25rem" }}>
+      <div className="muted" style={{ fontSize: "0.85rem" }}>
         Scan id: {scan.id}
       </div>
     </li>
@@ -100,25 +89,25 @@ export default function AccountDetailPage() {
 
   if (loading) {
     return (
-      <main>
+      <>
         <p>
           <Link href="/accounts">← Accounts</Link>
         </p>
-        <p>Loading…</p>
-      </main>
+        <p className="muted">Loading…</p>
+      </>
     );
   }
 
   if (error && !history) {
     return (
-      <main>
+      <>
         <p>
           <Link href="/accounts">← Accounts</Link>
         </p>
-        <p role="alert" style={{ color: "#a00" }}>
+        <p role="alert" className="alert">
           {error}
         </p>
-      </main>
+      </>
     );
   }
 
@@ -129,22 +118,21 @@ export default function AccountDetailPage() {
   const { account, scans, failures, heldItems, latestObservedItems } = history;
 
   return (
-    <main>
+    <>
       <p>
         <Link href="/accounts">← Accounts</Link>
       </p>
-      <h1>{account.mcUsername}</h1>
-      <p>
+      <h1 className="page-title">{account.mcUsername}</h1>
+      <p className="page-lede">
         Status: {account.enabled ? "enabled" : "disabled"}
         {account.displayName ? ` · ${account.displayName}` : ""}
-      </p>
-      <p style={{ color: "#555" }}>
+        <br />
         Last success: {formatWhen(account.lastSuccessScanAt)} · Last failure:{" "}
         {formatWhen(account.lastFailureScanAt)}
       </p>
 
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <button type="button" onClick={() => void scanNow()} disabled={!account.enabled}>
+      <div className="row-actions">
+        <button type="button" className="primary" onClick={() => void scanNow()} disabled={!account.enabled}>
           Scan now
         </button>
         <button type="button" onClick={() => void load()}>
@@ -152,131 +140,89 @@ export default function AccountDetailPage() {
         </button>
       </div>
 
-      {note ? <p>{note}</p> : null}
+      {note ? <p role="status">{note}</p> : null}
       {error ? (
-        <p role="alert" style={{ color: "#a00" }}>
+        <p role="alert" className="alert">
           {error}
         </p>
       ) : null}
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Latest scan items ({latestObservedItems.length})</h2>
-        <p style={{ color: "#555", fontSize: "0.95rem" }}>
-          Nonces from the newest successful scan (same list the worker logs). Refresh after
-          processing completes.
+      <h2 className="section-title">Latest scan items ({latestObservedItems.length})</h2>
+      <p className="muted">
+        PitBear-style mystic lines from the newest successful scan. Refresh after processing
+        completes.
+      </p>
+      {latestObservedItems.length === 0 ? (
+        <p className="muted">
+          No observations yet for the latest success scan (still processing, or no prior success).
         </p>
-        {latestObservedItems.length === 0 ? (
-          <p>No observations yet for the latest success scan (still processing, or no prior success).</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {latestObservedItems.map((item) => (
-              <li
-                key={item.observationId}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: "6px",
-                  padding: "0.75rem",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                <div>
-                  <strong>{item.title ?? item.slotKey}</strong>
-                  {item.kind ? ` · ${item.kind}` : ""}
-                </div>
-                <div>
-                  Nonce: <code>{item.nonce ?? "—"}</code>
-                </div>
-                <div>
-                  Item UUID: <code>{item.itemUuid ?? "—"}</code>
-                </div>
-                {item.customEnchants ? (
-                  <div>
-                    Enchants:{" "}
-                    {Object.entries(item.customEnchants)
-                      .map(([name, level]) => `${name} ${level}`)
-                      .join(", ")}
-                  </div>
-                ) : null}
-                {item.lore && item.lore.length > 0 ? (
-                  <div style={{ fontSize: "0.9rem", color: "#555" }}>{item.lore.slice(0, 4).join(" · ")}</div>
-                ) : null}
-                <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                  {item.slotKey} · {item.resolutionStatus}
-                  {item.canonicalItemId ? (
-                    <>
-                      {" · "}
-                      <Link href={`/items/${item.canonicalItemId}`}>item</Link>
-                    </>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      ) : (
+        <ul className="mystic-list">
+          {latestObservedItems.map((item) => (
+            <li key={item.observationId}>
+              <MysticItemCard
+                title={item.title ?? item.slotKey}
+                nonce={item.nonce}
+                itemUuid={item.itemUuid}
+                lives={item.lives}
+                maxLives={item.maxLives}
+                lore={item.lore}
+                customEnchants={item.customEnchants}
+                kind={item.kind}
+                resolutionStatus={item.resolutionStatus}
+                slotKey={item.slotKey}
+                href={item.canonicalItemId ? `/items/${item.canonicalItemId}` : null}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Currently held (resolved)</h2>
-        {heldItems.length === 0 ? (
-          <p>No open presence periods for resolved items on this account.</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {heldItems.map((item) => (
-              <li
-                key={item.itemId}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: "6px",
-                  padding: "0.75rem",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                <div>
-                  <strong>{item.displayName ?? item.primaryNonce ?? item.itemId.slice(0, 8)}</strong>
-                </div>
-                <div>
-                  Category: {item.category} · Confidence: {item.identityConfidence}
-                </div>
-                <div>
-                  Nonce: <code>{item.primaryNonce ?? "—"}</code>
-                </div>
-                <div>
-                  Presence since {formatWhen(item.presenceStartedAt)} ({item.certainty})
-                </div>
-                <div>
-                  <Link href={`/items/${item.itemId}`}>Open item</Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <h2 className="section-title">Currently held (resolved)</h2>
+      {heldItems.length === 0 ? (
+        <p className="muted">No open presence periods for resolved items on this account.</p>
+      ) : (
+        <ul className="mystic-list">
+          {heldItems.map((item) => (
+            <li key={item.itemId}>
+              <MysticItemCard
+                title={item.displayName ?? item.primaryNonce ?? item.itemId.slice(0, 8)}
+                nonce={item.primaryNonce}
+                kind={item.category}
+                href={`/items/${item.itemId}`}
+                footer={
+                  <>
+                    Confidence {item.identityConfidence} · presence since{" "}
+                    {formatWhen(item.presenceStartedAt)} ({item.certainty})
+                  </>
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Failures ({failures.length})</h2>
-        {failures.length === 0 ? (
-          <p>No failed scans.</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {failures.map((scan) => (
-              <ScanRow key={scan.id} scan={scan} />
-            ))}
-          </ul>
-        )}
-      </section>
+      <h2 className="section-title">Failures ({failures.length})</h2>
+      {failures.length === 0 ? (
+        <p className="muted">No failed scans.</p>
+      ) : (
+        <ul className="mystic-list">
+          {failures.map((scan) => (
+            <ScanRow key={scan.id} scan={scan} />
+          ))}
+        </ul>
+      )}
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Scan history ({scans.length})</h2>
-        {scans.length === 0 ? (
-          <p>No scans yet. Use Scan now with the worker running.</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {scans.map((scan) => (
-              <ScanRow key={scan.id} scan={scan} />
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+      <h2 className="section-title">Scan history ({scans.length})</h2>
+      {scans.length === 0 ? (
+        <p className="muted">No scans yet. Use Scan now with the worker running.</p>
+      ) : (
+        <ul className="mystic-list">
+          {scans.map((scan) => (
+            <ScanRow key={scan.id} scan={scan} />
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

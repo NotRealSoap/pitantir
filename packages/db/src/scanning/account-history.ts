@@ -1,5 +1,5 @@
 import type { CanonicalItem, Observation } from "@pitantir/shared/identity";
-import { extractBookSlots, resolveMysticIds } from "@pitantir/shared/inventory";
+import { extractBookSlots, resolveMysticIds, resolveMysticLives } from "@pitantir/shared/inventory";
 import type { Database } from "../client.js";
 import type { PublicAccount } from "../accounts/repository.js";
 import { AccountsRepository } from "../accounts/repository.js";
@@ -29,6 +29,8 @@ export interface ObservedItemSummary {
   kind: string | null;
   customEnchants: Record<string, number> | null;
   lore: string[] | null;
+  lives: number | null;
+  maxLives: number | null;
   resolutionStatus: Observation["resolutionStatus"] | "pending_process";
   canonicalItemId: string | null;
 }
@@ -58,6 +60,7 @@ function summarizeSlot(
   observation?: Observation,
 ): ObservedItemSummary {
   const ids = resolveMysticIds(rawItem);
+  const lives = resolveMysticLives(rawItem);
   const lore = Array.isArray(rawItem.lore) ? rawItem.lore.map(String) : null;
   return {
     observationId: observation?.id ?? `pending:${scanId}:${slotKey}`,
@@ -72,6 +75,8 @@ function summarizeSlot(
     kind: typeof rawItem.kind === "string" ? rawItem.kind : null,
     customEnchants: asNumberRecord(rawItem.customEnchants),
     lore,
+    lives: lives.lives,
+    maxLives: lives.maxLives,
     resolutionStatus: observation?.resolutionStatus ?? "pending_process",
     canonicalItemId: observation?.canonicalItemId ?? null,
   };

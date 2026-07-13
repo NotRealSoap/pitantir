@@ -1,5 +1,6 @@
 import type { ExtractedBookSlot } from "./types.js";
 import { resolveMysticIds } from "./nonce.js";
+import { resolveMysticLives } from "./mystic-display.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,6 +44,7 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
       : undefined;
 
   const ids = resolveMysticIds(item);
+  const livesResolved = resolveMysticLives(item);
   const hypixelExtraAttributes =
     item.hypixelExtraAttributes &&
     typeof item.hypixelExtraAttributes === "object" &&
@@ -65,6 +67,8 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
     kind: typeof item.kind === "string" ? item.kind : undefined,
     nonce: ids.nonce ?? undefined,
     itemUuid: ids.itemUuid ?? undefined,
+    lives: livesResolved.lives ?? undefined,
+    maxLives: livesResolved.maxLives ?? undefined,
     generation: typeof item.generation === "string" ? item.generation : undefined,
     type: typeof item.type === "string" ? item.type : typeof item.id === "string" ? item.id : undefined,
     hypixelExtraAttributes,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PublicAccount } from "@pitantir/db";
 
@@ -79,74 +80,72 @@ export default function AccountsPage() {
   }
 
   return (
-    <main>
-      <h1>Accounts</h1>
-      <p>
-        Manage Minecraft accounts to scan. With Hypixel configured on Settings and the worker
-        running, Scan now pulls real Pit inventories. UUID is optional — we resolve it from the
-        username on first scan.
+    <>
+      <h1 className="page-title">Accounts</h1>
+      <p className="page-lede">
+        Manage Minecraft accounts to scan. With Hypixel configured and the worker running, Scan now
+        pulls real Pit inventories. UUID is optional — resolved from the username on first scan.
       </p>
 
       <form
+        className="form-stack panel"
         onSubmit={(event) => {
           event.preventDefault();
           void createAccount();
         }}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.5rem",
-          marginTop: "1rem",
-          maxWidth: "28rem",
-        }}
       >
-        <input
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          placeholder="Minecraft username"
-          required
-          maxLength={16}
-        />
-        <input
-          value={mcUuid}
-          onChange={(event) => setMcUuid(event.target.value)}
-          placeholder="UUID (optional)"
-        />
-        <button type="submit">Add account</button>
+        <label>
+          Minecraft username
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="Steve"
+            required
+            maxLength={16}
+          />
+        </label>
+        <label>
+          UUID (optional)
+          <input
+            value={mcUuid}
+            onChange={(event) => setMcUuid(event.target.value)}
+            placeholder="Will resolve on scan"
+          />
+        </label>
+        <button type="submit" className="primary">
+          Add account
+        </button>
       </form>
 
       {error ? (
-        <p role="alert" style={{ color: "#a00" }}>
+        <p role="alert" className="alert" style={{ marginTop: "1rem" }}>
           {error}
         </p>
       ) : null}
-      {loading ? <p>Loading…</p> : null}
+      {loading ? <p className="muted">Loading…</p> : null}
 
-      <ul style={{ listStyle: "none", padding: 0, marginTop: "1.5rem" }}>
+      <ul className="mystic-list" style={{ marginTop: "1.5rem" }}>
         {accounts.map((account) => (
-          <li
-            key={account.id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              padding: "0.75rem",
-              marginBottom: "0.75rem",
-              maxWidth: "36rem",
-            }}
-          >
+          <li key={account.id} className="account-card">
             <div>
-              <strong>
-                <a href={`/accounts/${account.id}`}>{account.mcUsername}</a>
-              </strong>
-              {account.displayName ? ` (${account.displayName})` : ""}
+              <Link href={`/accounts/${account.id}`} className="mystic-title">
+                {account.mcUsername}
+              </Link>
+              {account.displayName ? (
+                <span className="muted"> ({account.displayName})</span>
+              ) : null}
             </div>
-            <div>Status: {account.enabled ? "enabled" : "disabled"}</div>
-            <div style={{ fontSize: "0.9rem", color: "#555" }}>
-              UUID: {account.mcUuid ?? "will resolve on scan"}
+            <div className="meta-row">
+              <span className="chip">{account.enabled ? "enabled" : "disabled"}</span>
+              <span className="chip">
+                UUID <strong>{account.mcUuid ? account.mcUuid.slice(0, 8) : "pending"}</strong>
+              </span>
             </div>
-            <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <a href={`/accounts/${account.id}`}>History</a>
-              <button type="button" onClick={() => void scanNow(account)} disabled={!account.enabled}>
+            <div className="row-actions" style={{ margin: "0.35rem 0 0" }}>
+              <Link className="button" href={`/accounts/${account.id}`}>
+                History
+              </Link>
+              <button type="button" className="primary" onClick={() => void scanNow(account)} disabled={!account.enabled}>
                 Scan now
               </button>
               <button type="button" onClick={() => void toggleEnabled(account)}>
@@ -159,6 +158,6 @@ export default function AccountsPage() {
           </li>
         ))}
       </ul>
-    </main>
+    </>
   );
 }

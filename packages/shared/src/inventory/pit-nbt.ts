@@ -169,9 +169,19 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     customEnchants: customEnchants ?? undefined,
     nonce: nonce ?? undefined,
     itemUuid: itemUuid ?? undefined,
+    lives: coerceLives(extra.Lives ?? extra.lives) ?? undefined,
+    maxLives: coerceLives(extra.MaxLives ?? extra.maxLives) ?? undefined,
     generation: typeof tag.generation === "number" ? String(tag.generation) : undefined,
     hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,
   };
+}
+
+function coerceLives(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+    return Math.trunc(Number(value));
+  }
+  return null;
 }
 
 function normalizeCustomEnchants(value: unknown): Record<string, number> | null {

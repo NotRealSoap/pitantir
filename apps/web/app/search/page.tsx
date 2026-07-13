@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import type { ItemSearchResponse } from "@pitantir/shared/item-data";
+import {
+  pantColorFromNonce,
+  pantColorLabel,
+  resolveMysticLives,
+} from "@pitantir/shared/inventory";
+import { MysticItemCard } from "../../src/components/MysticItemCard";
 
 type SearchKind = "exact_nonce" | "current_owner" | "past_owner";
 
@@ -15,6 +21,90 @@ const dataSourceLabels: Record<NonNullable<ItemSearchResponse["dataSource"]>, st
   pitpanda: "PitPanda",
   local_database: "Local database",
 };
+
+function asNumberRecord(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "number" && Number.isFinite(raw)) out[key] = raw;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function SearchResultCard({
+  item,
+  dataSource,
+}: {
+  item: ItemSearchResponse["items"][number];
+  dataSource: ItemSearchResponse["dataSource"];
+}) {
+  const raw = item.rawPayload ?? {};
+  const title =
+    typeof raw.name === "string"
+      ? raw.name
+      : typeof raw.title === "string"
+        ? raw.title
+        : typeof raw.itemName === "string"
+          ? raw.itemName
+          : item.providerItemKey;
+  const nonce =
+    typeof raw.nonce === "string" || typeof raw.nonce === "number"
+      ? String(raw.nonce)
+      : typeof raw.Nonce === "string" || typeof raw.Nonce === "number"
+        ? String(raw.Nonce)
+        : null;
+  const lore = Array.isArray(raw.lore)
+    ? raw.lore.map(String)
+    : Array.isArray(raw.description)
+      ? raw.description.map(String)
+      : null;
+  const customEnchants = asNumberRecord(raw.customEnchants ?? raw.enchants);
+  const lives = resolveMysticLives(raw as Record<string, unknown>);
+  const pant = pantColorFromNonce(nonce);
+
+  return (
+    <li>
+      <MysticItemCard
+        title={title}
+        nonce={nonce}
+        lives={lives.lives}
+        maxLives={lives.maxLives}
+        lore={lore}
+        customEnchants={customEnchants}
+        resolutionStatus={item.resolutionStatus}
+        href={item.canonicalItemId ? `/items/${item.canonicalItemId}` : null}
+        footer={
+          <>
+            {dataSource ? dataSourceLabels[dataSource] : item.source}
+            {" · "}
+            {item.canonicalItemId ?? "unassigned"}
+            {pant ? (
+              <>
+                {" · "}
+                <span className={`chip pants-${pant}`}>{pantColorLabel(pant)}</span>
+              </>
+            ) : null}
+            {item.observedAt ? ` · ${item.observedAt}` : ""}
+          </>
+        }
+      />
+      <details style={{ marginTop: "0.45rem" }}>
+        <summary className="muted">Raw upstream JSON</summary>
+        <pre
+          className="panel"
+          style={{
+            overflowX: "auto",
+            fontSize: "0.85rem",
+            marginTop: "0.5rem",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {JSON.stringify(item.rawPayload, null, 2)}
+        </pre>
+      </details>
+    </li>
+  );
+}
 
 export default function SearchPage() {
   const [kind, setKind] = useState<SearchKind>("exact_nonce");
@@ -50,7 +140,11 @@ export default function SearchPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: apiKeyInput }),
       });
-      const payload = (await response.json()) as { ok?: boolean; configured?: boolean; error?: string };
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        configured?: boolean;
+        error?: string;
+      };
       if (!response.ok || !payload.ok) {
         setKeyMessage(payload.error ?? "Could not save API key.");
         setConfigured(false);
@@ -101,38 +195,31 @@ export default function SearchPage() {
   const needsKey = configured === false;
 
   return (
-    <main>
-      <h1>Item Search</h1>
-      <p>
-        Search upstream item evidence through Pitantir. The browser calls our server only; the
+    <>
+      <h1 className="page-title">Item Search</h1>
+      <p className="page-lede">
+        Search upstream mystic evidence through Pitantir. The browser calls our server only; the
         PitPanda API key never leaves the server.
       </p>
 
       {needsKey ? (
-        <section
-          style={{
-            marginTop: "1rem",
-            marginBottom: "1.5rem",
-            padding: "1rem",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-            maxWidth: "32rem",
-            background: "#fafafa",
-          }}
-        >
-          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Connect PitPanda</h2>
-          <p style={{ marginTop: 0 }}>
-            Paste your PitPanda API key. It is sent to this app’s server route and stored only on
-            the server (local <code>.env.local</code>). It is never shown again in the UI.
+        <section className="panel" style={{ marginBottom: "1.5rem", maxWidth: "32rem" }}>
+          <h2 className="section-title" style={{ marginTop: 0 }}>
+            Connect PitPanda
+          </h2>
+          <p className="muted">
+            Paste your PitPanda API key. It is stored only on the server and never shown again in the
+            UI.
           </p>
           <form
+            className="form-stack"
+            style={{ maxWidth: "100%" }}
             onSubmit={(event) => {
               event.preventDefault();
               void saveApiKey();
             }}
-            style={{ display: "grid", gap: "0.75rem" }}
           >
-            <label style={{ display: "grid", gap: "0.25rem" }}>
+            <label>
               PitPanda API key
               <input
                 type="password"
@@ -144,14 +231,14 @@ export default function SearchPage() {
                 minLength={8}
               />
             </label>
-            <button type="submit" disabled={savingKey || apiKeyInput.trim().length < 8}>
+            <button type="submit" className="primary" disabled={savingKey || apiKeyInput.trim().length < 8}>
               {savingKey ? "Saving…" : "Save key"}
             </button>
           </form>
           {keyMessage ? <p role="status">{keyMessage}</p> : null}
         </section>
       ) : (
-        <p style={{ color: "#255", marginTop: "0.5rem" }}>
+        <p className="muted" style={{ marginTop: "0.5rem" }}>
           PitPanda: <strong>{configured === null ? "checking…" : "configured"}</strong>
           {" · "}
           <button
@@ -160,7 +247,7 @@ export default function SearchPage() {
               setConfigured(false);
               setKeyMessage(null);
             }}
-            style={{ background: "none", border: "none", color: "#06c", cursor: "pointer", padding: 0 }}
+            style={{ background: "none", border: "none", color: "var(--pit-aqua)", cursor: "pointer", padding: 0 }}
           >
             Replace key
           </button>
@@ -168,13 +255,14 @@ export default function SearchPage() {
       )}
 
       <form
+        className="form-stack panel"
+        style={{ maxWidth: "32rem" }}
         onSubmit={(event) => {
           event.preventDefault();
           void runSearch(0);
         }}
-        style={{ display: "grid", gap: "0.75rem", maxWidth: "32rem", marginTop: "1rem" }}
       >
-        <label style={{ display: "grid", gap: "0.25rem" }}>
+        <label>
           Search type
           <select value={kind} onChange={(event) => setKind(event.target.value as SearchKind)}>
             {Object.entries(kindLabels).map(([key, label]) => (
@@ -185,18 +273,18 @@ export default function SearchPage() {
           </select>
         </label>
 
-        <label style={{ display: "grid", gap: "0.25rem" }}>
+        <label>
           Value
           <input
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder={kind === "exact_nonce" ? "Book nonce" : "Minecraft username"}
+            placeholder={kind === "exact_nonce" ? "Mystic nonce" : "Minecraft username"}
             required
             maxLength={128}
           />
         </label>
 
-        <button type="submit" disabled={loading || value.trim().length === 0}>
+        <button type="submit" className="primary" disabled={loading || value.trim().length === 0}>
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
@@ -207,50 +295,9 @@ export default function SearchPage() {
         <section style={{ marginTop: "1.5rem" }}>
           <StatusBanner result={result} />
           {result.status === "ok" ? (
-            <ul style={{ listStyle: "none", padding: 0 }}>
+            <ul className="mystic-list">
               {result.items.map((item) => (
-                <li
-                  key={item.providerItemKey}
-                  style={{
-                    marginBottom: "1.25rem",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    padding: "1rem",
-                  }}
-                >
-                  <div style={{ marginBottom: "0.5rem" }}>
-                    <strong>Source:</strong>{" "}
-                    {result.dataSource ? dataSourceLabels[result.dataSource] : item.source}
-                  </div>
-                  <div>
-                    <strong>Provider key:</strong> {item.providerItemKey}
-                  </div>
-                  <div>
-                    <strong>Resolution:</strong> {item.resolutionStatus}
-                  </div>
-                  <div>
-                    <strong>Canonical item:</strong> {item.canonicalItemId ?? "unassigned"}
-                  </div>
-                  {item.observedAt ? (
-                    <div>
-                      <strong>Observed at:</strong> {item.observedAt}
-                    </div>
-                  ) : null}
-                  <details style={{ marginTop: "0.75rem" }}>
-                    <summary>Raw upstream JSON (development)</summary>
-                    <pre
-                      style={{
-                        background: "#f4f4f4",
-                        padding: "0.75rem",
-                        overflowX: "auto",
-                        fontSize: "0.85rem",
-                        marginTop: "0.5rem",
-                      }}
-                    >
-                      {JSON.stringify(item.rawPayload, null, 2)}
-                    </pre>
-                  </details>
-                </li>
+                <SearchResultCard key={item.providerItemKey} item={item} dataSource={result.dataSource} />
               ))}
             </ul>
           ) : null}
@@ -262,7 +309,7 @@ export default function SearchPage() {
           ) : null}
         </section>
       ) : null}
-    </main>
+    </>
   );
 }
 
@@ -270,7 +317,7 @@ function StatusBanner({ result }: { result: ItemSearchResponse }) {
   if (result.status === "ok") {
     const sourceLabel = result.dataSource ? dataSourceLabels[result.dataSource] : "Unknown";
     return (
-      <p>
+      <p className="muted">
         Page {result.page + 1}: {result.items.length} result(s) from <strong>{sourceLabel}</strong>.
       </p>
     );
@@ -287,5 +334,9 @@ function StatusBanner({ result }: { result: ItemSearchResponse }) {
     rate_limited: result.message ?? "Rate limit reached. Try again shortly.",
   };
 
-  return <p role="alert">{messages[result.status]}</p>;
+  return (
+    <p role="alert" className="alert">
+      {messages[result.status]}
+    </p>
+  );
 }

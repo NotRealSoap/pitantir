@@ -40,32 +40,24 @@ export default function ScansPage() {
   }, []);
 
   return (
-    <main>
-      <h1>Scan history</h1>
-      <p>All account inventory scans. Failures show an error — never as empty inventory.</p>
+    <>
+      <h1 className="page-title">Scan history</h1>
+      <p className="page-lede">
+        All account inventory scans. Failures show an error — never as empty inventory.
+      </p>
 
       {error ? (
-        <p role="alert" style={{ color: "#a00" }}>
+        <p role="alert" className="alert">
           {error}
         </p>
       ) : null}
-      {loading ? <p>Loading…</p> : <p>{scans.length} scan(s)</p>}
+      {loading ? <p className="muted">Loading…</p> : <p className="muted">{scans.length} scan(s)</p>}
 
-      <ul style={{ listStyle: "none", padding: 0, marginTop: "1rem" }}>
+      <ul className="mystic-list">
         {scans.map((scan) => {
           const isFailure = scan.status === "failure";
           return (
-            <li
-              key={scan.id}
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: "6px",
-                padding: "0.75rem",
-                marginBottom: "0.5rem",
-                maxWidth: "42rem",
-                background: isFailure ? "#fff5f5" : "#fff",
-              }}
-            >
+            <li key={scan.id} className={`scan-card${isFailure ? " is-failure" : ""}`}>
               <div>
                 <strong>{scan.status}</strong>
                 {" · "}
@@ -75,25 +67,23 @@ export default function ScansPage() {
                 {" · "}
                 {scan.triggeredBy}
               </div>
-              <div>Created {formatWhen(scan.createdAt)}</div>
+              <div className="muted">Created {formatWhen(scan.createdAt)}</div>
               {scan.status === "success" ? (
                 <div>
                   Items: {scan.itemCount ?? 0} · processing: {scan.processingStatus}
                 </div>
               ) : null}
               {isFailure ? (
-                <div style={{ color: "#a00", marginTop: "0.35rem" }}>
+                <div className="alert" style={{ marginTop: "0.35rem" }}>
                   {scan.errorCode ?? "error"}
                   {scan.errorMessage ? ` — ${scan.errorMessage}` : ""}
-                  <div style={{ fontSize: "0.9rem", color: "#666" }}>
-                    No inventory stored for failures.
-                  </div>
+                  <div className="muted">No inventory stored for failures.</div>
                 </div>
               ) : null}
             </li>
           );
         })}
       </ul>
-    </main>
+    </>
   );
 }
