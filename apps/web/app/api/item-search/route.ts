@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   ItemSearchError,
   itemSearchRequestSchema,
+  validateSearchValue,
   type ItemSearchResponse,
 } from "@pitantir/shared/item-data";
 import { executeItemSearch, itemSearchCacheKey } from "../../../src/server/item-search-service";
@@ -84,6 +85,22 @@ export async function POST(request: Request) {
   const cached = searchCache.get(cacheKey);
   if (cached) {
     return NextResponse.json(cached);
+  }
+
+  try {
+    validateSearchValue(parsed.data.kind, parsed.data.value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid search input.";
+    return NextResponse.json(
+      {
+        status: "invalid_search",
+        page: parsed.data.page,
+        hasNextPage: false,
+        items: [],
+        message,
+      } satisfies ItemSearchResponse,
+      { status: 400 },
+    );
   }
 
   try {
