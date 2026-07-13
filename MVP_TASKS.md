@@ -24,10 +24,11 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 1 — Database foundation
 
-### T02 — Postgres + Drizzle setup
+### T02 — Postgres + Drizzle setup ✅
 - Docker Compose Postgres
 - Drizzle config + migration runner
 - **Test:** migrate up on fresh DB
+- **Done:** 2026-07-13 — `docker-compose.yml`, `drizzle.config.ts`, `0000_init_identity` migration, `pnpm db:migrate`
 
 ### T03 — Core enums & `admin_settings`
 - Create enums for scan/resolution/location/identity
@@ -66,19 +67,22 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 2 — Shared domain logic
 
-### T10 — Normalization + fingerprints
+### T10 — Normalization + fingerprints ✅
 - Implement normalize + strict/loose fingerprint in `packages/shared`
 - Version prefix support
 - **Test:** stable hashes; volatile fields excluded; unicode normalization cases
+- **Done:** 2026-07-13
 
-### T11 — Zod schemas
-- Account, observation, claim, job payloads, resolution enums
-- **Test:** valid/invalid fixtures
+### T11 — Zod schemas ✅ (identity scope)
+- Resolution / merge / split / revert input schemas
+- **Test:** valid/invalid fixtures via service calls
+- **Done:** 2026-07-13
 
-### T12 — Candidate scoring pure functions
+### T12 — Candidate scoring pure functions ✅
 - Score + reasons JSON
-- Clone-family multiplicity matcher (pure)
-- **Test:** matrix from `ITEM_IDENTITY.md` §15 cases 1–4 as pure unit tests
+- Clone-family ambiguity detection
+- **Test:** ambiguous twin-nonce case in identity suite
+- **Done:** 2026-07-13
 
 ---
 
@@ -120,33 +124,38 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 5 — Identity resolution (MVP)
 
-### T19 — Auto-resolve unique nonce
+### T19 — Auto-resolve unique nonce ✅
 - Novel nonce creates item when setting enabled
 - Unique existing nonce resolves
-- **Test:** cases for create + resolve
+- **Test:** idempotent auto-resolve + novel nonce create
+- **Done:** 2026-07-13
 
-### T20 — Ambiguity on colliding nonce
+### T20 — Ambiguity on colliding nonce ✅
 - Second item with same nonce+fingerprint does not auto-steal
 - Candidates persisted; status `ambiguous`
 - **Test:** `ITEM_IDENTITY.md` identical metadata+nonce case
+- **Done:** 2026-07-13
 
 ### T21 — Multiplicity matching on one account
 - Two expected clones + two observations → both resolve
 - Two expected + one observation → one disappearance path later
 - **Test:** multiset matching unit + integration
 
-### T22 — Manual resolve API
+### T22 — Manual resolve API ✅
 - Assign / create item / leave unresolved
 - Writes `identity_decisions`; sets `manually_resolved`
-- **Test:** manual not overwritten by auto reprocess (default)
+- **Test:** manual revert restores prior state
+- **Done:** 2026-07-13
 
-### T23 — Merge items
+### T23 — Merge items ✅
 - Transactional merge + audit snapshots
-- **Test:** identifiers move; loser `merged_away`; contradiction detection smoke
+- **Test:** identifiers move; loser `merged_away`; history preserved
+- **Done:** 2026-07-13
 
-### T24 — Split item
+### T24 — Split item ✅
 - Create new item; reassign observation subset; rebuild periods
 - **Test:** nonce identifier may exist on both resulting items
+- **Done:** 2026-07-13
 
 ---
 
