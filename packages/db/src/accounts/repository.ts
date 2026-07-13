@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { accounts, type AccountRow } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
@@ -155,7 +155,7 @@ export class AccountsRepository {
         and(
           isNull(accounts.deletedAt),
           eq(accounts.enabled, true),
-          sql`${accounts.nextScanAt} <= ${asOf}`,
+          lte(accounts.nextScanAt, asOf),
         ),
       );
     return rows.map(mapAccount);

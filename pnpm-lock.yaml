@@ -63,7 +63,13 @@ importers:
       '@pitantir/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
     devDependencies:
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
       typescript:
         specifier: ^5.8.3
         version: 5.9.3

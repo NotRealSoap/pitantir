@@ -90,15 +90,17 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 3 — Job runner (worker shell)
 
-### T13 — DB job claim/lease loop
+### T13 — DB job claim/lease loop ✅
 - Claim pending jobs with `FOR UPDATE SKIP LOCKED`
 - Heartbeat / expire leases
 - **Test:** two workers don’t claim same job; expired lease reclaimed
+- **Done:** 2026-07-13 — `jobs` migration, `JobsRepository`, worker `WorkerLoop`
 
-### T14 — Scheduler tick
+### T14 — Scheduler tick ✅
 - Enqueue `scan_account` for due enabled accounts
 - Stable schedule idempotency keys
 - **Test:** no duplicate enqueue for same slot; disabled accounts skipped
+- **Done:** 2026-07-13 — `ScanScheduler` + worker runtime loop
 
 ---
 
