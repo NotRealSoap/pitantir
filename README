@@ -18,3 +18,5 @@ Implementation has not started. Design docs:
 | [CLAUDE.md](./CLAUDE.md) | Working rules for implementers and agents |
 
 Start with `SPEC.md`, then follow `MVP_TASKS.md` for build order.
+
+Upstream item search providers: see [ITEM_DATA_PROVIDERS.md](./ITEM_DATA_PROVIDERS.md).

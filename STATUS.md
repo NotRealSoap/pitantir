@@ -30,14 +30,16 @@ Phase 1 — Database foundation (in progress)
 
 **T03 — Core enums & `admin_settings`**
 
-Then **T21** — multiplicity matching on one account.
+## Recent addition
+
+**PitPanda item search (vertical slice)** — provider-neutral `ItemDataProvider`, PitPanda adapter, `/search` UI, `POST /api/item-search` server route with rate limit + cache. See `ITEM_DATA_PROVIDERS.md`.
 
 ## Validation (latest)
 
 ```bash
 pnpm typecheck   # pass
 pnpm lint        # pass
-pnpm test        # 18 tests pass (includes migration test on pitantir_test)
+pnpm test        # 25 tests pass
 pnpm db:migrate  # applies migrations/0000_init_identity.sql
 ```
 
@@ -46,3 +48,5 @@ pnpm db:migrate  # applies migrations/0000_init_identity.sql
 - Identity resolution uses `MemoryIdentityStore`; Drizzle schema is migrated to PostgreSQL but not yet wired as a repository.
 - Local dev: `docker compose up -d` or system Postgres with `.env` from `.env.example`.
 - Migration test uses `pitantir_test` database; drops `public` and `drizzle` schemas before each run.
+- PitPanda search uses in-memory identity store and in-memory rate limit/cache (single-process MVP).
+- Set `PITPANDA_API_KEY` in server environment only; never expose to client bundles.

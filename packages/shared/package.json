@@ -11,6 +11,10 @@
     "./identity": {
       "types": "./src/identity/index.ts",
       "default": "./src/identity/index.ts"
+    },
+    "./item-data": {
+      "types": "./src/item-data/index.ts",
+      "default": "./src/item-data/index.ts"
     }
   },
   "scripts": {

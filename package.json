@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && pnpm --filter @pitantir/web typecheck",
     "lint": "eslint .",
     "test": "vitest run",
     "db:migrate": "pnpm --filter @pitantir/db migrate",

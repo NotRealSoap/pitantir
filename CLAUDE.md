@@ -36,6 +36,8 @@ Pitantir tracks historically significant Minecraft books across managed accounts
 - Put pure logic in `packages/shared` (fingerprints, scoring, multiplicity matching).  
 - Put schema/repos in `packages/db`.  
 - Web enqueues jobs; worker performs Minecraft I/O and heavy processing.  
+- Upstream item evidence (PitPanda, future Hypixel) flows through `ItemDataProvider` adapters — see `ITEM_DATA_PROVIDERS.md`.  
+- Never call upstream providers from the browser; only server routes may use provider credentials.  
 - Prefer DB-backed jobs for MVP; do not add Redis/Bull/Temporal unless docs change.  
 - Prefer Drizzle + explicit SQL for overlap/temporal queries.
 
