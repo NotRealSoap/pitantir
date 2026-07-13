@@ -8,11 +8,12 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 0 — Repository skeleton
 
-### T00 — Monorepo bootstrap
+### T00 — Monorepo bootstrap ✅
 - Create pnpm/npm workspaces: `apps/web`, `apps/worker`, `packages/shared`, `packages/db`
 - TypeScript strict base config
 - Root scripts: `lint`, `test`, `typecheck`
 - **Test:** `pnpm typecheck` passes on empty packages
+- **Done:** 2026-07-13 — pnpm workspaces, strict `tsconfig.base.json`, ESLint + Vitest root scripts
 
 ### T01 — Documentation gate
 - Ensure root docs (`SPEC.md`, etc.) remain the source of truth
