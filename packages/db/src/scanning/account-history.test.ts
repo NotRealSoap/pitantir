@@ -113,6 +113,8 @@ describe("T32 account history", () => {
     expect(view!.failures[0]?.rawInventoryHash).toBeNull();
     expect(view!.heldItems.length).toBeGreaterThanOrEqual(1);
     expect(view!.heldItems[0]?.primaryNonce).toBe("held-nonce-1");
+    expect(view!.latestObservedItems.length).toBeGreaterThanOrEqual(1);
+    expect(view!.latestObservedItems.some((item) => item.nonce === "held-nonce-1")).toBe(true);
 
     // Public summary must not expose raw inventory
     expect(

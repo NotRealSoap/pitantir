@@ -133,7 +133,9 @@ export class IdentityService {
     let targetItemId = outcome.canonicalItemId;
 
     if (outcome.shouldCreateItem) {
+      const title = observation.normalizedMetadata.title ?? null;
       createdItem = await this.store.createCanonicalItem({
+        displayName: title,
         category: outcome.createdItemCategory,
         primaryNonce: observation.observedNonce,
         strictFingerprint: observation.strictFingerprint,
@@ -240,6 +242,7 @@ export class IdentityService {
 
     if (parsed.createNewItem || !parsed.itemId) {
       targetItem = await this.store.createCanonicalItem({
+        displayName: observation.normalizedMetadata.title ?? null,
         category: observation.observedNonce ? "unique_nonce_candidate" : "nonce_less",
         primaryNonce: observation.observedNonce,
         strictFingerprint: observation.strictFingerprint,

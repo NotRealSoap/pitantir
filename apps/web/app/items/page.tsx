@@ -59,7 +59,10 @@ export default function ItemsPage() {
   return (
     <main>
       <h1>Items</h1>
-      <p>Canonical books created from scans (and search ingest). Filter by nonce, category, or location.</p>
+      <p>
+        Canonical mystic items (and books) created from scans. Nonces are the primary tracking key —
+        filter by nonce, category, or location.
+      </p>
 
       <form
         onSubmit={(event) => {
@@ -137,7 +140,7 @@ export default function ItemsPage() {
                 : "location unknown"}
             </div>
             <div style={{ fontSize: "0.9rem", color: "#555" }}>
-              Nonce: {item.primaryNonce ?? "—"}
+              Nonce: <code>{item.primaryNonce ?? "—"}</code>
             </div>
           </li>
         ))}

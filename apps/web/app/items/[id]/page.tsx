@@ -74,7 +74,7 @@ export default function ItemDetailPage() {
       <p>
         {item.category} · confidence {item.identityConfidence} · status {item.status}
       </p>
-      <p>Nonce: {item.primaryNonce ?? "—"}</p>
+      <p>Nonce: <code>{item.primaryNonce ?? "—"}</code></p>
       <p style={{ fontSize: "0.9rem", color: "#555", wordBreak: "break-all" }}>
         Strict FP: {item.strictFingerprint ?? "—"}
       </p>

@@ -126,7 +126,7 @@ export default function AccountDetailPage() {
     return null;
   }
 
-  const { account, scans, failures, heldItems } = history;
+  const { account, scans, failures, heldItems, latestObservedItems } = history;
 
   return (
     <main>
@@ -160,6 +160,59 @@ export default function AccountDetailPage() {
       ) : null}
 
       <section style={{ marginTop: "1.5rem" }}>
+        <h2>Latest scan items ({latestObservedItems.length})</h2>
+        <p style={{ color: "#555", fontSize: "0.95rem" }}>
+          Nonces from the newest successful scan (same list the worker logs). Refresh after
+          processing completes.
+        </p>
+        {latestObservedItems.length === 0 ? (
+          <p>No observations yet for the latest success scan (still processing, or no prior success).</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {latestObservedItems.map((item) => (
+              <li
+                key={item.observationId}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  padding: "0.75rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                <div>
+                  <strong>{item.title ?? item.slotKey}</strong>
+                  {item.kind ? ` · ${item.kind}` : ""}
+                </div>
+                <div>
+                  Nonce: <code>{item.nonce ?? "—"}</code>
+                </div>
+                {item.customEnchants ? (
+                  <div>
+                    Enchants:{" "}
+                    {Object.entries(item.customEnchants)
+                      .map(([name, level]) => `${name} ${level}`)
+                      .join(", ")}
+                  </div>
+                ) : null}
+                {item.lore && item.lore.length > 0 ? (
+                  <div style={{ fontSize: "0.9rem", color: "#555" }}>{item.lore.slice(0, 4).join(" · ")}</div>
+                ) : null}
+                <div style={{ fontSize: "0.85rem", color: "#666" }}>
+                  {item.slotKey} · {item.resolutionStatus}
+                  {item.canonicalItemId ? (
+                    <>
+                      {" · "}
+                      <Link href={`/items/${item.canonicalItemId}`}>item</Link>
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section style={{ marginTop: "1.5rem" }}>
         <h2>Currently held (resolved)</h2>
         {heldItems.length === 0 ? (
           <p>No open presence periods for resolved items on this account.</p>
@@ -181,9 +234,14 @@ export default function AccountDetailPage() {
                 <div>
                   Category: {item.category} · Confidence: {item.identityConfidence}
                 </div>
-                <div>Nonce: {item.primaryNonce ?? "—"}</div>
+                <div>
+                  Nonce: <code>{item.primaryNonce ?? "—"}</code>
+                </div>
                 <div>
                   Presence since {formatWhen(item.presenceStartedAt)} ({item.certainty})
+                </div>
+                <div>
+                  <Link href={`/items/${item.itemId}`}>Open item</Link>
                 </div>
               </li>
             ))}
