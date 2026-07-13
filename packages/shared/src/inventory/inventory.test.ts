@@ -49,12 +49,14 @@ describe("inventory extraction + mock source", () => {
         { slot: 0, title: "One", author: "A", nonce: "n1", pages: ["a"] },
         { slot: 1, id: "minecraft:diamond", count: 1 },
         { slot: 2, item: { title: "Nested", author: "B", pages: "x" } },
+        { slot: 3, id: "387", title: "NumericNonce", author: "A", pages: "p", nonce: 55 },
       ],
       ender_chest: [{ slot: 0, title: "E", author: "C", nonce: "ne" }],
     });
 
-    expect(slots.map((s) => s.slotKey)).toEqual(["echest:0", "inv:0", "inv:2"]);
+    expect(slots.map((s) => s.slotKey)).toEqual(["echest:0", "inv:0", "inv:2", "inv:3"]);
     expect(slots[1]?.rawItem).toMatchObject({ title: "One", nonce: "n1" });
+    expect(slots[3]?.rawItem).toMatchObject({ title: "NumericNonce", nonce: "55" });
   });
 
   it("default mock success includes books for unknown accounts", async () => {

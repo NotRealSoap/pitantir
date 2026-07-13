@@ -68,36 +68,26 @@ export class HypixelPitInventorySource implements InventorySource {
         };
       }
 
-      const inventoryItems = await decodePitInventoryPayload(profile.inv_contents);
-      const enderItems = await decodePitInventoryPayload(
+      const inventory = await decodeBooksFromPayload(profile.inv_contents);
+      const ender_chest = await decodeBooksFromPayload(
         profile.inv_enderchest ?? profile.ender_chest ?? profile.inv_ender_chest,
       );
 
-      const inventory = inventoryItems
-        .map((item: DecodedInventoryItem, index: number) => {
-          const book = bookFieldsFromNbtItem(item);
-          if (!book) return null;
-          return { slot: item.slot ?? index, ...book };
-        })
-        .filter(
-          (row: (Record<string, unknown> & { slot: number }) | null): row is Record<
-            string,
-            unknown
-          > & { slot: number } => row !== null,
-        );
+      const stash = await decodeBooksFromPayload(profile.item_stash);
+      const mysticWell = await decodeBooksFromPayload(profile.mystic_well_item);
+      const containers: Array<{ name: string; slots: Array<Record<string, unknown> & { slot: number }> }> =
+        [];
+      if (stash.length > 0) containers.push({ name: "stash", slots: stash });
+      if (mysticWell.length > 0) containers.push({ name: "mystic_well", slots: mysticWell });
 
-      const ender_chest = enderItems
-        .map((item: DecodedInventoryItem, index: number) => {
-          const book = bookFieldsFromNbtItem(item);
-          if (!book) return null;
-          return { slot: item.slot ?? index, ...book };
-        })
-        .filter(
-          (row: (Record<string, unknown> & { slot: number }) | null): row is Record<
-            string,
-            unknown
-          > & { slot: number } => row !== null,
-        );
+      const containersPresent = {
+        inv_contents: Boolean(profile.inv_contents),
+        inv_enderchest: Boolean(
+          profile.inv_enderchest ?? profile.ender_chest ?? profile.inv_ender_chest,
+        ),
+        item_stash: Boolean(profile.item_stash),
+        mystic_well_item: Boolean(profile.mystic_well_item),
+      };
 
       return {
         ok: true,
@@ -108,13 +98,8 @@ export class HypixelPitInventorySource implements InventorySource {
           displayname: player.displayname ?? account.mcUsername,
           inventory,
           ender_chest,
-          // Keep compact provenance without dumping full NBT byte arrays twice.
-          containersPresent: {
-            inv_contents: Boolean(profile.inv_contents),
-            inv_enderchest: Boolean(
-              profile.inv_enderchest ?? profile.ender_chest ?? profile.inv_ender_chest,
-            ),
-          },
+          ...(containers.length > 0 ? { containers } : {}),
+          containersPresent,
         },
       };
     } catch (error: unknown) {
@@ -167,6 +152,24 @@ export class HypixelPitInventorySource implements InventorySource {
     }
     return body.player ?? null;
   }
+}
+
+async function decodeBooksFromPayload(
+  payload: unknown,
+): Promise<Array<Record<string, unknown> & { slot: number }>> {
+  const items = await decodePitInventoryPayload(payload);
+  return items
+    .map((item: DecodedInventoryItem, index: number) => {
+      const book = bookFieldsFromNbtItem(item);
+      if (!book) return null;
+      return { slot: item.slot ?? index, ...book };
+    })
+    .filter(
+      (row: (Record<string, unknown> & { slot: number }) | null): row is Record<
+        string,
+        unknown
+      > & { slot: number } => row !== null,
+    );
 }
 
 function mapFetchError(error: unknown): InventoryFetchResult {

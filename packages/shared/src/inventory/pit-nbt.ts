@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import nbt from "prismarine-nbt";
+import { pickInventoryNonce } from "./nonce.js";
 
 export interface DecodedInventoryItem {
   slot: number | null;
@@ -108,7 +109,9 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
   const extra =
     tag.ExtraAttributes && typeof tag.ExtraAttributes === "object"
       ? (tag.ExtraAttributes as Record<string, unknown>)
-      : {};
+      : tag.extraAttributes && typeof tag.extraAttributes === "object"
+        ? (tag.extraAttributes as Record<string, unknown>)
+        : {};
 
   const idLower = (item.id ?? "").toLowerCase();
   const title =
@@ -121,18 +124,23 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     ) ?? null;
   const author = typeof tag.author === "string" ? tag.author : null;
   const pages = normalizePages(tag.pages);
-  const nonce =
-    (typeof extra.nonce === "string" && extra.nonce) ||
-    (typeof extra.uuid === "string" && extra.uuid) ||
-    (typeof tag.nonce === "string" && tag.nonce) ||
-    null;
+  const nonce = pickInventoryNonce(
+    extra.nonce,
+    extra.Nonce,
+    tag.nonce,
+    tag.Nonce,
+    // Some exports put uuid on ExtraAttributes; keep as last resort for books.
+    extra.uuid,
+  );
 
+  // Legacy numeric ids: 386 writable_book, 387 written_book
   const looksLikeBook =
     idLower.includes("book") ||
+    idLower === "386" ||
+    idLower === "387" ||
     title !== null ||
     author !== null ||
-    pages !== null ||
-    nonce !== null;
+    pages !== null;
 
   if (!looksLikeBook) {
     return null;

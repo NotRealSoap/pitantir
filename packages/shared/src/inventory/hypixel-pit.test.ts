@@ -9,17 +9,27 @@ function signedBytes(buffer: Buffer): number[] {
   return [...buffer].map((b) => (b > 127 ? b - 256 : b));
 }
 
-function makePitInventoryBytes(title: string, author: string, pages: string[], nonce?: string) {
+function makePitInventoryBytes(
+  title: string,
+  author: string,
+  pages: string[],
+  nonce?: string | number,
+  options?: { numericBookId?: boolean; nonceKey?: "nonce" | "Nonce"; nonceType?: "string" | "int" },
+) {
   const tagValue: Record<string, unknown> = {
     title: { type: "string", value: title },
     author: { type: "string", value: author },
     pages: { type: "list", value: { type: "string", value: pages } },
   };
-  if (nonce) {
+  if (nonce !== undefined) {
+    const key = options?.nonceKey ?? "nonce";
+    const asInt = options?.nonceType === "int" || typeof nonce === "number";
     tagValue.ExtraAttributes = {
       type: "compound",
       value: {
-        nonce: { type: "string", value: nonce },
+        [key]: asInt
+          ? { type: "int", value: typeof nonce === "number" ? nonce : Number(nonce) }
+          : { type: "string", value: String(nonce) },
       },
     };
   }
@@ -34,7 +44,9 @@ function makePitInventoryBytes(title: string, author: string, pages: string[], n
           type: "compound" as const,
           value: [
             {
-              id: { type: "string", value: "minecraft:written_book" },
+              id: options?.numericBookId
+                ? { type: "short", value: 387 }
+                : { type: "string", value: "minecraft:written_book" },
               Slot: { type: "byte", value: 2 },
               Count: { type: "byte", value: 1 },
               tag: { type: "compound", value: tagValue },
@@ -79,6 +91,21 @@ describe("pit nbt decode", () => {
       author: "Author",
       pages: "hello",
       nonce: "nonce-123",
+    });
+  });
+
+  it("coerces integer ExtraAttributes.Nonce to string", async () => {
+    const data = makePitInventoryBytes("Mystic Book", "Author", ["hello"], 421337, {
+      nonceKey: "Nonce",
+      nonceType: "int",
+      numericBookId: true,
+    });
+    const items = await decodePitInventoryPayload({ type: 0, data });
+    const book = bookFieldsFromNbtItem(items[0]!);
+    expect(book).toMatchObject({
+      title: "Mystic Book",
+      nonce: "421337",
+      id: "387",
     });
   });
 });

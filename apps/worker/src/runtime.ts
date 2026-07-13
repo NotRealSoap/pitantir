@@ -126,6 +126,8 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
             scanId: result.scan.id,
             status: result.scan.status,
             itemCount: result.scan.itemCount,
+            inventorySource: result.inventorySource ?? inventory.id,
+            observedNonces: result.observedNonces ?? [],
             enqueuedProcessScan: result.enqueuedProcessScan,
             resolvedMcUuid: result.resolvedMcUuid ?? null,
             workerId,

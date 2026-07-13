@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { coerceInventoryNonce } from "../inventory/nonce.js";
 import type { BookMetadata } from "./types.js";
 
 export const FINGERPRINT_SPEC_VERSION = "v1";
@@ -53,7 +54,7 @@ export function fingerprintFromRawItem(rawItem: Record<string, unknown>): {
   const pageCount = typeof rawItem.pageCount === "number" ? rawItem.pageCount : null;
   const pages = typeof rawItem.pages === "string" ? rawItem.pages : null;
   const generation = typeof rawItem.generation === "string" ? rawItem.generation : null;
-  const nonce = typeof rawItem.nonce === "string" ? rawItem.nonce : null;
+  const nonce = coerceInventoryNonce(rawItem.nonce);
 
   const pageContentHash = pages
     ? hashContent([normalizePageText(pages)])

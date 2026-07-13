@@ -38,4 +38,14 @@ describe("fingerprints", () => {
     });
     expect(base.strictFingerprint).toBe(withDifferentSlot.strictFingerprint);
   });
+
+  it("coerces numeric nonces from raw inventory items", () => {
+    const fromNumber = fingerprintFromRawItem({
+      title: "Book",
+      author: "Author",
+      pages: "x",
+      nonce: 421337,
+    });
+    expect(fromNumber.nonce).toBe("421337");
+  });
 });

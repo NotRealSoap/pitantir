@@ -1,4 +1,5 @@
 import type { ExtractedBookSlot } from "./types.js";
+import { coerceInventoryNonce } from "./nonce.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -7,13 +8,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function looksLikeBook(item: Record<string, unknown>): boolean {
   const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
   const id = typeof item.id === "string" ? item.id.toLowerCase() : "";
-  if (type.includes("book") || id.includes("book") || id.includes("writable_book")) {
+  if (
+    type.includes("book") ||
+    id.includes("book") ||
+    id.includes("writable_book") ||
+    id === "386" ||
+    id === "387"
+  ) {
     return true;
   }
   return (
     typeof item.title === "string" ||
     typeof item.author === "string" ||
-    typeof item.nonce === "string" ||
+    coerceInventoryNonce(item.nonce) !== null ||
     typeof item.pages === "string" ||
     Array.isArray(item.pages)
   );
@@ -36,7 +43,7 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
         : Array.isArray(item.pages)
           ? item.pages.length
           : undefined,
-    nonce: typeof item.nonce === "string" ? item.nonce : undefined,
+    nonce: coerceInventoryNonce(item.nonce) ?? undefined,
     generation: typeof item.generation === "string" ? item.generation : undefined,
     type: typeof item.type === "string" ? item.type : typeof item.id === "string" ? item.id : undefined,
   };

@@ -1,4 +1,7 @@
-import type { InventorySource } from "@pitantir/shared/inventory";
+import {
+  extractBookSlots,
+  type InventorySource,
+} from "@pitantir/shared/inventory";
 import type { Job } from "../jobs/repository.js";
 import { JobsRepository } from "../jobs/repository.js";
 import { AccountsRepository } from "../accounts/repository.js";
@@ -9,6 +12,8 @@ export interface ScanAccountHandlerResult {
   scan: Scan;
   enqueuedProcessScan: boolean;
   resolvedMcUuid?: string | null;
+  inventorySource?: string;
+  observedNonces?: string[];
 }
 
 function asTriggeredBy(value: unknown): ScanTriggeredBy {
@@ -53,10 +58,14 @@ export class ScanAccountHandler {
 
     if (begun.status === "success") {
       const enqueued = await this.enqueueProcessScan(begun.id);
-      return { scan: begun, enqueuedProcessScan: enqueued };
+      return {
+        scan: begun,
+        enqueuedProcessScan: enqueued,
+        inventorySource: this.inventory.id,
+      };
     }
     if (begun.status === "failure" || begun.status === "cancelled") {
-      return { scan: begun, enqueuedProcessScan: false };
+      return { scan: begun, enqueuedProcessScan: false, inventorySource: this.inventory.id };
     }
 
     let scan = begun;
@@ -69,7 +78,7 @@ export class ScanAccountHandler {
         errorCode: "account_disabled",
         errorMessage: "Account is disabled",
       });
-      return { scan: failed, enqueuedProcessScan: false };
+      return { scan: failed, enqueuedProcessScan: false, inventorySource: this.inventory.id };
     }
 
     const fetched = await this.inventory.fetchInventory({
@@ -86,7 +95,12 @@ export class ScanAccountHandler {
         errorCode: fetched.errorCode,
         errorMessage: fetched.errorMessage,
       });
-      return { scan: failed, enqueuedProcessScan: false, resolvedMcUuid };
+      return {
+        scan: failed,
+        enqueuedProcessScan: false,
+        resolvedMcUuid,
+        inventorySource: this.inventory.id,
+      };
     }
 
     const payloadUuid =
@@ -101,7 +115,18 @@ export class ScanAccountHandler {
       rawInventory: fetched.rawInventory,
     });
     const enqueued = await this.enqueueProcessScan(success.id);
-    return { scan: success, enqueuedProcessScan: enqueued, resolvedMcUuid };
+    const observedNonces = extractBookSlots(fetched.rawInventory)
+      .map((slot) =>
+        typeof slot.rawItem.nonce === "string" ? slot.rawItem.nonce : null,
+      )
+      .filter((nonce): nonce is string => Boolean(nonce));
+    return {
+      scan: success,
+      enqueuedProcessScan: enqueued,
+      resolvedMcUuid,
+      inventorySource: this.inventory.id,
+      observedNonces,
+    };
   }
 
   private async enqueueProcessScan(scanId: string): Promise<boolean> {
