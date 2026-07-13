@@ -133,12 +133,19 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     extra.uuid,
   );
 
-  // Legacy numeric ids: 386 writable_book, 387 written_book
+  const lore =
+    Array.isArray(display.Lore)
+      ? display.Lore.filter((line): line is string => typeof line === "string").map(
+          (line) => stripMcFormatting(line) ?? line,
+        )
+      : undefined;
+
+  // Real books only — do not treat mystic gear as books just because display.Name exists.
   const looksLikeBook =
     idLower.includes("book") ||
+    idLower.includes("writable_book") ||
     idLower === "386" ||
     idLower === "387" ||
-    title !== null ||
     author !== null ||
     pages !== null;
 
@@ -153,6 +160,7 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     author,
     pages: pages ?? undefined,
     pageCount: pages ? pages.split("\n").length : undefined,
+    lore: lore && lore.length > 0 ? lore : undefined,
     nonce: nonce ?? undefined,
     generation: typeof tag.generation === "number" ? String(tag.generation) : undefined,
     hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,

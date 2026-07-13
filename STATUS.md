@@ -13,11 +13,19 @@ Live Hypixel Pit inventory scanning wired (in addition to mock)
 3. Worker uses `INVENTORY_SOURCE=hypixel_pit`
 4. Scan now resolves Mojang UUID if missing, fetches Pit inv/enderchest/stash, extracts books
 5. Pit `ExtraAttributes.nonce` ints are coerced to strings (not dropped)
+6. Only real books (written/writable book ids or author/pages) are extracted — mystic swords with display names are not counted as books
 
 ## Validation
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test
+```
+
+Dump one stored inventory item from the latest scan (local):
+
+```bash
+DATABASE_URL=postgresql://pitantir:pitantir@127.0.0.1:5432/pitantir \
+  npx pnpm@10.11.0 --filter @pitantir/worker dump-scan-item -- billionaire
 ```
 
 ## Next

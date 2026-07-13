@@ -108,6 +108,64 @@ describe("pit nbt decode", () => {
       id: "387",
     });
   });
+
+  it("does not treat named mystic swords as books", async () => {
+    const compound = {
+      type: "compound" as const,
+      name: "",
+      value: {
+        i: {
+          type: "list" as const,
+          value: {
+            type: "compound" as const,
+            value: [
+              {
+                id: { type: "short", value: 276 },
+                Slot: { type: "byte", value: 0 },
+                Count: { type: "byte", value: 1 },
+                tag: {
+                  type: "compound",
+                  value: {
+                    display: {
+                      type: "compound",
+                      value: {
+                        Name: { type: "string", value: "§dTier III Mystic Sword" },
+                        Lore: {
+                          type: "list",
+                          value: {
+                            type: "string",
+                            value: ["§7Billionaire III", "§7Lifesteal III"],
+                          },
+                        },
+                      },
+                    },
+                    ExtraAttributes: {
+                      type: "compound",
+                      value: {
+                        Nonce: { type: "int", value: 998877 },
+                        CustomEnchants: {
+                          type: "compound",
+                          value: {
+                            billionaire: { type: "int", value: 3 },
+                            lifesteal: { type: "int", value: 3 },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
+    // @ts-expect-error prismarine write accepts compiler compound shape
+    const data = signedBytes(gzipSync(nbt.writeUncompressed(compound)));
+    const items = await decodePitInventoryPayload({ type: 0, data });
+    expect(items).toHaveLength(1);
+    expect(bookFieldsFromNbtItem(items[0]!)).toBeNull();
+  });
 });
 
 describe("HypixelPitInventorySource", () => {
