@@ -5,3 +5,4 @@ export * from "./process-scan-handler.js";
 export * from "./account-history.js";
 export * from "./catalog.js";
 export * from "./location-engine.js";
+export * from "./local-ownership-enricher.js";

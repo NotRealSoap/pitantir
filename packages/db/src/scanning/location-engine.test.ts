@@ -136,8 +136,9 @@ describe("T25–T28 location engine", () => {
       `scan_account_manual:${account.id}:first`,
     );
     expect(first.resolvedCount).toBe(1);
-    const itemId = first.observations[0]?.canonicalItemId!;
+    const itemId = first.observations[0]?.canonicalItemId;
     expect(itemId).toBeTruthy();
+    if (!itemId) throw new Error("expected canonical item id");
 
     await runScan(db, identity, account.id, [], `scan_account_manual:${account.id}:empty`);
 
@@ -162,7 +163,9 @@ describe("T25–T28 location engine", () => {
       [{ slot: 0, title: "Traveler", author: "A", nonce: "loc-move-1", pages: "p" }],
       `scan_account_manual:${accountA.id}:hold`,
     );
-    const itemId = first.observations[0]?.canonicalItemId!;
+    const itemId = first.observations[0]?.canonicalItemId;
+    expect(itemId).toBeTruthy();
+    if (!itemId) throw new Error("expected canonical item id");
 
     await runScan(db, identity, accountA.id, [], `scan_account_manual:${accountA.id}:left`);
     await runScan(
@@ -191,7 +194,9 @@ describe("T25–T28 location engine", () => {
       [{ slot: 0, title: "TwinRisk", author: "A", nonce: "loc-dual-1", pages: "p" }],
       `scan_account_manual:${accountA.id}:hold`,
     );
-    const itemId = first.observations[0]?.canonicalItemId!;
+    const itemId = first.observations[0]?.canonicalItemId;
+    expect(itemId).toBeTruthy();
+    if (!itemId) throw new Error("expected canonical item id");
 
     await runScan(
       db,
@@ -221,7 +226,9 @@ describe("T25–T28 location engine", () => {
       [{ slot: 0, title: "Stable", author: "A", nonce: "loc-idem-1", pages: "p" }],
       `scan_account_manual:${account.id}:once`,
     );
-    const itemId = first.observations[0]?.canonicalItemId!;
+    const itemId = first.observations[0]?.canonicalItemId;
+    expect(itemId).toBeTruthy();
+    if (!itemId) throw new Error("expected canonical item id");
     const before = (await store.listLocationEventsForItem(itemId)).length;
 
     // Already processed — handler returns early without new events

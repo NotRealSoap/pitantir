@@ -8,7 +8,7 @@ import type {
   ProviderCapabilities,
 } from "../../types.js";
 import { ItemSearchError } from "../../types.js";
-import { pitPandaItemSearch, type PitPandaClientOptions } from "./client.js";
+import { pitPandaGetItem, pitPandaItemSearch, type PitPandaClientOptions } from "./client.js";
 import { buildPitPandaSearchQuery } from "./query.js";
 import { domainSearchQueryLabel } from "../../schemas.js";
 
@@ -65,6 +65,21 @@ export class PitPandaItemDataProvider implements ItemDataProvider {
       hasNextPage: items.length > 0,
     };
   }
+
+  /**
+   * Fetch item detail including `owners` timeline.
+   * PitPanda-specific — keep behind this adapter, not in domain services.
+   */
+  async getItemDetail(itemId: string): Promise<NormalizedUpstreamItem> {
+    const result = await pitPandaGetItem(this.options, itemId);
+    const retrievedAt = new Date();
+    return normalizePitPandaItem(result.item, {
+      page: 0,
+      index: 0,
+      retrievedAt,
+      searchQuery: `item:${itemId}`,
+    });
+  }
 }
 
 function normalizePitPandaItem(
@@ -81,10 +96,17 @@ function normalizePitPandaItem(
       ? (raw as Record<string, unknown>)
       : { value: raw };
 
+  const lastSeen =
+    typeof rawPayload.lastseen === "string"
+      ? new Date(rawPayload.lastseen)
+      : typeof rawPayload.lastSeen === "string"
+        ? new Date(rawPayload.lastSeen)
+        : null;
+
   return {
     source: PITPANDA_PROVIDER_ID,
     providerItemKey: buildProviderItemKey(rawPayload, context.page, context.index),
-    observedAt: null,
+    observedAt: lastSeen && !Number.isNaN(lastSeen.getTime()) ? lastSeen : null,
     retrievedAt: context.retrievedAt,
     searchQuery: context.searchQuery,
     rawPayload,
@@ -96,6 +118,9 @@ function buildProviderItemKey(
   page: number,
   index: number,
 ): string {
+  if (typeof rawPayload._id === "string" && rawPayload._id.trim()) {
+    return `pp:${rawPayload._id.trim()}`;
+  }
   const digest = createHash("sha256").update(JSON.stringify(rawPayload)).digest("hex").slice(0, 16);
   return `page${page}:idx${index}:${digest}`;
 }

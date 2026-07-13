@@ -260,6 +260,13 @@ Mark of done for each task: code + automated test (or migration verification) + 
 - Show count of shared accounts; simple overlapping interval list for selected pair
 - **Test:** SQL/integration against period fixtures
 
+### T40b — Account inventory-history explorer ✅
+- PitPanda `current_owner` pages + bounded `GET /api/item/{id}` owners lookups
+- Local ownership enrichment by nonce; Mojang username/UUID resolve
+- `/account` UI with filters, list/table, force-graph, timeline
+- **Done:** 2026-07-13 — `POST /api/account-history` + shared account-history helpers
+- **Test:** mocked service/route + parse/graph fixtures (no live PitPanda)
+
 ### T41 — Seed script + demo fixtures
 - Accounts, colliding nonce pair, nonce-less import, scan success/failure
 - **Test:** demo script runs against Compose DB

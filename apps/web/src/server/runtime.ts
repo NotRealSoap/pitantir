@@ -11,11 +11,13 @@ import {
   CatalogRepository,
   ScanScheduler,
   UpstreamObservationIngestor,
+  LocalOwnershipEnricher,
   runMigrations,
   type IdentityStore,
   type Database,
 } from "@pitantir/db";
-import { createItemDataProvider } from "@pitantir/shared/item-data";
+import { createItemDataProvider, PitPandaItemDataProvider } from "@pitantir/shared/item-data";
+import { ItemSearchError } from "@pitantir/shared/item-data";
 import { getPitPandaApiKey } from "./pitpanda-key-store";
 
 let identityService: IdentityService | null = null;
@@ -25,6 +27,7 @@ let accountsRepo: AccountsRepository | null = null;
 let scanScheduler: ScanScheduler | null = null;
 let accountHistory: AccountHistoryService | null = null;
 let catalog: CatalogRepository | null = null;
+let localOwnershipEnricher: LocalOwnershipEnricher | null = null;
 let database: Database | null = null;
 let dbReady: Promise<void> | null = null;
 
@@ -64,6 +67,7 @@ async function ensureDatabase(): Promise<{
       scanScheduler = new ScanScheduler(db);
       accountHistory = new AccountHistoryService(db, identityStore);
       catalog = new CatalogRepository(db);
+      localOwnershipEnricher = new LocalOwnershipEnricher(db);
     })();
   }
 
@@ -117,6 +121,23 @@ export function getItemDataProvider() {
     pitpandaApiKey: getPitPandaApiKey(),
     providerId: process.env.ITEM_DATA_PROVIDER,
   });
+}
+
+/** PitPanda provider with item-detail (owners timeline) for account history. */
+export function getAccountHistoryItemProvider(): PitPandaItemDataProvider {
+  const apiKey = getPitPandaApiKey();
+  if (!apiKey) {
+    throw new ItemSearchError(
+      "configuration_error",
+      "Search is not configured on the server.",
+    );
+  }
+  return new PitPandaItemDataProvider({ apiKey });
+}
+
+export async function getLocalOwnershipEnricher(): Promise<LocalOwnershipEnricher | null> {
+  await ensureDatabase();
+  return localOwnershipEnricher;
 }
 
 export function isUsingPostgres(): boolean {

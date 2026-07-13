@@ -1,0 +1,55 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "651d6219e3a43b157d21b2fe",
+      "owner": "0dee7969122444aea463fdb0fc72d568",
+      "enchants": [
+        {
+          "key": "streak_xp",
+          "level": 1
+        },
+        {
+          "key": "instant_shot",
+          "level": 1
+        },
+        {
+          "key": "telebow",
+          "level": 3
+        }
+      ],
+      "nonce": 2035964664,
+      "lives": 20,
+      "maxLives": 26,
+      "item": {
+        "id": 261,
+        "meta": 0,
+        "name": "\u00a7cExtraordinary Tier III Bow"
+      },
+      "flags": [
+        "rare",
+        "extraordinary"
+      ],
+      "tier": 3,
+      "tokens": 5,
+      "lastseen": "2024-02-06T02:17:10.522Z",
+      "lastseenOffline": "2024-02-06T02:20:36.434Z",
+      "t3": [
+        {
+          "key": "streak_xp",
+          "level": 1
+        },
+        {
+          "key": "instant_shot",
+          "level": 1
+        },
+        {
+          "key": "telebow",
+          "level": 3
+        }
+      ],
+      "t1": [],
+      "t2": []
+    }
+  ]
+}

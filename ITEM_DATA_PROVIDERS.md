@@ -18,17 +18,22 @@ Application services depend on `ItemDataProvider`, not PitPanda.
 
 - **Env:** `PITPANDA_API_KEY` (server-only), `ITEM_DATA_PROVIDER=pitpanda` (default)
 - **Package:** `packages/shared/src/item-data/providers/pitpanda/`
-- **Caller:** `apps/web` API route `POST /api/item-search` only — never the browser
-- **Capabilities:** global item search, exact nonce, current owner, past owner
+- **Callers (server only):**
+  - `POST /api/item-search` — domain item search
+  - `POST /api/account-history` — account inventory-history explorer (`/account`)
+- **Capabilities:** global item search, exact nonce, current owner, past owner, item detail (`owners` timeline)
 - **Query translation (adapter only):**
   - `exact_nonce` → `nonce{value}`
   - `current_owner` → `uuid{playerName}`
   - `past_owner` → `past{playerName}`
-- **HTTP:** `GET https://pitpanda.rocks/api/itemSearch/{query}?page={n}&sort=-lastseen`
+- **HTTP:**
+  - Search: `GET https://pitpanda.rocks/api/itemSearch/{query}?page={n}&sort=-lastseen`
+  - Detail: `GET https://pitpanda.rocks/api/item/{_id}` — includes `owners: [{ _id, uuid, time }]` ownership timeline (search list rows often omit `owners`)
 - **Auth header:** `X-API-Key`
-- **Pagination:** one page per request; UI exposes explicit next page
-- **Caching:** in-memory TTL cache per identical validated search + page
-- **Rate limits:** app-level per-IP limit on `/api/item-search`; adapter retries HTTP 429 with backoff
+- **Pagination:** one page per request; account history bounds pages + detail lookups
+- **Caching:** in-memory TTL cache per identical validated request
+- **Rate limits:** app-level per-IP limits on search and account-history routes; adapter retries HTTP 429 with backoff
+- **History caveat:** PitPanda ownership is index/search based, not exhaustive Hypixel truth
 
 ### Observed response shape (do not assume item fields)
 
@@ -37,7 +42,26 @@ Application services depend on `ItemDataProvider`, not PitPanda.
 { "success": false, "error": "..." }
 ```
 
-Each element of `items` is stored verbatim in `rawPayload`. No field names from item objects are required for normalization.
+Detail:
+
+```json
+{
+  "success": true,
+  "item": {
+    "_id": "...",
+    "owner": "<undashed uuid>",
+    "owners": [{ "_id": "...", "uuid": "<undashed>", "time": "ISO" }],
+    "enchants": [{ "key": "...", "level": 1 }],
+    "nonce": 0,
+    "lives": 0,
+    "maxLives": 0,
+    "item": { "name": "§c..." },
+    "lastseen": "ISO"
+  }
+}
+```
+
+Each search `items[]` element is stored verbatim in `rawPayload`. Prefer local DB enrichment; bounded detail lookups only when `owners` is missing.
 
 ## Local search (separate)
 
@@ -75,4 +99,6 @@ No PitPal code existed in this repository. PitPanda replaces the previously plan
 | `packages/shared/src/item-data/providers/pitpanda/*` | PitPanda adapter |
 | `packages/db/src/search/local-item-search.ts` | Local DB search interface |
 | `apps/web/app/api/item-search/route.ts` | Authenticated server route |
+| `apps/web/app/api/account-history/route.ts` | Account inventory-history route |
 | `apps/web/app/search/page.tsx` | Search UI |
+| `apps/web/app/account/page.tsx` | Account inventory-history UI |
