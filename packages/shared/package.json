@@ -25,6 +25,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "prismarine-nbt": "^2.8.0",
     "zod": "^4.4.3"
   }
 }

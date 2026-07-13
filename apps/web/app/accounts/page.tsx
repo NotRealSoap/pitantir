@@ -6,6 +6,7 @@ import type { PublicAccount } from "@pitantir/db";
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<PublicAccount[]>([]);
   const [username, setUsername] = useState("");
+  const [mcUuid, setMcUuid] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,7 +38,10 @@ export default function AccountsPage() {
     const response = await fetch("/api/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mcUsername: username }),
+      body: JSON.stringify({
+        mcUsername: username,
+        mcUuid: mcUuid.trim() ? mcUuid.trim() : null,
+      }),
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -45,6 +49,7 @@ export default function AccountsPage() {
       return;
     }
     setUsername("");
+    setMcUuid("");
     await load();
   }
 
@@ -77,8 +82,9 @@ export default function AccountsPage() {
     <main>
       <h1>Accounts</h1>
       <p>
-        Manage Minecraft accounts to scan. With the worker running (<code>pnpm start:worker</code>),
-        use Scan now to fetch a mock inventory and create observations.
+        Manage Minecraft accounts to scan. With Hypixel configured on Settings and the worker
+        running, Scan now pulls real Pit inventories. UUID is optional — we resolve it from the
+        username on first scan.
       </p>
 
       <form
@@ -86,7 +92,13 @@ export default function AccountsPage() {
           event.preventDefault();
           void createAccount();
         }}
-        style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", maxWidth: "28rem" }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+          marginTop: "1rem",
+          maxWidth: "28rem",
+        }}
       >
         <input
           value={username}
@@ -94,6 +106,11 @@ export default function AccountsPage() {
           placeholder="Minecraft username"
           required
           maxLength={16}
+        />
+        <input
+          value={mcUuid}
+          onChange={(event) => setMcUuid(event.target.value)}
+          placeholder="UUID (optional)"
         />
         <button type="submit">Add account</button>
       </form>
@@ -124,6 +141,9 @@ export default function AccountsPage() {
               {account.displayName ? ` (${account.displayName})` : ""}
             </div>
             <div>Status: {account.enabled ? "enabled" : "disabled"}</div>
+            <div style={{ fontSize: "0.9rem", color: "#555" }}>
+              UUID: {account.mcUuid ?? "will resolve on scan"}
+            </div>
             <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <a href={`/accounts/${account.id}`}>History</a>
               <button type="button" onClick={() => void scanNow(account)} disabled={!account.enabled}>

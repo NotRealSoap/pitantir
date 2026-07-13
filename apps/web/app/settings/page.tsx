@@ -157,8 +157,8 @@ export default function SettingsPage() {
         <ul>
           <li>Do not deploy this settings endpoint to a public host without auth.</li>
           <li>
-            Accounts need a Minecraft UUID for Hypixel lookups — we&apos;ll add that on the account
-            form when wiring the live scanner.
+            After saving the Hypixel key, restart the worker. Username-only accounts resolve UUID
+            automatically via Mojang on first scan.
           </li>
         </ul>
       </section>

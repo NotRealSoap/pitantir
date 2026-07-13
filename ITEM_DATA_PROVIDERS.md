@@ -43,17 +43,20 @@ Each element of `items` is stored verbatim in `rawPayload`. No field names from 
 
 `LocalItemSearchRepository` searches canonical items, identifiers, and observations already in our database. It is **not** an `ItemDataProvider` and must not call PitPanda.
 
-## Future: Hypixel provider (not implemented)
+## Future: Hypixel provider (partially implemented)
 
-A future `HypixelItemDataProvider` would:
+`HypixelPitInventorySource` (`packages/shared/src/inventory/hypixel-pit.ts`) powers **worker inventory scans**:
 
-1. Accept a **known player UUID** (domain input), not global text search.
-2. Call Hypixel API endpoints for player inventory/profile data (server-side credentials).
-3. Decode NBT/inventory structures in the adapter only.
-4. Emit `NormalizedUpstreamItem` rows with `source: "hypixel"`, `observedAt`, and raw payload.
-5. Feed the same `UpstreamObservationIngestor` — no changes to identity rules.
+1. Resolve Minecraft UUID from username when missing (Mojang lookup).
+2. `GET https://api.hypixel.net/v2/player?uuid=…` with `API-Key` header (`HYPIXEL_API_KEY`).
+3. Decode Pit NBT `inv_contents` / `inv_enderchest` into book observations.
+4. Persist resolved UUID onto the account row.
 
-`ProviderCapabilities.playerInventorySnapshot` would be `true`; global search flags would be `false`.
+Env: `INVENTORY_SOURCE=hypixel_pit` (set automatically from `/settings` when saving the key).
+
+A broader Hypixel `ItemDataProvider` for SkyBlock/search remains deferred. PitPanda remains the upstream **search** provider.
+
+`ProviderCapabilities.playerInventorySnapshot` would be `true` for a future search-facing Hypixel provider; the worker inventory port is separate from `ItemDataProvider`.
 
 A `CompositeItemDataProvider` could route `current_owner` to PitPanda and `player_inventory_snapshot` to Hypixel when both are configured.
 

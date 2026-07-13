@@ -4,26 +4,21 @@ Last updated: 2026-07-13
 
 ## Current phase
 
-Phase 8 — Items & scans UI complete (T33–T35)
+Live Hypixel Pit inventory scanning wired (in addition to mock)
 
-## Browse loop
+## Hypixel scans
 
-| Page | Path |
-|---|---|
-| Account history | `/accounts/[id]` |
-| Items list | `/items` |
-| Item detail | `/items/[id]` |
-| Scan history | `/scans` |
-| PitPanda search | `/search` |
-
-## Next task
-
-**T21** multiplicity matching → **T25–T28** location engine → **T36** unresolved queue.
+1. Save key on `/settings`
+2. Restart worker (loads `.env` / `apps/web/.env.local`)
+3. Worker uses `INVENTORY_SOURCE=hypixel_pit`
+4. Scan now resolves Mojang UUID if missing, fetches Pit inv/enderchest, extracts books
 
 ## Validation
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test   # 49 tests
+pnpm typecheck && pnpm lint && pnpm test   # 57 tests
 ```
 
-Pull + restart `dev` / worker, then open `/items` and `/scans`.
+## Next
+
+T21 multiplicity / T25–T28 location engine / T36 unresolved queue; harden book/nonce extraction from real Pit NBT shapes as we see live data.

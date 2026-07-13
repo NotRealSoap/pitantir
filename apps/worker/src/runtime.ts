@@ -1,3 +1,4 @@
+import { config as loadDotenv } from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -7,12 +8,17 @@ import {
   ProcessScanHandler,
   IdentityService,
   PostgresIdentityStore,
+  AccountsRepository,
   createDb,
   runMigrations,
   seedAdminSettings,
   type Database,
 } from "@pitantir/db";
-import { MockInventorySource, type InventorySource } from "@pitantir/shared";
+import {
+  HypixelPitInventorySource,
+  MockInventorySource,
+  type InventorySource,
+} from "@pitantir/shared";
 import type postgres from "postgres";
 import { WorkerLoop } from "./loop.js";
 
@@ -36,10 +42,43 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function createInventorySource(): InventorySource {
+/** Load root .env and apps/web/.env.local without overriding existing process env. */
+export function loadWorkerEnv(): void {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.join(here, "..", "..", "..");
+  loadDotenv({ path: path.join(repoRoot, ".env") });
+  loadDotenv({ path: path.join(repoRoot, "apps", "web", ".env.local") });
+}
+
+function createInventorySource(db: Database): InventorySource {
   const mode = (process.env.INVENTORY_SOURCE ?? "mock").toLowerCase();
   if (mode === "mock") {
     return new MockInventorySource();
+  }
+  if (mode === "hypixel_pit" || mode === "hypixel") {
+    const apiKey = process.env.HYPIXEL_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error(
+        "INVENTORY_SOURCE=hypixel_pit requires HYPIXEL_API_KEY (save it on /settings and restart the worker)",
+      );
+    }
+    const accounts = new AccountsRepository(db);
+    return new HypixelPitInventorySource({
+      apiKey,
+      onUuidResolved: async (accountId, mcUuid) => {
+        try {
+          await accounts.update(accountId, { mcUuid });
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "failed to persist resolved mc_uuid",
+              accountId,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      },
+    });
   }
   console.warn(
     JSON.stringify({
@@ -68,7 +107,7 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
   const jobs = new JobsRepository(db);
   const scheduler = new ScanScheduler(db);
   const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
-  const inventory = createInventorySource();
+  const inventory = createInventorySource(db);
   const identity = new IdentityService(new PostgresIdentityStore(db));
   const scanAccount = new ScanAccountHandler(db, inventory);
   const processScan = new ProcessScanHandler(db, identity);
@@ -88,6 +127,7 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
             status: result.scan.status,
             itemCount: result.scan.itemCount,
             enqueuedProcessScan: result.enqueuedProcessScan,
+            resolvedMcUuid: result.resolvedMcUuid ?? null,
             workerId,
           }),
         );
@@ -113,20 +153,22 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
 }
 
 export async function runWorkerMain(): Promise<void> {
+  loadWorkerEnv();
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL is required for the worker");
   }
 
   const pollMs = envInt("WORKER_POLL_MS", DEFAULT_POLL_MS);
-  const { client, scheduler, loop, workerId } = await createWorkerRuntime(connectionString);
+  const { client, scheduler, loop, workerId, inventory } =
+    await createWorkerRuntime(connectionString);
 
   console.log(
     JSON.stringify({
       msg: "worker started",
       workerId,
       pollMs,
-      inventorySource: process.env.INVENTORY_SOURCE ?? "mock",
+      inventorySource: inventory.id,
     }),
   );
 

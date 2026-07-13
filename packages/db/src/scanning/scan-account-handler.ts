@@ -8,6 +8,7 @@ import type { Database } from "../client.js";
 export interface ScanAccountHandlerResult {
   scan: Scan;
   enqueuedProcessScan: boolean;
+  resolvedMcUuid?: string | null;
 }
 
 function asTriggeredBy(value: unknown): ScanTriggeredBy {
@@ -37,7 +38,7 @@ export class ScanAccountHandler {
       throw new Error("scan_account job missing accountId");
     }
 
-    const account = await this.accounts.get(accountId);
+    let account = await this.accounts.get(accountId);
     if (!account) {
       throw new Error(`Account not found: ${accountId}`);
     }
@@ -50,7 +51,6 @@ export class ScanAccountHandler {
       idempotencyKey: scanKey,
     });
 
-    // Already finished successfully — ensure process_scan exists and exit.
     if (begun.status === "success") {
       const enqueued = await this.enqueueProcessScan(begun.id);
       return { scan: begun, enqueuedProcessScan: enqueued };
@@ -78,12 +78,22 @@ export class ScanAccountHandler {
       mcUuid: account.mcUuid,
     });
 
+    account = (await this.accounts.get(accountId)) ?? account;
+    let resolvedMcUuid: string | null = account.mcUuid;
+
     if (!fetched.ok) {
       const failed = await this.scans.markFailure(scan.id, {
         errorCode: fetched.errorCode,
         errorMessage: fetched.errorMessage,
       });
-      return { scan: failed, enqueuedProcessScan: false };
+      return { scan: failed, enqueuedProcessScan: false, resolvedMcUuid };
+    }
+
+    const payloadUuid =
+      typeof fetched.rawInventory.uuid === "string" ? fetched.rawInventory.uuid : null;
+    if (!account.mcUuid && payloadUuid) {
+      await this.accounts.update(account.id, { mcUuid: payloadUuid });
+      resolvedMcUuid = payloadUuid;
     }
 
     const success = await this.scans.markSuccess(scan.id, {
@@ -91,7 +101,7 @@ export class ScanAccountHandler {
       rawInventory: fetched.rawInventory,
     });
     const enqueued = await this.enqueueProcessScan(success.id);
-    return { scan: success, enqueuedProcessScan: enqueued };
+    return { scan: success, enqueuedProcessScan: enqueued, resolvedMcUuid };
   }
 
   private async enqueueProcessScan(scanId: string): Promise<boolean> {

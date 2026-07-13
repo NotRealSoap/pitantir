@@ -2,6 +2,13 @@ import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { accounts, type AccountRow } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
+import { normalizeUuid } from "@pitantir/shared";
+
+function normalizeOptionalUuid(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value.trim() === "") return null;
+  return normalizeUuid(value.trim());
+}
 
 export interface Account {
   id: string;
@@ -89,10 +96,17 @@ export class AccountsRepository {
       throw new Error("Invalid Minecraft username");
     }
 
+    let mcUuid: string | null = null;
+    try {
+      mcUuid = normalizeOptionalUuid(input.mcUuid) ?? null;
+    } catch {
+      throw new Error("Invalid Minecraft UUID");
+    }
+
     const timestamp = now();
     const row = {
       id: newId(),
-      mcUuid: input.mcUuid ?? null,
+      mcUuid,
       mcUsername: username,
       displayName: input.displayName ?? null,
       enabled: input.enabled ?? true,
@@ -119,7 +133,7 @@ export class AccountsRepository {
 
     const updated = {
       mcUsername: input.mcUsername?.trim() ?? existing.mcUsername,
-      mcUuid: input.mcUuid === undefined ? existing.mcUuid : input.mcUuid,
+      mcUuid: existing.mcUuid,
       displayName: input.displayName === undefined ? existing.displayName : input.displayName,
       enabled: input.enabled ?? existing.enabled,
       priority: input.priority ?? existing.priority,
@@ -127,6 +141,14 @@ export class AccountsRepository {
       notes: input.notes === undefined ? existing.notes : input.notes,
       updatedAt: now(),
     };
+
+    if (input.mcUuid !== undefined) {
+      try {
+        updated.mcUuid = normalizeOptionalUuid(input.mcUuid) ?? null;
+      } catch {
+        throw new Error("Invalid Minecraft UUID");
+      }
+    }
 
     if (!/^[A-Za-z0-9_]{3,16}$/.test(updated.mcUsername)) {
       throw new Error("Invalid Minecraft username");

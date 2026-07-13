@@ -56,6 +56,13 @@ export async function POST(request: Request) {
   try {
     const account = await repo.create({
       mcUsername,
+      mcUuid:
+        body !== null &&
+        typeof body === "object" &&
+        "mcUuid" in body &&
+        typeof (body as { mcUuid: unknown }).mcUuid === "string"
+          ? (body as { mcUuid: string }).mcUuid
+          : null,
       displayName:
         body !== null &&
         typeof body === "object" &&

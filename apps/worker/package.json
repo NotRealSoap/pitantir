@@ -12,6 +12,7 @@
   "dependencies": {
     "@pitantir/db": "workspace:*",
     "@pitantir/shared": "workspace:*",
+    "dotenv": "^17.4.2",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
