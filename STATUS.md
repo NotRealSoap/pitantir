@@ -4,16 +4,16 @@ Last updated: 2026-07-13
 
 ## Current phase
 
-Live Hypixel Pit inventory scanning wired (in addition to mock)
+Live Hypixel Pit inventory scanning wired (mock still available). Product focus: track mystic **nonces** across managed accounts (swords/bows/pants/etc.), not only written books.
 
 ## Hypixel scans
 
 1. Save key on `/settings`
 2. Restart worker (loads `.env` / `apps/web/.env.local`)
 3. Worker uses `INVENTORY_SOURCE=hypixel_pit`
-4. Scan now resolves Mojang UUID if missing, fetches Pit inv/enderchest/stash, extracts books
-5. Pit `ExtraAttributes.nonce` ints are coerced to strings (not dropped)
-6. Only real books (written/writable book ids or author/pages) are extracted — mystic swords with display names are not counted as books
+4. Scan now resolves Mojang UUID if missing, fetches Pit inv / ender / armor / stash / mystic well
+5. Extracts **nonce-bearing mystics** (and books); integer `ExtraAttributes.Nonce` coerced to string
+6. Persists lore + `CustomEnchants` (e.g. Billionaire III / Lifesteal III) on observations
 
 ## Validation
 
@@ -30,4 +30,4 @@ DATABASE_URL=postgresql://pitantir:pitantir@127.0.0.1:5432/pitantir \
 
 ## Next
 
-T21 multiplicity / T25–T28 location engine / T36 unresolved queue; continue hardening NBT field paths as live Pit books appear.
+T21 multiplicity / T25–T28 location engine / T36 unresolved queue; UI that shows mystic enchants/lore clearly (not book-only wording).

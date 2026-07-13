@@ -140,8 +140,9 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
         )
       : undefined;
 
-  // Real books only — do not treat mystic gear as books just because display.Name exists.
-  const looksLikeBook =
+  const customEnchants = normalizeCustomEnchants(extra.CustomEnchants ?? extra.customEnchants);
+
+  const isBook =
     idLower.includes("book") ||
     idLower.includes("writable_book") ||
     idLower === "386" ||
@@ -149,22 +150,38 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     author !== null ||
     pages !== null;
 
-  if (!looksLikeBook) {
+  // Pitantir tracks nonce-bearing mystics (and books). Skip vanilla junk without a nonce.
+  if (!isBook && nonce === null) {
     return null;
   }
 
   return {
     id: item.id,
     type: item.id,
+    kind: isBook ? "book" : "mystic",
     title,
     author,
     pages: pages ?? undefined,
     pageCount: pages ? pages.split("\n").length : undefined,
     lore: lore && lore.length > 0 ? lore : undefined,
+    customEnchants: customEnchants ?? undefined,
     nonce: nonce ?? undefined,
     generation: typeof tag.generation === "number" ? String(tag.generation) : undefined,
     hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,
   };
+}
+
+function normalizeCustomEnchants(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      out[key] = Math.trunc(raw);
+    } else if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) {
+      out[key] = Math.trunc(Number(raw));
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function normalizePages(pages: unknown): string | null {

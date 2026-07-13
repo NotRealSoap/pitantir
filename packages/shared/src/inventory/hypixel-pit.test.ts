@@ -109,7 +109,7 @@ describe("pit nbt decode", () => {
     });
   });
 
-  it("does not treat named mystic swords as books", async () => {
+  it("extracts mystic swords with integer nonce and CustomEnchants", async () => {
     const compound = {
       type: "compound" as const,
       name: "",
@@ -164,7 +164,14 @@ describe("pit nbt decode", () => {
     const data = signedBytes(gzipSync(nbt.writeUncompressed(compound)));
     const items = await decodePitInventoryPayload({ type: 0, data });
     expect(items).toHaveLength(1);
-    expect(bookFieldsFromNbtItem(items[0]!)).toBeNull();
+    expect(bookFieldsFromNbtItem(items[0]!)).toMatchObject({
+      kind: "mystic",
+      id: "276",
+      title: "Tier III Mystic Sword",
+      nonce: "998877",
+      lore: ["Billionaire III", "Lifesteal III"],
+      customEnchants: { billionaire: 3, lifesteal: 3 },
+    });
   });
 });
 

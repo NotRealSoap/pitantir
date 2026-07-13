@@ -5,7 +5,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function looksLikeBook(item: Record<string, unknown>): boolean {
+function looksLikeTrackedItem(item: Record<string, unknown>): boolean {
   const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
   const id = typeof item.id === "string" ? item.id.toLowerCase() : "";
   if (
@@ -17,10 +17,12 @@ function looksLikeBook(item: Record<string, unknown>): boolean {
   ) {
     return true;
   }
+  // Mystic gear and other tracked Pit items are keyed by nonce.
+  if (coerceInventoryNonce(item.nonce) !== null) {
+    return true;
+  }
   return (
-    typeof item.title === "string" ||
     typeof item.author === "string" ||
-    coerceInventoryNonce(item.nonce) !== null ||
     typeof item.pages === "string" ||
     Array.isArray(item.pages)
   );
@@ -33,6 +35,15 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
       ? item.pages
       : undefined;
 
+  const lore = Array.isArray(item.lore)
+    ? item.lore.map(String)
+    : undefined;
+
+  const customEnchants =
+    item.customEnchants && typeof item.customEnchants === "object" && !Array.isArray(item.customEnchants)
+      ? (item.customEnchants as Record<string, unknown>)
+      : undefined;
+
   return {
     title: typeof item.title === "string" ? item.title : undefined,
     author: typeof item.author === "string" ? item.author : undefined,
@@ -43,9 +54,18 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
         : Array.isArray(item.pages)
           ? item.pages.length
           : undefined,
+    lore,
+    customEnchants,
+    kind: typeof item.kind === "string" ? item.kind : undefined,
     nonce: coerceInventoryNonce(item.nonce) ?? undefined,
     generation: typeof item.generation === "string" ? item.generation : undefined,
     type: typeof item.type === "string" ? item.type : typeof item.id === "string" ? item.id : undefined,
+    hypixelExtraAttributes:
+      item.hypixelExtraAttributes &&
+      typeof item.hypixelExtraAttributes === "object" &&
+      !Array.isArray(item.hypixelExtraAttributes)
+        ? item.hypixelExtraAttributes
+        : undefined,
   };
 }
 
@@ -73,7 +93,7 @@ function extractFromContainer(
           ? entry.shulker
           : null;
     const item = isRecord(entry.item) ? entry.item : entry;
-    if (!looksLikeBook(item)) return;
+    if (!looksLikeTrackedItem(item)) return;
     if (entry.item === null) return;
 
     const key = bag

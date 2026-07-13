@@ -73,4 +73,29 @@ describe("inventory extraction + mock source", () => {
     }
     expect(defaultSuccessForAccount({ id: "x", mcUsername: "Y", mcUuid: null }).ok).toBe(true);
   });
+
+  it("extracts mystic slots by nonce and keeps enchants", () => {
+    const slots = extractBookSlots({
+      inventory: [
+        {
+          slot: 0,
+          id: "276",
+          kind: "mystic",
+          title: "Tier III Mystic Sword",
+          nonce: 998877,
+          lore: ["Billionaire III", "Lifesteal III"],
+          customEnchants: { billionaire: 3, lifesteal: 3 },
+        },
+        { slot: 1, id: "1", count: 64 },
+      ],
+    });
+    expect(slots).toHaveLength(1);
+    expect(slots[0]?.rawItem).toMatchObject({
+      title: "Tier III Mystic Sword",
+      nonce: "998877",
+      kind: "mystic",
+      lore: ["Billionaire III", "Lifesteal III"],
+      customEnchants: { billionaire: 3, lifesteal: 3 },
+    });
+  });
 });

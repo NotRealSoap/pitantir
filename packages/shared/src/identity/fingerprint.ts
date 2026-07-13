@@ -56,14 +56,37 @@ export function fingerprintFromRawItem(rawItem: Record<string, unknown>): {
   const generation = typeof rawItem.generation === "string" ? rawItem.generation : null;
   const nonce = coerceInventoryNonce(rawItem.nonce);
 
+  const lore =
+    Array.isArray(rawItem.lore) && rawItem.lore.every((line) => typeof line === "string")
+      ? (rawItem.lore as string[])
+      : null;
+  const customEnchants =
+    rawItem.customEnchants &&
+    typeof rawItem.customEnchants === "object" &&
+    !Array.isArray(rawItem.customEnchants)
+      ? (rawItem.customEnchants as Record<string, unknown>)
+      : null;
+
+  const mysticContent =
+    customEnchants && Object.keys(customEnchants).length > 0
+      ? Object.entries(customEnchants)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, value]) => `${key}:${String(value)}`)
+          .join("|")
+      : lore && lore.length > 0
+        ? lore.join("\n")
+        : null;
+
   const pageContentHash = pages
     ? hashContent([normalizePageText(pages)])
-    : null;
+    : mysticContent
+      ? hashContent([normalizePageText(mysticContent)])
+      : null;
 
   const metadata: BookMetadata = {
     title,
     author,
-    pageCount,
+    pageCount: pageCount ?? (lore ? lore.length : null),
     pageContentHash,
     generation,
   };

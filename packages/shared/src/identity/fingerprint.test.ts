@@ -48,4 +48,21 @@ describe("fingerprints", () => {
     });
     expect(fromNumber.nonce).toBe("421337");
   });
+
+  it("fingerprints mystic items from custom enchants when pages are absent", () => {
+    const first = fingerprintFromRawItem({
+      title: "Tier III Mystic Sword",
+      nonce: "998877",
+      customEnchants: { billionaire: 3, lifesteal: 3 },
+      lore: ["Billionaire III", "Lifesteal III"],
+    });
+    const second = fingerprintFromRawItem({
+      title: "Tier III Mystic Sword",
+      nonce: "998877",
+      customEnchants: { lifesteal: 3, billionaire: 3 },
+    });
+    expect(first.nonce).toBe("998877");
+    expect(first.metadata.pageContentHash).toBeTruthy();
+    expect(first.strictFingerprint).toBe(second.strictFingerprint);
+  });
 });

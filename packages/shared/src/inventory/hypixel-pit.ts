@@ -74,19 +74,27 @@ export class HypixelPitInventorySource implements InventorySource {
       );
 
       const stash = await decodeBooksFromPayload(profile.item_stash);
+      const armor = await decodeBooksFromPayload(profile.inv_armor);
       const mysticWell = await decodeBooksFromPayload(profile.mystic_well_item);
+      const mysticWellPants = await decodeBooksFromPayload(profile.mystic_well_pants);
       const containers: Array<{ name: string; slots: Array<Record<string, unknown> & { slot: number }> }> =
         [];
+      if (armor.length > 0) containers.push({ name: "armor", slots: armor });
       if (stash.length > 0) containers.push({ name: "stash", slots: stash });
       if (mysticWell.length > 0) containers.push({ name: "mystic_well", slots: mysticWell });
+      if (mysticWellPants.length > 0) {
+        containers.push({ name: "mystic_well_pants", slots: mysticWellPants });
+      }
 
       const containersPresent = {
         inv_contents: Boolean(profile.inv_contents),
         inv_enderchest: Boolean(
           profile.inv_enderchest ?? profile.ender_chest ?? profile.inv_ender_chest,
         ),
+        inv_armor: Boolean(profile.inv_armor),
         item_stash: Boolean(profile.item_stash),
         mystic_well_item: Boolean(profile.mystic_well_item),
+        mystic_well_pants: Boolean(profile.mystic_well_pants),
       };
 
       return {
