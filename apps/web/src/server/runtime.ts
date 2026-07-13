@@ -8,6 +8,7 @@ import {
   seedAdminSettings,
   AccountsRepository,
   AccountHistoryService,
+  CatalogRepository,
   ScanScheduler,
   UpstreamObservationIngestor,
   runMigrations,
@@ -23,6 +24,7 @@ let ingestor: UpstreamObservationIngestor | null = null;
 let accountsRepo: AccountsRepository | null = null;
 let scanScheduler: ScanScheduler | null = null;
 let accountHistory: AccountHistoryService | null = null;
+let catalog: CatalogRepository | null = null;
 let database: Database | null = null;
 let dbReady: Promise<void> | null = null;
 
@@ -38,6 +40,7 @@ async function ensureDatabase(): Promise<{
   accounts: AccountsRepository | null;
   scheduler: ScanScheduler | null;
   history: AccountHistoryService | null;
+  catalogRepo: CatalogRepository | null;
 }> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -46,6 +49,7 @@ async function ensureDatabase(): Promise<{
       accounts: null,
       scheduler: null,
       history: null,
+      catalogRepo: null,
     };
   }
 
@@ -59,6 +63,7 @@ async function ensureDatabase(): Promise<{
       accountsRepo = new AccountsRepository(db);
       scanScheduler = new ScanScheduler(db);
       accountHistory = new AccountHistoryService(db, identityStore);
+      catalog = new CatalogRepository(db);
     })();
   }
 
@@ -68,6 +73,7 @@ async function ensureDatabase(): Promise<{
     accounts: accountsRepo,
     scheduler: scanScheduler,
     history: accountHistory,
+    catalogRepo: catalog,
   };
 }
 
@@ -99,6 +105,11 @@ export async function getScanScheduler(): Promise<ScanScheduler | null> {
 export async function getAccountHistoryService(): Promise<AccountHistoryService | null> {
   const { history } = await ensureDatabase();
   return history;
+}
+
+export async function getCatalogRepository(): Promise<CatalogRepository | null> {
+  const { catalogRepo } = await ensureDatabase();
+  return catalogRepo;
 }
 
 export function getItemDataProvider() {

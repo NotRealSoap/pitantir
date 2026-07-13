@@ -212,17 +212,20 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 8 — Web app: items & scans
 
-### T33 — Items list
+### T33 — Items list ✅
 - Filters: confidence, category, location known/unknown, nonce search
 - **Test:** query filters
+- **Done:** 2026-07-13 — `/items` + `CatalogRepository.listItems`
 
-### T34 — Item detail page
+### T34 — Item detail page ✅
 - Identifiers, current location, timeline with gaps, provenance, observations, overlapping books (basic query)
 - **Test:** unknown gap visible; import vs scan provenance labels
+- **Done:** 2026-07-13 — `/items/[id]` (timeline + observations; overlap deferred)
 
-### T35 — Scan history page
+### T35 — Scan history page ✅
 - Success/failure distinction; link into scan detail/observations
 - **Test:** failure row shows error, not empty inventory
+- **Done:** 2026-07-13 — `/scans` global list
 
 ---
 

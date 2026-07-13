@@ -17,7 +17,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/search" style={{ marginRight: "1rem" }}>
               Item search
             </a>
-            <a href="/accounts">Accounts</a>
+            <a href="/accounts" style={{ marginRight: "1rem" }}>
+              Accounts
+            </a>
+            <a href="/items" style={{ marginRight: "1rem" }}>
+              Items
+            </a>
+            <a href="/scans">Scans</a>
           </nav>
         </header>
         {children}
