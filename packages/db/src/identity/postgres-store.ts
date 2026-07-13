@@ -369,6 +369,11 @@ export class PostgresIdentityStore implements IdentityStore {
     return rows.map(mapObservation);
   }
 
+  async listObservationsForScan(scanId: string): Promise<Observation[]> {
+    const rows = await this.db.select().from(observations).where(eq(observations.scanId, scanId));
+    return rows.map(mapObservation).sort((a, b) => a.slotKey.localeCompare(b.slotKey));
+  }
+
   async updateObservationResolution(
     observationId: string,
     patch: Pick<

@@ -62,6 +62,10 @@ export class IdentityService {
     });
   }
 
+  async listObservationsForScan(scanId: string): Promise<Observation[]> {
+    return this.store.listObservationsForScan(scanId);
+  }
+
   private async identifiersByItemId(): Promise<Map<string, ItemIdentifier[]>> {
     const map = new Map<string, ItemIdentifier[]>();
     const activeItems = await this.store.listActiveCanonicalItems();

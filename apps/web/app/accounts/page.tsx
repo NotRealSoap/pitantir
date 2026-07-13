@@ -62,10 +62,24 @@ export default function AccountsPage() {
     await load();
   }
 
+  async function scanNow(account: PublicAccount) {
+    setError(null);
+    const response = await fetch(`/api/accounts/${account.id}/scan`, { method: "POST" });
+    const payload = (await response.json()) as { error?: string; message?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Unable to enqueue scan.");
+      return;
+    }
+    setError(payload.message ?? "Scan enqueued.");
+  }
+
   return (
     <main>
       <h1>Accounts</h1>
-      <p>Manage Minecraft accounts that Pitantir will eventually scan. Requires Postgres.</p>
+      <p>
+        Manage Minecraft accounts to scan. With the worker running (<code>pnpm start:worker</code>),
+        use Scan now to fetch a mock inventory and create observations.
+      </p>
 
       <form
         onSubmit={(event) => {
@@ -109,6 +123,9 @@ export default function AccountsPage() {
             </div>
             <div>Status: {account.enabled ? "enabled" : "disabled"}</div>
             <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => void scanNow(account)} disabled={!account.enabled}>
+                Scan now
+              </button>
               <button type="button" onClick={() => void toggleEnabled(account)}>
                 {account.enabled ? "Disable" : "Enable"}
               </button>

@@ -199,6 +199,12 @@ export class MemoryIdentityStore implements IdentityStore {
     );
   }
 
+  async listObservationsForScan(scanId: string): Promise<Observation[]> {
+    return [...this.observations.values()]
+      .filter((observation) => observation.scanId === scanId)
+      .sort((a, b) => a.slotKey.localeCompare(b.slotKey));
+  }
+
   async updateObservationResolution(
     observationId: string,
     patch: Pick<

@@ -3,11 +3,16 @@ import { fileURLToPath } from "node:url";
 import {
   JobsRepository,
   ScanScheduler,
+  ScanAccountHandler,
+  ProcessScanHandler,
+  IdentityService,
+  PostgresIdentityStore,
   createDb,
   runMigrations,
   seedAdminSettings,
   type Database,
 } from "@pitantir/db";
+import { MockInventorySource, type InventorySource } from "@pitantir/shared";
 import type postgres from "postgres";
 import { WorkerLoop } from "./loop.js";
 
@@ -21,6 +26,7 @@ export interface WorkerRuntime {
   scheduler: ScanScheduler;
   loop: WorkerLoop;
   workerId: string;
+  inventory: InventorySource;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -28,6 +34,20 @@ function envInt(name: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function createInventorySource(): InventorySource {
+  const mode = (process.env.INVENTORY_SOURCE ?? "mock").toLowerCase();
+  if (mode === "mock") {
+    return new MockInventorySource();
+  }
+  console.warn(
+    JSON.stringify({
+      msg: "unknown INVENTORY_SOURCE; falling back to mock",
+      mode,
+    }),
+  );
+  return new MockInventorySource();
 }
 
 export async function createWorkerRuntime(connectionString: string): Promise<WorkerRuntime> {
@@ -48,29 +68,40 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
   const jobs = new JobsRepository(db);
   const scheduler = new ScanScheduler(db);
   const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
+  const inventory = createInventorySource();
+  const identity = new IdentityService(new PostgresIdentityStore(db));
+  const scanAccount = new ScanAccountHandler(db, inventory);
+  const processScan = new ProcessScanHandler(db, identity);
 
   const loop = new WorkerLoop({
     workerId,
     jobs,
     leaseMs: envInt("JOB_LEASE_MS", DEFAULT_LEASE_MS),
     handlers: {
-      // T16 will replace this stub with real inventory fetch + scan persistence.
       scan_account: async (job) => {
+        const result = await scanAccount.handle(job);
         console.log(
           JSON.stringify({
-            msg: "scan_account stub",
+            msg: "scan_account completed",
             jobId: job.id,
-            accountId: job.payload.accountId,
+            scanId: result.scan.id,
+            status: result.scan.status,
+            itemCount: result.scan.itemCount,
+            enqueuedProcessScan: result.enqueuedProcessScan,
             workerId,
           }),
         );
       },
       process_scan: async (job) => {
+        const result = await processScan.handle(job);
         console.log(
           JSON.stringify({
-            msg: "process_scan stub",
+            msg: "process_scan completed",
             jobId: job.id,
-            scanId: job.payload.scanId,
+            scanId: result.scan.id,
+            processingStatus: result.scan.processingStatus,
+            observationCount: result.observations.length,
+            resolvedCount: result.resolvedCount,
             workerId,
           }),
         );
@@ -78,7 +109,7 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
     },
   });
 
-  return { db, client, jobs, scheduler, loop, workerId };
+  return { db, client, jobs, scheduler, loop, workerId, inventory };
 }
 
 export async function runWorkerMain(): Promise<void> {
@@ -90,7 +121,14 @@ export async function runWorkerMain(): Promise<void> {
   const pollMs = envInt("WORKER_POLL_MS", DEFAULT_POLL_MS);
   const { client, scheduler, loop, workerId } = await createWorkerRuntime(connectionString);
 
-  console.log(JSON.stringify({ msg: "worker started", workerId, pollMs }));
+  console.log(
+    JSON.stringify({
+      msg: "worker started",
+      workerId,
+      pollMs,
+      inventorySource: process.env.INVENTORY_SOURCE ?? "mock",
+    }),
+  );
 
   let stopping = false;
   const stop = () => {

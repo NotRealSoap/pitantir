@@ -50,6 +50,7 @@ describe("database migrations", () => {
         "jobs",
         "observation_candidates",
         "observations",
+        "scans",
       ]);
 
       const enums = await sql<{ typname: string }[]>`

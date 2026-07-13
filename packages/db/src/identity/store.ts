@@ -58,6 +58,7 @@ export interface IdentityStore {
   createObservation(input: CreateObservationInput): Promise<Observation>;
   getObservation(observationId: string): Promise<Observation | null>;
   listObservationsForItem(itemId: string): Promise<Observation[]>;
+  listObservationsForScan(scanId: string): Promise<Observation[]>;
   updateObservationResolution(
     observationId: string,
     patch: Pick<

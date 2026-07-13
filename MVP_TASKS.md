@@ -106,23 +106,27 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 4 — Scanning pipeline
 
-### T15 — Inventory source adapter interface
+### T15 — Inventory source adapter interface ✅
 - Define port/adapter for fetching account inventory
 - Provide **mock adapter** for tests
 - **Test:** mock returns fixture inventories
+- **Done:** 2026-07-13 — `packages/shared/src/inventory`
 
-### T16 — `scan_account` job handler
+### T16 — `scan_account` job handler ✅
 - Create scan row, fetch, success/failure persistence
 - **Test:** failure leaves no observations; success stores hash + raw JSON
+- **Done:** 2026-07-13 — `scans` migration + `ScanAccountHandler`
 
-### T17 — Observation extraction + upsert
+### T17 — Observation extraction + upsert ✅
 - Slot keys, metadata, fingerprints
 - **Test:** reprocess same scan ⇒ same row count / same natural keys
+- **Done:** 2026-07-13 — `extractBookSlots` + upsert via IdentityService
 
-### T18 — `process_scan` orchestration
+### T18 — `process_scan` orchestration ✅
 - Extract → resolve stub → location stub
 - Mark processing status
 - **Test:** end-to-end on mock success scan
+- **Done:** 2026-07-13 — `ProcessScanHandler` + worker wiring + Scan now API
 
 ---
 

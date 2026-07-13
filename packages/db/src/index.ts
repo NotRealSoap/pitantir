@@ -5,4 +5,5 @@ export * from "./item-data/ingestion.js";
 export * from "./search/local-item-search.js";
 export * from "./accounts/repository.js";
 export * from "./jobs/index.js";
+export * from "./scanning/index.js";
 export * from "./schema/index.js";

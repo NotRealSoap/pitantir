@@ -7,6 +7,7 @@ import {
   PostgresIdentityStore,
   seedAdminSettings,
   AccountsRepository,
+  ScanScheduler,
   UpstreamObservationIngestor,
   runMigrations,
   type IdentityStore,
@@ -18,6 +19,7 @@ let identityService: IdentityService | null = null;
 let identityStore: IdentityStore | null = null;
 let ingestor: UpstreamObservationIngestor | null = null;
 let accountsRepo: AccountsRepository | null = null;
+let scanScheduler: ScanScheduler | null = null;
 let dbReady: Promise<void> | null = null;
 
 function migrationsFolder(): string {
@@ -30,10 +32,11 @@ function migrationsFolder(): string {
 async function ensureDatabase(): Promise<{
   store: IdentityStore;
   accounts: AccountsRepository | null;
+  scheduler: ScanScheduler | null;
 }> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    return { store: new MemoryIdentityStore(), accounts: null };
+    return { store: new MemoryIdentityStore(), accounts: null, scheduler: null };
   }
 
   if (!dbReady) {
@@ -43,6 +46,7 @@ async function ensureDatabase(): Promise<{
       await seedAdminSettings(db);
       identityStore = new PostgresIdentityStore(db);
       accountsRepo = new AccountsRepository(db);
+      scanScheduler = new ScanScheduler(db);
     })();
   }
 
@@ -50,6 +54,7 @@ async function ensureDatabase(): Promise<{
   return {
     store: identityStore ?? new MemoryIdentityStore(),
     accounts: accountsRepo,
+    scheduler: scanScheduler,
   };
 }
 
@@ -71,6 +76,11 @@ export async function getUpstreamIngestor(): Promise<UpstreamObservationIngestor
 export async function getAccountsRepository(): Promise<AccountsRepository | null> {
   const { accounts } = await ensureDatabase();
   return accounts;
+}
+
+export async function getScanScheduler(): Promise<ScanScheduler | null> {
+  const { scheduler } = await ensureDatabase();
+  return scheduler;
 }
 
 export function getItemDataProvider() {
