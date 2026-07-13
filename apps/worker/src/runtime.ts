@@ -15,10 +15,10 @@ import {
   type Database,
 } from "@pitantir/db";
 import {
-  HypixelPitInventorySource,
   MockInventorySource,
   type InventorySource,
-} from "@pitantir/shared";
+} from "@pitantir/shared/inventory";
+import { HypixelPitInventorySource } from "@pitantir/shared/inventory/hypixel";
 import type postgres from "postgres";
 import { WorkerLoop } from "./loop.js";
 

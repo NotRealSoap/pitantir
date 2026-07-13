@@ -15,6 +15,14 @@
     "./item-data": {
       "types": "./src/item-data/index.ts",
       "default": "./src/item-data/index.ts"
+    },
+    "./inventory": {
+      "types": "./src/inventory/index.ts",
+      "default": "./src/inventory/index.ts"
+    },
+    "./inventory/hypixel": {
+      "types": "./src/inventory/hypixel.ts",
+      "default": "./src/inventory/hypixel.ts"
     }
   },
   "scripts": {

@@ -1,4 +1,4 @@
-import { extractBookSlots } from "@pitantir/shared";
+import { extractBookSlots } from "@pitantir/shared/inventory";
 import type { Observation } from "@pitantir/shared/identity";
 import type { IdentityService } from "../identity/service.js";
 import type { Scan } from "./scans-repository.js";

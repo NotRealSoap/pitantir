@@ -4,7 +4,7 @@ import type { Database } from "../client.js";
 import { scans, type ScanRow } from "../schema/scans.js";
 import { accounts } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
-import { extractBookSlots } from "@pitantir/shared";
+import { extractBookSlots } from "@pitantir/shared/inventory";
 
 export type ScanStatus = ScanRow["status"];
 export type ScanTriggeredBy = ScanRow["triggeredBy"];

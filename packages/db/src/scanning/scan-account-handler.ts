@@ -1,4 +1,4 @@
-import type { InventorySource } from "@pitantir/shared";
+import type { InventorySource } from "@pitantir/shared/inventory";
 import type { Job } from "../jobs/repository.js";
 import { JobsRepository } from "../jobs/repository.js";
 import { AccountsRepository } from "../accounts/repository.js";

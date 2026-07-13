@@ -1,5 +1,9 @@
 /** Resolve Mojang UUID for a Minecraft username. */
 
+import { formatUndashedUuid } from "../minecraft/uuid.js";
+
+export { formatUndashedUuid, normalizeUuid } from "../minecraft/uuid.js";
+
 export class MojangLookupError extends Error {
   constructor(
     readonly code: "not_found" | "upstream_unavailable" | "invalid_response",
@@ -8,18 +12,6 @@ export class MojangLookupError extends Error {
     super(message);
     this.name = "MojangLookupError";
   }
-}
-
-export function formatUndashedUuid(undashed: string): string {
-  const hex = undashed.replace(/-/g, "").toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(hex)) {
-    throw new MojangLookupError("invalid_response", `Invalid UUID hex: ${undashed}`);
-  }
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-export function normalizeUuid(value: string): string {
-  return formatUndashedUuid(value);
 }
 
 /**
@@ -57,7 +49,11 @@ export async function resolveMinecraftUuid(
         lastError = new MojangLookupError("invalid_response", "Profile missing id");
         continue;
       }
-      return formatUndashedUuid(body.id);
+      try {
+        return formatUndashedUuid(body.id);
+      } catch {
+        throw new MojangLookupError("invalid_response", `Invalid UUID hex: ${body.id}`);
+      }
     } catch (error) {
       if (error instanceof MojangLookupError && error.code === "not_found") {
         throw error;
