@@ -7,10 +7,12 @@ import {
   PostgresIdentityStore,
   seedAdminSettings,
   AccountsRepository,
+  AccountHistoryService,
   ScanScheduler,
   UpstreamObservationIngestor,
   runMigrations,
   type IdentityStore,
+  type Database,
 } from "@pitantir/db";
 import { createItemDataProvider } from "@pitantir/shared/item-data";
 import { getPitPandaApiKey } from "./pitpanda-key-store";
@@ -20,6 +22,8 @@ let identityStore: IdentityStore | null = null;
 let ingestor: UpstreamObservationIngestor | null = null;
 let accountsRepo: AccountsRepository | null = null;
 let scanScheduler: ScanScheduler | null = null;
+let accountHistory: AccountHistoryService | null = null;
+let database: Database | null = null;
 let dbReady: Promise<void> | null = null;
 
 function migrationsFolder(): string {
@@ -33,20 +37,28 @@ async function ensureDatabase(): Promise<{
   store: IdentityStore;
   accounts: AccountsRepository | null;
   scheduler: ScanScheduler | null;
+  history: AccountHistoryService | null;
 }> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    return { store: new MemoryIdentityStore(), accounts: null, scheduler: null };
+    return {
+      store: new MemoryIdentityStore(),
+      accounts: null,
+      scheduler: null,
+      history: null,
+    };
   }
 
   if (!dbReady) {
     dbReady = (async () => {
       await runMigrations(databaseUrl, migrationsFolder());
       const { db } = createDb(databaseUrl, { max: 10 });
+      database = db;
       await seedAdminSettings(db);
       identityStore = new PostgresIdentityStore(db);
       accountsRepo = new AccountsRepository(db);
       scanScheduler = new ScanScheduler(db);
+      accountHistory = new AccountHistoryService(db, identityStore);
     })();
   }
 
@@ -55,6 +67,7 @@ async function ensureDatabase(): Promise<{
     store: identityStore ?? new MemoryIdentityStore(),
     accounts: accountsRepo,
     scheduler: scanScheduler,
+    history: accountHistory,
   };
 }
 
@@ -83,6 +96,11 @@ export async function getScanScheduler(): Promise<ScanScheduler | null> {
   return scheduler;
 }
 
+export async function getAccountHistoryService(): Promise<AccountHistoryService | null> {
+  const { history } = await ensureDatabase();
+  return history;
+}
+
 export function getItemDataProvider() {
   return createItemDataProvider({
     pitpandaApiKey: getPitPandaApiKey(),
@@ -92,4 +110,8 @@ export function getItemDataProvider() {
 
 export function isUsingPostgres(): boolean {
   return Boolean(process.env.DATABASE_URL);
+}
+
+export function getDatabase(): Database | null {
+  return database;
 }

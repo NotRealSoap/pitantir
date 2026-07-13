@@ -1,7 +1,30 @@
 import { NextResponse } from "next/server";
-import { getAccountsRepository, isUsingPostgres } from "../../../../src/server/runtime";
+import {
+  getAccountHistoryService,
+  getAccountsRepository,
+  isUsingPostgres,
+} from "../../../../src/server/runtime";
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+export async function GET(_request: Request, context: RouteContext) {
+  if (!isUsingPostgres()) {
+    return NextResponse.json({ error: "Accounts require DATABASE_URL." }, { status: 503 });
+  }
+
+  const { id } = await context.params;
+  const historyService = await getAccountHistoryService();
+  if (!historyService) {
+    return NextResponse.json({ error: "Account history unavailable." }, { status: 503 });
+  }
+
+  const history = await historyService.getHistory(id);
+  if (!history) {
+    return NextResponse.json({ error: "Account not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ history });
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   if (!isUsingPostgres()) {

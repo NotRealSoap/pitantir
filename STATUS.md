@@ -4,38 +4,27 @@ Last updated: 2026-07-13
 
 ## Current phase
 
-Phase 4 — Scanning pipeline (mock inventory) complete
+Phase 7 — Account history UI (T32) complete; domain location engine still ahead
 
-## Completed tasks
+## Completed highlights
 
-| Task | Summary | Date |
-|---|---|---|
-| T00–T14 | Monorepo, identity, accounts, job claim/lease, scheduler | 2026-07-13 |
-| — | PitPanda search UI + Postgres identity | 2026-07-13 |
-| **T15** | Inventory source port + `MockInventorySource` | 2026-07-13 |
-| **T16** | `scans` table + `scan_account` handler | 2026-07-13 |
-| **T17** | Observation extract/upsert from raw inventory | 2026-07-13 |
-| **T18** | `process_scan` (extract → auto-resolve → presence stub) | 2026-07-13 |
+| Task | Summary |
+|---|---|
+| T15–T18 | Mock scan pipeline |
+| T31–T32 | Accounts CRUD + **account detail history** (`/accounts/[id]`) |
 
 ## Next task
 
-**T21 / T25+** — multiplicity matching and full location transitions, then item/scan UIs.
+**T21** multiplicity matching, then **T25–T28** location engine; or **T33** global items list.
 
-## Validation (latest)
+## How to see your scans
+
+1. `git pull` && restart `pnpm dev` / worker
+2. Open `/accounts` → click a username or **History**
+3. View held items, failures (with error, not empty inventory), and full scan list
+
+## Validation
 
 ```bash
-pnpm typecheck   # pass
-pnpm lint        # pass
-pnpm test        # 45 tests pass
-pnpm db:migrate  # through 0003_scans
+pnpm typecheck && pnpm lint && pnpm test   # 46 tests
 ```
-
-## How to try it locally
-
-1. Postgres up (`docker compose up -d`)
-2. `pnpm db:migrate`
-3. `pnpm dev` + `pnpm start:worker` (`INVENTORY_SOURCE=mock` default)
-4. `/accounts` → **Scan now** on an account
-5. Worker logs `scan_account completed` / `process_scan completed` with observation counts
-
-Live Minecraft inventory adapters are not wired yet — mock returns synthetic books per account.

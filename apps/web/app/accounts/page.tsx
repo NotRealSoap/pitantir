@@ -118,11 +118,14 @@ export default function AccountsPage() {
             }}
           >
             <div>
-              <strong>{account.mcUsername}</strong>
+              <strong>
+                <a href={`/accounts/${account.id}`}>{account.mcUsername}</a>
+              </strong>
               {account.displayName ? ` (${account.displayName})` : ""}
             </div>
             <div>Status: {account.enabled ? "enabled" : "disabled"}</div>
-            <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+            <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <a href={`/accounts/${account.id}`}>History</a>
               <button type="button" onClick={() => void scanNow(account)} disabled={!account.enabled}>
                 Scan now
               </button>

@@ -198,13 +198,15 @@ Mark of done for each task: code + automated test (or migration verification) + 
 - Edit default interval, auto-create flags, thresholds
 - **Test:** settings persist
 
-### T31 — Accounts list + CRUD
+### T31 — Accounts list + CRUD ✅
 - Add/edit/disable/soft-delete; never expose secrets
 - **Test:** disable stops eligibility query
+- **Done:** 2026-07-13 — `/accounts` + API (eligibility via enabled filter in scheduler)
 
-### T32 — Account detail history
+### T32 — Account detail history ✅
 - Scans list, currently held resolved items, failures
 - **Test:** render with fixtures (component or integration)
+- **Done:** 2026-07-13 — `/accounts/[id]` + `AccountHistoryService`
 
 ---
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { scans, type ScanRow } from "../schema/scans.js";
 import { accounts } from "../schema/accounts.js";
@@ -28,6 +28,8 @@ export interface Scan {
   processedAt: Date | null;
   createdAt: Date;
 }
+
+export type PublicScanSummary = Omit<Scan, "rawInventory" | "idempotencyKey">;
 
 function mapScan(row: ScanRow): Scan {
   return {
@@ -80,6 +82,36 @@ export class ScansRepository {
   async get(id: string): Promise<Scan | null> {
     const rows = await this.db.select().from(scans).where(eq(scans.id, id));
     return rows[0] ? mapScan(rows[0]) : null;
+  }
+
+  async listForAccount(accountId: string, limit = 50): Promise<Scan[]> {
+    const rows = await this.db
+      .select()
+      .from(scans)
+      .where(eq(scans.accountId, accountId))
+      .orderBy(desc(scans.createdAt))
+      .limit(limit);
+    return rows.map(mapScan);
+  }
+
+  /** Operator-facing scan summary — excludes raw inventory payloads. */
+  toPublicSummary(scan: Scan): PublicScanSummary {
+    return {
+      id: scan.id,
+      accountId: scan.accountId,
+      status: scan.status,
+      triggeredBy: scan.triggeredBy,
+      startedAt: scan.startedAt,
+      finishedAt: scan.finishedAt,
+      observedAt: scan.observedAt,
+      errorCode: scan.errorCode,
+      errorMessage: scan.errorMessage,
+      rawInventoryHash: scan.rawInventoryHash,
+      itemCount: scan.itemCount,
+      processingStatus: scan.processingStatus,
+      processedAt: scan.processedAt,
+      createdAt: scan.createdAt,
+    };
   }
 
   async getByIdempotencyKey(key: string): Promise<Scan | null> {
