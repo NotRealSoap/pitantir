@@ -11,8 +11,9 @@ Account inventory-history explorer (PitPanda current-owner index + local ownersh
 1. Open `/account` and enter a Minecraft username or UUID
 2. Server resolves profile via Mojang, pages PitPanda `current_owner` search (bounded)
 3. Detail `GET /api/item/{_id}` fills `owners` when list rows omit history
-4. Local DB periods/events enrich by nonce when Postgres is configured
-5. Graph + timeline are partial / index-based — never claimed as exhaustive Hypixel truth
+4. Indexed items are linked into canonical identity; PitPanda `owners` are persisted as local `import` periods + `import_presence` events (`uncertain`, idempotent)
+5. Local Hypixel scan periods/events still enrich by nonce when Postgres is configured
+6. Graph + timeline remain index-based — never claimed as exhaustive Hypixel truth
 
 ## Hypixel scans
 

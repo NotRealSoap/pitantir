@@ -12,6 +12,7 @@ import {
   ScanScheduler,
   UpstreamObservationIngestor,
   LocalOwnershipEnricher,
+  PitPandaOwnershipIngestor,
   runMigrations,
   type IdentityStore,
   type Database,
@@ -23,6 +24,7 @@ import { getPitPandaApiKey } from "./pitpanda-key-store";
 let identityService: IdentityService | null = null;
 let identityStore: IdentityStore | null = null;
 let ingestor: UpstreamObservationIngestor | null = null;
+let ownershipIngestor: PitPandaOwnershipIngestor | null = null;
 let accountsRepo: AccountsRepository | null = null;
 let scanScheduler: ScanScheduler | null = null;
 let accountHistory: AccountHistoryService | null = null;
@@ -138,6 +140,24 @@ export function getAccountHistoryItemProvider(): PitPandaItemDataProvider {
 export async function getLocalOwnershipEnricher(): Promise<LocalOwnershipEnricher | null> {
   await ensureDatabase();
   return localOwnershipEnricher;
+}
+
+export async function getPitPandaOwnershipIngestor(): Promise<PitPandaOwnershipIngestor | null> {
+  const { store, accounts } = await ensureDatabase();
+  if (!accounts) return null;
+  if (!ownershipIngestor) {
+    ownershipIngestor = new PitPandaOwnershipIngestor(store, {
+      ensureShadowOwner: async (input) => {
+        const account = await accounts.ensureShadowOwner(input);
+        return {
+          id: account.id,
+          mcUsername: account.mcUsername,
+          mcUuid: account.mcUuid ?? input.mcUuid,
+        };
+      },
+    });
+  }
+  return ownershipIngestor;
 }
 
 export function isUsingPostgres(): boolean {

@@ -14,6 +14,7 @@ import { TtlCache } from "../../../src/server/search-cache";
 import {
   getAccountHistoryItemProvider,
   getLocalOwnershipEnricher,
+  getPitPandaOwnershipIngestor,
   getUpstreamIngestor,
 } from "../../../src/server/runtime";
 
@@ -203,6 +204,7 @@ export async function POST(request: Request) {
         provider: getAccountHistoryItemProvider(),
         ingestor: await getUpstreamIngestor(),
         enricher: await getLocalOwnershipEnricher(),
+        ownershipIngestor: await getPitPandaOwnershipIngestor(),
       },
       parsed.data,
     );

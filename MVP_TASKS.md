@@ -267,6 +267,13 @@ Mark of done for each task: code + automated test (or migration verification) + 
 - **Done:** 2026-07-13 — `POST /api/account-history` + shared account-history helpers
 - **Test:** mocked service/route + parse/graph fixtures (no live PitPanda)
 
+### T40c — Persist PitPanda owners into local item history ✅
+- `PitPandaOwnershipIngestor` writes `start_reason=import` periods + `import_presence` events from `owners[{uuid,time}]`
+- Shadow accounts (`enabled=false`) created/linked by UUID; upstream observations no longer open scan presence
+- Wired into `/api/account-history` indexing path; idempotent re-runs
+- **Done:** 2026-07-13
+- **Test:** ownership ingestor unit tests (idempotency, no invented times, skip missing usernames)
+
 ### T41 — Seed script + demo fixtures
 - Accounts, colliding nonce pair, nonce-less import, scan success/failure
 - **Test:** demo script runs against Compose DB

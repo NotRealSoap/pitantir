@@ -34,6 +34,7 @@ Application services depend on `ItemDataProvider`, not PitPanda.
 - **Caching:** in-memory TTL cache per identical validated request
 - **Rate limits:** app-level per-IP limits on search and account-history routes; adapter retries HTTP 429 with backoff
 - **History caveat:** PitPanda ownership is index/search based, not exhaustive Hypixel truth
+- **Local persistence:** when account-history indexes items, `owners` are written as local `item_location_periods` (`start_reason=import`, `certainty=uncertain`) and `item_location_events` (`import_presence`) via `PitPandaOwnershipIngestor`. Does not invent transfer times beyond consecutive owner sightings. Does not open Hypixel-style scan presence for upstream observations.
 
 ### Observed response shape (do not assume item fields)
 

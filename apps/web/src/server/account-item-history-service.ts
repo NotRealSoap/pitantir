@@ -24,7 +24,7 @@ import {
   type MinecraftProfile,
 } from "@pitantir/shared/inventory";
 import type { LocalOwnershipBundle, LocalOwnershipEnricher } from "@pitantir/db";
-import type { UpstreamObservationIngestor } from "@pitantir/db";
+import type { PitPandaOwnershipIngestor, UpstreamObservationIngestor } from "@pitantir/db";
 
 const HISTORY_WARNING =
   "PitPanda ownership history is index/search based and is not exhaustive Hypixel truth. Treat timelines as partial evidence.";
@@ -38,6 +38,8 @@ export interface AccountItemHistoryDeps {
   provider: AccountHistoryProvider;
   ingestor?: UpstreamObservationIngestor | null;
   enricher: LocalOwnershipEnricher | null;
+  /** Persists PitPanda owners[] into local import periods/events when available. */
+  ownershipIngestor?: PitPandaOwnershipIngestor | null;
   resolveProfileByUsername?: (
     username: string,
     fetchImpl?: typeof fetch,
@@ -399,34 +401,20 @@ export async function getAccountItemHistory(
     };
   });
 
-  // Local enrichment by nonce / canonical id
   const parsedFields = collected.map((item) => parseUpstreamItemFields(item.rawPayload));
   const nonces = parsedFields.map((f) => f.nonce).filter((n): n is string => Boolean(n));
-  const bundlesByItemId = new Map<string, LocalOwnershipBundle>();
   const canonicalIdsByNonce = new Map<string, string[]>();
 
   if (deps.enricher) {
     try {
       const nonceMap = await deps.enricher.findCanonicalIdsByNonces(nonces);
       for (const [nonce, ids] of nonceMap) canonicalIdsByNonce.set(nonce, ids);
-
-      const allIds = new Set<string>();
-      for (const ids of nonceMap.values()) {
-        for (const id of ids) allIds.add(id);
-      }
-      for (const [key, ingested] of ingestedByKey) {
-        if (ingested.canonicalItemId) allIds.add(ingested.canonicalItemId);
-        void key;
-      }
-
-      const bundles = await deps.enricher.loadOwnershipBundles([...allIds]);
-      for (const [id, bundle] of bundles) bundlesByItemId.set(id, bundle);
     } catch {
-      // Local DB enrichment is preferred but optional.
+      // Local nonce matching is preferred but optional.
     }
   }
 
-  // Username resolution for owners
+  // Username resolution for owners (needed before ownership persistence)
   const usernameByUuid = new Map<string, string>();
   usernameByUuid.set(searchedUuid, searchedUsername);
 
@@ -438,12 +426,6 @@ export async function getAccountItemHistory(
     }
     if (fields.ownerUuid) {
       const normalized = normalizeUuidKey(fields.ownerUuid);
-      if (normalized) ownerUuids.add(normalized);
-    }
-  }
-  for (const bundle of bundlesByItemId.values()) {
-    for (const period of bundle.periods) {
-      const normalized = normalizeUuidKey(period.accountUuid);
       if (normalized) ownerUuids.add(normalized);
     }
   }
@@ -469,6 +451,73 @@ export async function getAccountItemHistory(
       usernameByUuid.set(normalizeUuidKey(resolved.uuid)!, resolved.username);
     } catch {
       // leave username null
+    }
+  }
+
+  // Persist PitPanda owners into local import periods/events for indexed items
+  let ownershipPeriodsCreated = 0;
+  let ownershipEventsCreated = 0;
+  if (deps.ownershipIngestor) {
+    for (let index = 0; index < collected.length; index += 1) {
+      const item = collected[index]!;
+      const fields = parsedFields[index]!;
+      if (fields.owners.length === 0) continue;
+
+      const ingested = ingestedByKey.get(item.providerItemKey);
+      let canonicalItemId = ingested?.canonicalItemId ?? null;
+      if (!canonicalItemId && fields.nonce) {
+        canonicalItemId = canonicalIdsByNonce.get(fields.nonce)?.[0] ?? null;
+      }
+      if (!canonicalItemId) continue;
+
+      try {
+        const result = await deps.ownershipIngestor.ingest({
+          canonicalItemId,
+          pitpandaItemId: fields.pitpandaItemId,
+          owners: fields.owners,
+          usernameByUuid,
+          lastSeenAt: fields.lastSeenAt,
+          currentOwnerUuid: fields.ownerUuid ?? searchedUuid,
+        });
+        ownershipPeriodsCreated += result.periodsCreated;
+        ownershipEventsCreated += result.eventsCreated;
+      } catch {
+        // Persistence is best-effort; UI still shows pitpandaOwners from payload.
+      }
+    }
+  }
+
+  // Local enrichment AFTER ownership persistence so response includes imported periods
+  const bundlesByItemId = new Map<string, LocalOwnershipBundle>();
+  if (deps.enricher) {
+    try {
+      const allIds = new Set<string>();
+      for (const ids of canonicalIdsByNonce.values()) {
+        for (const id of ids) allIds.add(id);
+      }
+      for (const ingested of ingestedByKey.values()) {
+        if (ingested.canonicalItemId) allIds.add(ingested.canonicalItemId);
+      }
+
+      const bundles = await deps.enricher.loadOwnershipBundles([...allIds]);
+      for (const [id, bundle] of bundles) bundlesByItemId.set(id, bundle);
+
+      // Also refresh username map for any new shadow accounts referenced by periods
+      const periodUuids: string[] = [];
+      for (const bundle of bundlesByItemId.values()) {
+        for (const period of bundle.periods) {
+          const normalized = normalizeUuidKey(period.accountUuid);
+          if (normalized && !usernameByUuid.has(normalized)) periodUuids.push(normalized);
+        }
+      }
+      if (periodUuids.length > 0) {
+        const localNames = await deps.enricher.findUsernamesByUuids(periodUuids);
+        for (const [uuid, username] of localNames) {
+          usernameByUuid.set(normalizeUuidKey(uuid)!, username);
+        }
+      }
+    } catch {
+      // Local DB enrichment is preferred but optional.
     }
   }
 
@@ -620,6 +669,11 @@ export async function getAccountItemHistory(
     missingHistoryCount === 0;
 
   const warnings = [HISTORY_WARNING];
+  if (ownershipEventsCreated > 0 || ownershipPeriodsCreated > 0) {
+    warnings.push(
+      `Persisted ${ownershipEventsCreated} PitPanda import_presence event(s) and ${ownershipPeriodsCreated} import period(s) into local item history.`,
+    );
+  }
   if (hasMoreUpstreamPages) {
     warnings.push(
       `Stopped after ${ACCOUNT_HISTORY_LIMITS.maxUpstreamPages} upstream pages or ${ACCOUNT_HISTORY_LIMITS.maxItems} items; more may exist.`,

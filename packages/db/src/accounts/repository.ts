@@ -90,6 +90,82 @@ export class AccountsRepository {
     return mapAccount(row);
   }
 
+  async getByUsername(username: string): Promise<PublicAccount | null> {
+    const trimmed = username.trim();
+    const rows = await this.db
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.mcUsername, trimmed), isNull(accounts.deletedAt)))
+      .limit(1);
+    const row = rows[0];
+    return row ? mapAccount(row) : null;
+  }
+
+  async findByMcUuid(mcUuid: string): Promise<PublicAccount | null> {
+    let normalized: string;
+    try {
+      normalized = normalizeUuid(mcUuid.trim());
+    } catch {
+      return null;
+    }
+    const rows = await this.db
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.mcUuid, normalized), isNull(accounts.deletedAt)))
+      .limit(1);
+    const row = rows[0];
+    return row ? mapAccount(row) : null;
+  }
+
+  /**
+   * Find or create a disabled shadow account for PitPanda ownership imports.
+   * Prefer UUID match, then username match (backfill UUID when missing).
+   */
+  async ensureShadowOwner(input: {
+    mcUuid: string;
+    mcUsername: string;
+  }): Promise<PublicAccount> {
+    const username = input.mcUsername.trim();
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(username)) {
+      throw new Error("Invalid Minecraft username");
+    }
+    let normalized: string;
+    try {
+      normalized = normalizeUuid(input.mcUuid.trim());
+    } catch {
+      throw new Error("Invalid Minecraft UUID");
+    }
+
+    const byUuid = await this.findByMcUuid(normalized);
+    if (byUuid) return byUuid;
+
+    const byName = await this.getByUsername(username);
+    if (byName) {
+      if (!byName.mcUuid) {
+        return this.update(byName.id, { mcUuid: normalized });
+      }
+      if (byName.mcUuid.toLowerCase() === normalized.toLowerCase()) {
+        return byName;
+      }
+      // Username collision with a different UUID — create a unique shadow username.
+      const suffix = normalized.replace(/-/g, "").slice(0, 4);
+      const shadowName = `pp${suffix}${username}`.slice(0, 16);
+      return this.create({
+        mcUsername: shadowName,
+        mcUuid: normalized,
+        enabled: false,
+        notes: `auto:pitpanda-owner (username collision with ${username})`,
+      });
+    }
+
+    return this.create({
+      mcUsername: username,
+      mcUuid: normalized,
+      enabled: false,
+      notes: "auto:pitpanda-owner",
+    });
+  }
+
   async create(input: CreateAccountInput): Promise<PublicAccount> {
     const username = input.mcUsername.trim();
     if (!/^[A-Za-z0-9_]{3,16}$/.test(username)) {

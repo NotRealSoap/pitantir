@@ -209,7 +209,15 @@ export class IdentityService {
       resolvedBy: targetItemId || outcome.status !== "unresolved" ? "auto" : null,
     });
 
-    if (targetItemId && (outcome.status === "resolved" || outcome.status === "manually_resolved" || outcome.status === "probable")) {
+    if (
+      targetItemId &&
+      (outcome.status === "resolved" ||
+        outcome.status === "manually_resolved" ||
+        outcome.status === "probable") &&
+      // Upstream provider observations are identity evidence only — do not open
+      // Hypixel-style scan presence on the system account.
+      !observation.slotKey.startsWith("upstream:")
+    ) {
       await this.location.applyResolvedObservation({
         itemId: targetItemId,
         observation: updatedObservation,
