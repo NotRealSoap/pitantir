@@ -63,7 +63,7 @@ export default function ItemDetailPage() {
     );
   }
 
-  const { item, identifiers, periods, observations, currentLocation } = detail;
+  const { item, identifiers, periods, events, observations, currentLocation } = detail;
 
   return (
     <main>
@@ -74,7 +74,9 @@ export default function ItemDetailPage() {
       <p>
         {item.category} · confidence {item.identityConfidence} · status {item.status}
       </p>
-      <p>Nonce: <code>{item.primaryNonce ?? "—"}</code></p>
+      <p>
+        Nonce: <code>{item.primaryNonce ?? "—"}</code>
+      </p>
       <p style={{ fontSize: "0.9rem", color: "#555", wordBreak: "break-all" }}>
         Strict FP: {item.strictFingerprint ?? "—"}
       </p>
@@ -111,6 +113,51 @@ export default function ItemDetailPage() {
       </section>
 
       <section style={{ marginTop: "1.25rem" }}>
+        <h2>Ownership events</h2>
+        {events.length === 0 ? (
+          <p>No location events yet.</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {events.map((event) => (
+              <li
+                key={event.id}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  padding: "0.6rem",
+                  marginBottom: "0.4rem",
+                  background:
+                    event.eventType === "contradiction" || event.certainty === "contradicted"
+                      ? "#fff5f5"
+                      : event.eventType === "move_uncertain" || event.certainty === "uncertain"
+                        ? "#fffaf0"
+                        : "#fff",
+                }}
+              >
+                <div>
+                  <strong>{event.label}</strong>
+                  {" · "}
+                  {event.certainty}
+                </div>
+                <div>{formatWhen(event.eventTime)}</div>
+                <div style={{ fontSize: "0.9rem", color: "#555" }}>
+                  {event.fromAccountId || event.toAccountId ? (
+                    <>
+                      {event.fromAccountUsername ?? event.fromAccountId?.slice(0, 8) ?? "—"}
+                      {" → "}
+                      {event.toAccountUsername ?? event.toAccountId?.slice(0, 8) ?? "—"}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section style={{ marginTop: "1.25rem" }}>
         <h2>Location timeline</h2>
         {periods.length === 0 ? (
           <p>No periods yet.</p>
@@ -131,7 +178,9 @@ export default function ItemDetailPage() {
                   {period.isUnknownGap ? (
                     <strong>Unknown gap</strong>
                   ) : period.accountId ? (
-                    <Link href={`/accounts/${period.accountId}`}>Account {period.accountId.slice(0, 8)}</Link>
+                    <Link href={`/accounts/${period.accountId}`}>
+                      {period.accountUsername ?? period.accountId.slice(0, 8)}
+                    </Link>
                   ) : (
                     "No account"
                   )}

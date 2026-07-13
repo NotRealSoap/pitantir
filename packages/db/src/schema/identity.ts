@@ -225,3 +225,41 @@ export const itemLocationPeriods = pgTable(
     ),
   }),
 );
+
+export const locationEventTypeEnum = pgEnum("location_event_type", [
+  "seen",
+  "disappeared",
+  "unknown_started",
+  "move_confirmed",
+  "move_uncertain",
+  "contradiction",
+  "import_presence",
+  "manual_correction",
+]);
+
+export const itemLocationEvents = pgTable(
+  "item_location_events",
+  {
+    id: uuid("id").primaryKey(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => canonicalItems.id),
+    eventType: locationEventTypeEnum("event_type").notNull(),
+    fromAccountId: uuid("from_account_id"),
+    toAccountId: uuid("to_account_id"),
+    eventTime: timestamp("event_time", { withTimezone: true }).notNull(),
+    certainty: text("certainty").notNull(),
+    scanId: uuid("scan_id"),
+    observationId: uuid("observation_id"),
+    periodId: uuid("period_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    idempotencyUnique: uniqueIndex("item_location_events_idempotency_unique").on(
+      table.idempotencyKey,
+    ),
+    itemTimeIdx: index("item_location_events_item_time_idx").on(table.itemId, table.eventTime),
+  }),
+);

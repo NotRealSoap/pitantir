@@ -74,3 +74,15 @@ export const PERIOD_END_REASONS = [
   "corrected",
 ] as const;
 export type PeriodEndReason = (typeof PERIOD_END_REASONS)[number];
+
+export const LOCATION_EVENT_TYPES = [
+  "seen",
+  "disappeared",
+  "unknown_started",
+  "move_confirmed",
+  "move_uncertain",
+  "contradiction",
+  "import_presence",
+  "manual_correction",
+] as const;
+export type LocationEventType = (typeof LOCATION_EVENT_TYPES)[number];

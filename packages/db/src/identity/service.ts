@@ -18,9 +18,46 @@ import { captureSnapshot, decisionState, isDecisionReversible, restoreSnapshot }
 import type { IdentitySnapshot } from "./snapshots.js";
 import type { CreateObservationInput, IdentityStore } from "./store.js";
 import { now } from "./store.js";
+import { LocationEngine } from "../scanning/location-engine.js";
+import type { Scan } from "../scanning/scans-repository.js";
 
 export class IdentityService {
-  constructor(private readonly store: IdentityStore) {}
+  private readonly location: LocationEngine;
+
+  constructor(private readonly store: IdentityStore) {
+    this.location = new LocationEngine(store);
+  }
+
+  /** Exposed for scan pipeline Prev snapshots / location engine. */
+  getStore(): IdentityStore {
+    return this.store;
+  }
+
+  async applyScanDisappearances(input: {
+    scan: Scan;
+    previousOpenItemIds: Set<string>;
+    currentItemIds: Set<string>;
+  }): Promise<{ eventsCreated: number; openedPeriods: number; closedPeriods: number }> {
+    let eventsCreated = 0;
+    let openedPeriods = 0;
+    let closedPeriods = 0;
+    if (input.scan.status !== "success" || !input.scan.observedAt) {
+      return { eventsCreated, openedPeriods, closedPeriods };
+    }
+    for (const itemId of input.previousOpenItemIds) {
+      if (input.currentItemIds.has(itemId)) continue;
+      const result = await this.location.applyDisappearance({
+        itemId,
+        accountId: input.scan.accountId,
+        at: input.scan.observedAt,
+        scanId: input.scan.id,
+      });
+      eventsCreated += result.eventsCreated;
+      openedPeriods += result.openedPeriods;
+      closedPeriods += result.closedPeriods;
+    }
+    return { eventsCreated, openedPeriods, closedPeriods };
+  }
 
   async createItem(input?: {
     displayName?: string | null;
@@ -172,8 +209,12 @@ export class IdentityService {
       resolvedBy: targetItemId || outcome.status !== "unresolved" ? "auto" : null,
     });
 
-    if (targetItemId && (outcome.status === "resolved" || outcome.status === "manually_resolved")) {
-      await this.ensurePresencePeriod(targetItemId, observation);
+    if (targetItemId && (outcome.status === "resolved" || outcome.status === "manually_resolved" || outcome.status === "probable")) {
+      await this.location.applyResolvedObservation({
+        itemId: targetItemId,
+        observation: updatedObservation,
+        scanId: observation.scanId,
+      });
     }
 
     const after = await captureSnapshot(
@@ -271,7 +312,11 @@ export class IdentityService {
       resolvedBy: "manual",
     });
 
-    await this.ensurePresencePeriod(targetItem.id, observation);
+    await this.location.applyResolvedObservation({
+      itemId: targetItem.id,
+      observation: updatedObservation,
+      scanId: observation.scanId,
+    });
 
     const after = await captureSnapshot(this.store, [targetItem.id], [parsed.observationId]);
     const decision = await this.store.appendDecision({
@@ -474,7 +519,12 @@ export class IdentityService {
           resolvedAt: now(),
           resolvedBy: "manual",
         });
-        await this.ensurePresencePeriod(targetItem.id, observation);
+        const updated = (await this.store.getObservation(observationId))!;
+        await this.location.applyResolvedObservation({
+          itemId: targetItem.id,
+          observation: updated,
+          scanId: observation.scanId,
+        });
       }
 
       targetItems.push(targetItem);
@@ -546,32 +596,5 @@ export class IdentityService {
 
     await this.store.markDecisionReversed(original.id, revertDecision.id);
     return revertDecision;
-  }
-
-  private async ensurePresencePeriod(itemId: string, observation: Observation): Promise<void> {
-    const openOnAccount = (await this.store.listLocationPeriodsForItem(itemId)).find(
-      (period) =>
-        period.accountId === observation.accountId &&
-        period.endedAt === null &&
-        !period.isUnknownGap,
-    );
-
-    if (openOnAccount) {
-      return;
-    }
-
-    await this.store.createLocationPeriod({
-      itemId,
-      accountId: observation.accountId,
-      startedAt: observation.observedAt,
-      endedAt: null,
-      startReason: "observed",
-      endReason: null,
-      certainty: "confirmed",
-      isUnknownGap: false,
-      openingObservationId: observation.id,
-      closingObservationContextScanId: null,
-      notes: null,
-    });
   }
 }

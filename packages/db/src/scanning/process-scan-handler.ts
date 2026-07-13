@@ -3,16 +3,22 @@ import type { Job } from "../jobs/repository.js";
 import type { IdentityService } from "../identity/service.js";
 import { ScansRepository, type Scan, hashRawInventory } from "./scans-repository.js";
 import { upsertObservationsFromScan } from "./observation-extractor.js";
+import { snapshotOpenPresenceItemIds } from "./location-engine.js";
 import type { Database } from "../client.js";
 
 export interface ProcessScanHandlerResult {
   scan: Scan;
   observations: Observation[];
   resolvedCount: number;
+  location?: {
+    eventsCreated: number;
+    openedPeriods: number;
+    closedPeriods: number;
+  };
 }
 
 /**
- * process_scan: extract observations → auto-resolve → location stub (via ensurePresencePeriod).
+ * process_scan: extract observations → auto-resolve (opens presence) → disappearances (T25–T28).
  */
 export class ProcessScanHandler {
   private readonly scans: ScansRepository;
@@ -51,7 +57,10 @@ export class ProcessScanHandler {
         scan,
         observations: existing,
         resolvedCount: existing.filter(
-          (o) => o.resolutionStatus === "resolved" || o.resolutionStatus === "manually_resolved",
+          (o) =>
+            o.resolutionStatus === "resolved" ||
+            o.resolutionStatus === "manually_resolved" ||
+            o.resolutionStatus === "probable",
         ).length,
       };
     }
@@ -64,24 +73,50 @@ export class ProcessScanHandler {
         }
       }
 
+      const previousOpenItemIds = await snapshotOpenPresenceItemIds(
+        this.identity.getStore(),
+        scan.accountId,
+      );
+
       const upserted = await upsertObservationsFromScan(this.identity, scan);
       let resolvedCount = 0;
       for (const observation of upserted.observations) {
         const result = await this.identity.resolveObservationAuto(observation.id);
         if (
           result.observation.resolutionStatus === "resolved" ||
-          result.observation.resolutionStatus === "manually_resolved"
+          result.observation.resolutionStatus === "manually_resolved" ||
+          result.observation.resolutionStatus === "probable"
         ) {
           resolvedCount += 1;
         }
       }
 
-      // Location updates for confirmed presence happen inside resolveObservationAuto.
-      // Full disappearance / move rules remain T25–T28.
+      const observations = await this.identity.listObservationsForScan(scan.id);
+      const currentItemIds = new Set(
+        observations
+          .filter(
+            (observation) =>
+              observation.canonicalItemId &&
+              (observation.resolutionStatus === "resolved" ||
+                observation.resolutionStatus === "manually_resolved" ||
+                observation.resolutionStatus === "probable"),
+          )
+          .map((observation) => observation.canonicalItemId!),
+      );
+
+      const location = await this.identity.applyScanDisappearances({
+        scan,
+        previousOpenItemIds,
+        currentItemIds,
+      });
 
       const processed = await this.scans.markProcessed(scan.id);
-      const observations = await this.identity.listObservationsForScan(scan.id);
-      return { scan: processed, observations, resolvedCount };
+      return {
+        scan: processed,
+        observations,
+        resolvedCount,
+        location,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const failed = await this.scans.markProcessingFailed(scan.id, message);

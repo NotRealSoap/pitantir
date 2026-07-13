@@ -4,6 +4,7 @@ import type {
   CanonicalItem,
   IdentityDecision,
   ItemIdentifier,
+  ItemLocationEvent,
   ItemLocationPeriod,
   Observation,
   ObservationCandidate,
@@ -93,6 +94,25 @@ export interface IdentityStore {
   createLocationPeriod(
     period: Omit<ItemLocationPeriod, "id" | "createdAt" | "supersededAt" | "supersededByPeriodId">,
   ): Promise<ItemLocationPeriod>;
+  updateLocationPeriod(
+    periodId: string,
+    patch: Partial<
+      Pick<
+        ItemLocationPeriod,
+        | "endedAt"
+        | "endReason"
+        | "certainty"
+        | "closingObservationContextScanId"
+        | "notes"
+        | "supersededAt"
+        | "supersededByPeriodId"
+      >
+    >,
+  ): Promise<ItemLocationPeriod>;
+  createLocationEvent(
+    event: Omit<ItemLocationEvent, "id" | "createdAt"> & { id?: string },
+  ): Promise<{ event: ItemLocationEvent; created: boolean }>;
+  listLocationEventsForItem(itemId: string): Promise<ItemLocationEvent[]>;
 }
 
 export function newId(): string {

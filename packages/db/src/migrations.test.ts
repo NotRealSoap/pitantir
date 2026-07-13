@@ -46,6 +46,7 @@ describe("database migrations", () => {
         "canonical_items",
         "identity_decisions",
         "item_identifiers",
+        "item_location_events",
         "item_location_periods",
         "jobs",
         "observation_candidates",

@@ -6,6 +6,7 @@ import {
   type CanonicalItem,
   type IdentityDecision,
   type ItemIdentifier,
+  type ItemLocationEvent,
   type ItemLocationPeriod,
   type Observation,
   type ObservationCandidate,
@@ -15,6 +16,7 @@ import {
   canonicalItems,
   identityDecisions,
   itemIdentifiers,
+  itemLocationEvents,
   itemLocationPeriods,
   observationCandidates,
   observations,
@@ -132,6 +134,24 @@ function mapPeriod(row: typeof itemLocationPeriods.$inferSelect): ItemLocationPe
     createdAt: row.createdAt,
     supersededAt: row.supersededAt,
     supersededByPeriodId: row.supersededByPeriodId,
+  };
+}
+
+function mapEvent(row: typeof itemLocationEvents.$inferSelect): ItemLocationEvent {
+  return {
+    id: row.id,
+    itemId: row.itemId,
+    eventType: row.eventType,
+    fromAccountId: row.fromAccountId,
+    toAccountId: row.toAccountId,
+    eventTime: row.eventTime,
+    certainty: row.certainty as ItemLocationEvent["certainty"],
+    scanId: row.scanId,
+    observationId: row.observationId,
+    periodId: row.periodId,
+    idempotencyKey: row.idempotencyKey,
+    payload: (row.payload as Record<string, unknown>) ?? {},
+    createdAt: row.createdAt,
   };
 }
 
@@ -538,6 +558,73 @@ export class PostgresIdentityStore implements IdentityStore {
     };
     await this.db.insert(itemLocationPeriods).values(row);
     return mapPeriod(row);
+  }
+
+  async updateLocationPeriod(
+    periodId: string,
+    patch: Partial<
+      Pick<
+        ItemLocationPeriod,
+        | "endedAt"
+        | "endReason"
+        | "certainty"
+        | "closingObservationContextScanId"
+        | "notes"
+        | "supersededAt"
+        | "supersededByPeriodId"
+      >
+    >,
+  ): Promise<ItemLocationPeriod> {
+    await this.db
+      .update(itemLocationPeriods)
+      .set(patch)
+      .where(eq(itemLocationPeriods.id, periodId));
+    const rows = await this.db
+      .select()
+      .from(itemLocationPeriods)
+      .where(eq(itemLocationPeriods.id, periodId));
+    if (!rows[0]) throw new Error(`Location period not found: ${periodId}`);
+    return mapPeriod(rows[0]);
+  }
+
+  async createLocationEvent(
+    event: Omit<ItemLocationEvent, "id" | "createdAt"> & { id?: string },
+  ): Promise<{ event: ItemLocationEvent; created: boolean }> {
+    const existing = await this.db
+      .select()
+      .from(itemLocationEvents)
+      .where(eq(itemLocationEvents.idempotencyKey, event.idempotencyKey))
+      .limit(1);
+    if (existing[0]) {
+      return { event: mapEvent(existing[0]), created: false };
+    }
+    const row = {
+      ...event,
+      id: event.id ?? newId(),
+      createdAt: now(),
+    };
+    try {
+      await this.db.insert(itemLocationEvents).values(row);
+      return { event: mapEvent(row), created: true };
+    } catch (error) {
+      const again = await this.db
+        .select()
+        .from(itemLocationEvents)
+        .where(eq(itemLocationEvents.idempotencyKey, event.idempotencyKey))
+        .limit(1);
+      if (again[0]) return { event: mapEvent(again[0]), created: false };
+      throw error;
+    }
+  }
+
+  async listLocationEventsForItem(itemId: string): Promise<ItemLocationEvent[]> {
+    const rows = await this.db
+      .select()
+      .from(itemLocationEvents)
+      .where(eq(itemLocationEvents.itemId, itemId));
+    return rows
+      .map(mapEvent)
+      .sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime());
   }
 }
 

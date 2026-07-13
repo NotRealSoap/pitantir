@@ -1,10 +1,23 @@
-import { and, desc, eq, ilike, isNull, or } from "drizzle-orm";
-import type { CanonicalItem, ItemIdentifier, ItemLocationPeriod, Observation } from "@pitantir/shared/identity";
+import { and, desc, eq, ilike, isNull, or, inArray } from "drizzle-orm";
+import type {
+  CanonicalItem,
+  ItemIdentifier,
+  ItemLocationEvent,
+  ItemLocationPeriod,
+  Observation,
+} from "@pitantir/shared/identity";
 import type { Database } from "../client.js";
-import { canonicalItems, itemIdentifiers, itemLocationPeriods, observations } from "../schema/identity.js";
+import {
+  canonicalItems,
+  itemIdentifiers,
+  itemLocationEvents,
+  itemLocationPeriods,
+  observations,
+} from "../schema/identity.js";
 import { accounts } from "../schema/accounts.js";
 import { scans } from "../schema/scans.js";
 import { ScansRepository, type PublicScanSummary } from "./scans-repository.js";
+import { locationEventLabel } from "./location-engine.js";
 
 export interface ItemListFilters {
   nonce?: string;
@@ -33,7 +46,18 @@ export interface ItemListRow {
 export interface ItemDetail {
   item: CanonicalItem;
   identifiers: ItemIdentifier[];
-  periods: ItemLocationPeriod[];
+  periods: Array<
+    ItemLocationPeriod & {
+      accountUsername: string | null;
+    }
+  >;
+  events: Array<
+    ItemLocationEvent & {
+      fromAccountUsername: string | null;
+      toAccountUsername: string | null;
+      label: string;
+    }
+  >;
   observations: Observation[];
   currentLocation: {
     accountId: string;
@@ -185,7 +209,35 @@ export class CatalogRepository {
       )
       .orderBy(desc(itemLocationPeriods.startedAt));
 
-    const periods: ItemLocationPeriod[] = periodRows.map((row) => ({
+    const accountIds = [
+      ...new Set(
+        periodRows
+          .map((row) => row.accountId)
+          .filter((id): id is string => typeof id === "string"),
+      ),
+    ];
+    const eventRows = await this.db
+      .select()
+      .from(itemLocationEvents)
+      .where(eq(itemLocationEvents.itemId, itemId))
+      .orderBy(desc(itemLocationEvents.eventTime));
+    for (const row of eventRows) {
+      if (row.fromAccountId) accountIds.push(row.fromAccountId);
+      if (row.toAccountId) accountIds.push(row.toAccountId);
+    }
+    const uniqueAccountIds = [...new Set(accountIds)];
+    const usernameById = new Map<string, string>();
+    if (uniqueAccountIds.length > 0) {
+      const accountRows = await this.db
+        .select({ id: accounts.id, username: accounts.mcUsername })
+        .from(accounts)
+        .where(inArray(accounts.id, uniqueAccountIds));
+      for (const row of accountRows) {
+        usernameById.set(row.id, row.username);
+      }
+    }
+
+    const periods: ItemDetail["periods"] = periodRows.map((row) => ({
       id: row.id,
       itemId: row.itemId,
       accountId: row.accountId,
@@ -201,6 +253,28 @@ export class CatalogRepository {
       createdAt: row.createdAt,
       supersededAt: row.supersededAt,
       supersededByPeriodId: row.supersededByPeriodId,
+      accountUsername: row.accountId ? (usernameById.get(row.accountId) ?? null) : null,
+    }));
+
+    const events: ItemDetail["events"] = eventRows.map((row) => ({
+      id: row.id,
+      itemId: row.itemId,
+      eventType: row.eventType,
+      fromAccountId: row.fromAccountId,
+      toAccountId: row.toAccountId,
+      eventTime: row.eventTime,
+      certainty: row.certainty as ItemLocationEvent["certainty"],
+      scanId: row.scanId,
+      observationId: row.observationId,
+      periodId: row.periodId,
+      idempotencyKey: row.idempotencyKey,
+      payload: (row.payload as Record<string, unknown>) ?? {},
+      createdAt: row.createdAt,
+      fromAccountUsername: row.fromAccountId
+        ? (usernameById.get(row.fromAccountId) ?? null)
+        : null,
+      toAccountUsername: row.toAccountId ? (usernameById.get(row.toAccountId) ?? null) : null,
+      label: locationEventLabel(row.eventType),
     }));
 
     const observationRows = await this.db
@@ -232,20 +306,15 @@ export class CatalogRepository {
     const open = periods.find((p) => !p.endedAt && !p.isUnknownGap && p.accountId);
     let currentLocation: ItemDetail["currentLocation"] = null;
     if (open?.accountId) {
-      const accountRows = await this.db
-        .select({ username: accounts.mcUsername })
-        .from(accounts)
-        .where(eq(accounts.id, open.accountId))
-        .limit(1);
       currentLocation = {
         accountId: open.accountId,
-        mcUsername: accountRows[0]?.username ?? null,
+        mcUsername: open.accountUsername,
         startedAt: open.startedAt,
         certainty: open.certainty,
       };
     }
 
-    return { item, identifiers, periods, observations: obs, currentLocation };
+    return { item, identifiers, periods, events, observations: obs, currentLocation };
   }
 
   async listScans(limit = 100): Promise<PublicScanSummary[]> {

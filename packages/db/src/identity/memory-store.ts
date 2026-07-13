@@ -4,6 +4,7 @@ import {
   type CanonicalItem,
   type IdentityDecision,
   type ItemIdentifier,
+  type ItemLocationEvent,
   type ItemLocationPeriod,
   type Observation,
   type ObservationCandidate,
@@ -25,6 +26,7 @@ export class MemoryIdentityStore implements IdentityStore {
   private candidates = new Map<string, ObservationCandidate>();
   private decisions = new Map<string, IdentityDecision>();
   private periods = new Map<string, ItemLocationPeriod>();
+  private events = new Map<string, ItemLocationEvent>();
 
   async getSettings(): Promise<AutoResolveSettings> {
     return { ...this.settings };
@@ -356,5 +358,50 @@ export class MemoryIdentityStore implements IdentityStore {
     };
     this.periods.set(row.id, row);
     return row;
+  }
+
+  async updateLocationPeriod(
+    periodId: string,
+    patch: Partial<
+      Pick<
+        ItemLocationPeriod,
+        | "endedAt"
+        | "endReason"
+        | "certainty"
+        | "closingObservationContextScanId"
+        | "notes"
+        | "supersededAt"
+        | "supersededByPeriodId"
+      >
+    >,
+  ): Promise<ItemLocationPeriod> {
+    const existing = this.periods.get(periodId);
+    if (!existing) throw new Error(`Location period not found: ${periodId}`);
+    const updated = { ...existing, ...patch };
+    this.periods.set(periodId, updated);
+    return updated;
+  }
+
+  async createLocationEvent(
+    event: Omit<ItemLocationEvent, "id" | "createdAt"> & { id?: string },
+  ): Promise<{ event: ItemLocationEvent; created: boolean }> {
+    for (const existing of this.events.values()) {
+      if (existing.idempotencyKey === event.idempotencyKey) {
+        return { event: existing, created: false };
+      }
+    }
+    const row: ItemLocationEvent = {
+      ...event,
+      id: event.id ?? newId(),
+      createdAt: now(),
+    };
+    this.events.set(row.id, row);
+    return { event: row, created: true };
+  }
+
+  async listLocationEventsForItem(itemId: string): Promise<ItemLocationEvent[]> {
+    return [...this.events.values()]
+      .filter((event) => event.itemId === itemId)
+      .sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime());
   }
 }

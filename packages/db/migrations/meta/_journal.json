@@ -29,6 +29,13 @@
       "when": 1783976400000,
       "tag": "0003_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783978200000,
+      "tag": "0004_location_events",
+      "breakpoints": true
     }
   ]
 }

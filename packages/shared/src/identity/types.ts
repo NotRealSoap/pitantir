@@ -5,6 +5,7 @@ import type {
   IdentityConfidence,
   ItemCategory,
   ItemStatus,
+  LocationEventType,
   PeriodCertainty,
   PeriodEndReason,
   PeriodStartReason,
@@ -112,6 +113,22 @@ export interface ItemLocationPeriod {
   createdAt: Date;
   supersededAt: Date | null;
   supersededByPeriodId: string | null;
+}
+
+export interface ItemLocationEvent {
+  id: string;
+  itemId: string;
+  eventType: LocationEventType;
+  fromAccountId: string | null;
+  toAccountId: string | null;
+  eventTime: Date;
+  certainty: PeriodCertainty;
+  scanId: string | null;
+  observationId: string | null;
+  periodId: string | null;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
 }
 
 export interface CandidateScore {

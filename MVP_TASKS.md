@@ -169,21 +169,25 @@ Mark of done for each task: code + automated test (or migration verification) + 
 
 ## Phase 6 — Location engine
 
-### T25 — Presence open/close from resolved observations
+### T25 — Presence open/close from resolved observations ✅
 - Implement §6.1–6.2 of `SCANNING_RULES.md`
 - **Test:** failed scan no close; successful empty closes to unknown gap
+- **Done:** 2026-07-13 — `LocationEngine` + `item_location_events`
 
-### T26 — Confirmed vs uncertain moves
+### T26 — Confirmed vs uncertain moves ✅
 - Implement move_confirmed gates + move_uncertain
 - **Test:** absence+presence same item ⇒ one confirmed event; clone ambiguity ⇒ uncertain/no confirm
+- **Done:** 2026-07-13
 
-### T27 — Event idempotency
+### T27 — Event idempotency ✅
 - Reprocess scan emits no duplicate location events
 - **Test:** process twice, event count unchanged
+- **Done:** 2026-07-13 — unique `idempotency_key` on `item_location_events`
 
-### T28 — Contradiction handling
+### T28 — Contradiction handling ✅
 - Mark periods contradicted; keep evidence
 - **Test:** dual-account open presence for non-clone flags contradiction
+- **Done:** 2026-07-13
 
 ---
 
