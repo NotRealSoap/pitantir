@@ -23,7 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/items" style={{ marginRight: "1rem" }}>
               Items
             </a>
-            <a href="/scans">Scans</a>
+            <a href="/scans" style={{ marginRight: "1rem" }}>
+              Scans
+            </a>
+            <a href="/settings">Settings</a>
           </nav>
         </header>
         {children}
