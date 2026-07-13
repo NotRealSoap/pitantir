@@ -173,6 +173,53 @@ describe("pit nbt decode", () => {
       customEnchants: { billionaire: 3, lifesteal: 3 },
     });
   });
+
+  it("keeps ExtraAttributes uuid separate from Nonce", async () => {
+    const compound = {
+      type: "compound" as const,
+      name: "",
+      value: {
+        i: {
+          type: "list" as const,
+          value: {
+            type: "compound" as const,
+            value: [
+              {
+                id: { type: "short", value: 276 },
+                Slot: { type: "byte", value: 1 },
+                Count: { type: "byte", value: 1 },
+                tag: {
+                  type: "compound",
+                  value: {
+                    display: {
+                      type: "compound",
+                      value: {
+                        Name: { type: "string", value: "§dMystic Sword" },
+                      },
+                    },
+                    ExtraAttributes: {
+                      type: "compound",
+                      value: {
+                        Nonce: { type: "int", value: 42 },
+                        uuid: { type: "string", value: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
+    // @ts-expect-error prismarine write accepts compiler compound shape
+    const data = signedBytes(gzipSync(nbt.writeUncompressed(compound)));
+    const items = await decodePitInventoryPayload({ type: 0, data });
+    expect(bookFieldsFromNbtItem(items[0]!)).toMatchObject({
+      nonce: "42",
+      itemUuid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    });
+  });
 });
 
 describe("HypixelPitInventorySource", () => {

@@ -1,5 +1,5 @@
 import type { CanonicalItem, Observation } from "@pitantir/shared/identity";
-import { extractBookSlots } from "@pitantir/shared/inventory";
+import { extractBookSlots, resolveMysticIds } from "@pitantir/shared/inventory";
 import type { Database } from "../client.js";
 import type { PublicAccount } from "../accounts/repository.js";
 import { AccountsRepository } from "../accounts/repository.js";
@@ -22,7 +22,10 @@ export interface ObservedItemSummary {
   scanId: string;
   slotKey: string;
   title: string | null;
+  /** Mystic Nonce — primary tracking id */
   nonce: string | null;
+  /** ExtraAttributes item UUID when present (distinct from nonce) */
+  itemUuid: string | null;
   kind: string | null;
   customEnchants: Record<string, number> | null;
   lore: string[] | null;
@@ -48,42 +51,29 @@ function asNumberRecord(value: unknown): Record<string, number> | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
-function summarizeObservation(observation: Observation): ObservedItemSummary {
-  const raw = observation.rawItem;
-  const lore = Array.isArray(raw.lore) ? raw.lore.map(String) : null;
-  return {
-    observationId: observation.id,
-    scanId: observation.scanId,
-    slotKey: observation.slotKey,
-    title:
-      observation.normalizedMetadata.title ??
-      (typeof raw.title === "string" ? raw.title : null),
-    nonce: observation.observedNonce,
-    kind: typeof raw.kind === "string" ? raw.kind : null,
-    customEnchants: asNumberRecord(raw.customEnchants),
-    lore,
-    resolutionStatus: observation.resolutionStatus,
-    canonicalItemId: observation.canonicalItemId,
-  };
-}
-
-function summarizeRawSlot(
+function summarizeSlot(
   scanId: string,
   slotKey: string,
   rawItem: Record<string, unknown>,
+  observation?: Observation,
 ): ObservedItemSummary {
+  const ids = resolveMysticIds(rawItem);
   const lore = Array.isArray(rawItem.lore) ? rawItem.lore.map(String) : null;
   return {
-    observationId: `pending:${scanId}:${slotKey}`,
+    observationId: observation?.id ?? `pending:${scanId}:${slotKey}`,
     scanId,
     slotKey,
-    title: typeof rawItem.title === "string" ? rawItem.title : null,
-    nonce: typeof rawItem.nonce === "string" ? rawItem.nonce : null,
+    title:
+      observation?.normalizedMetadata.title ??
+      (typeof rawItem.title === "string" ? rawItem.title : null),
+    // Prefer live raw ids (what worker logs); fall back to observation.observedNonce.
+    nonce: ids.nonce ?? observation?.observedNonce ?? null,
+    itemUuid: ids.itemUuid,
     kind: typeof rawItem.kind === "string" ? rawItem.kind : null,
     customEnchants: asNumberRecord(rawItem.customEnchants),
     lore,
-    resolutionStatus: "pending_process",
-    canonicalItemId: null,
+    resolutionStatus: observation?.resolutionStatus ?? "pending_process",
+    canonicalItemId: observation?.canonicalItemId ?? null,
   };
 }
 
@@ -131,16 +121,18 @@ export class AccountHistoryService {
 
     const latestSuccess = allScans.find((scan) => scan.status === "success");
     let latestObservedItems: ObservedItemSummary[] = [];
-    if (latestSuccess) {
+    if (latestSuccess?.rawInventory) {
       const observations = await this.identityStore.listObservationsForScan(latestSuccess.id);
-      if (observations.length > 0) {
-        latestObservedItems = observations.map(summarizeObservation);
-      } else if (latestSuccess.rawInventory) {
-        // Same nonces the worker logs, available before process_scan finishes.
-        latestObservedItems = extractBookSlots(latestSuccess.rawInventory).map((slot) =>
-          summarizeRawSlot(latestSuccess.id, slot.slotKey, slot.rawItem),
-        );
-      }
+      const bySlot = new Map(observations.map((observation) => [observation.slotKey, observation]));
+      // Always derive nonce/uuid from the scan payload (same source as worker logs).
+      latestObservedItems = extractBookSlots(latestSuccess.rawInventory).map((slot) =>
+        summarizeSlot(latestSuccess.id, slot.slotKey, slot.rawItem, bySlot.get(slot.slotKey)),
+      );
+    } else if (latestSuccess) {
+      const observations = await this.identityStore.listObservationsForScan(latestSuccess.id);
+      latestObservedItems = observations.map((observation) =>
+        summarizeSlot(latestSuccess.id, observation.slotKey, observation.rawItem, observation),
+      );
     }
     latestObservedItems.sort((a, b) => a.slotKey.localeCompare(b.slotKey));
 

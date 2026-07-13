@@ -186,6 +186,9 @@ export default function AccountDetailPage() {
                 <div>
                   Nonce: <code>{item.nonce ?? "—"}</code>
                 </div>
+                <div>
+                  Item UUID: <code>{item.itemUuid ?? "—"}</code>
+                </div>
                 {item.customEnchants ? (
                   <div>
                     Enchants:{" "}

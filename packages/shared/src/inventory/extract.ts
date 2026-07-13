@@ -1,5 +1,5 @@
 import type { ExtractedBookSlot } from "./types.js";
-import { coerceInventoryNonce } from "./nonce.js";
+import { resolveMysticIds } from "./nonce.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -17,8 +17,8 @@ function looksLikeTrackedItem(item: Record<string, unknown>): boolean {
   ) {
     return true;
   }
-  // Mystic gear and other tracked Pit items are keyed by nonce.
-  if (coerceInventoryNonce(item.nonce) !== null) {
+  // Mystic gear and other tracked Pit items are keyed by nonce (top-level or ExtraAttributes).
+  if (resolveMysticIds(item).nonce !== null) {
     return true;
   }
   return (
@@ -35,13 +35,19 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
       ? item.pages
       : undefined;
 
-  const lore = Array.isArray(item.lore)
-    ? item.lore.map(String)
-    : undefined;
+  const lore = Array.isArray(item.lore) ? item.lore.map(String) : undefined;
 
   const customEnchants =
     item.customEnchants && typeof item.customEnchants === "object" && !Array.isArray(item.customEnchants)
       ? (item.customEnchants as Record<string, unknown>)
+      : undefined;
+
+  const ids = resolveMysticIds(item);
+  const hypixelExtraAttributes =
+    item.hypixelExtraAttributes &&
+    typeof item.hypixelExtraAttributes === "object" &&
+    !Array.isArray(item.hypixelExtraAttributes)
+      ? item.hypixelExtraAttributes
       : undefined;
 
   return {
@@ -57,15 +63,11 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
     lore,
     customEnchants,
     kind: typeof item.kind === "string" ? item.kind : undefined,
-    nonce: coerceInventoryNonce(item.nonce) ?? undefined,
+    nonce: ids.nonce ?? undefined,
+    itemUuid: ids.itemUuid ?? undefined,
     generation: typeof item.generation === "string" ? item.generation : undefined,
     type: typeof item.type === "string" ? item.type : typeof item.id === "string" ? item.id : undefined,
-    hypixelExtraAttributes:
-      item.hypixelExtraAttributes &&
-      typeof item.hypixelExtraAttributes === "object" &&
-      !Array.isArray(item.hypixelExtraAttributes)
-        ? item.hypixelExtraAttributes
-        : undefined,
+    hypixelExtraAttributes,
   };
 }
 
@@ -104,7 +106,7 @@ function extractFromContainer(
 }
 
 /**
- * Extract book-like items from a successful raw inventory payload.
+ * Extract tracked mystic/book items from a successful raw inventory payload.
  * Supports:
  * - `{ inventory: [...], ender_chest: [...] }`
  * - `{ containers: [{ name, slots: [...] }] }`

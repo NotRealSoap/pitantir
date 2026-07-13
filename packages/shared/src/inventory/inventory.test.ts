@@ -98,4 +98,26 @@ describe("inventory extraction + mock source", () => {
       customEnchants: { billionaire: 3, lifesteal: 3 },
     });
   });
+
+  it("recovers Nonce + uuid from hypixelExtraAttributes when top-level nonce missing", () => {
+    const slots = extractBookSlots({
+      inventory: [
+        {
+          slot: 2,
+          id: "276",
+          title: "Mystic Sword",
+          hypixelExtraAttributes: {
+            Nonce: 777001,
+            uuid: "11111111-2222-3333-4444-555555555555",
+            CustomEnchants: { billionaire: 3 },
+          },
+        },
+      ],
+    });
+    expect(slots).toHaveLength(1);
+    expect(slots[0]?.rawItem).toMatchObject({
+      nonce: "777001",
+      itemUuid: "11111111-2222-3333-4444-555555555555",
+    });
+  });
 });

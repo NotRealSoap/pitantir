@@ -1,6 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import nbt from "prismarine-nbt";
-import { pickInventoryNonce } from "./nonce.js";
+import { coerceInventoryUuid, pickInventoryNonce } from "./nonce.js";
 
 export interface DecodedInventoryItem {
   slot: number | null;
@@ -129,9 +129,11 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     extra.Nonce,
     tag.nonce,
     tag.Nonce,
-    // Some exports put uuid on ExtraAttributes; keep as last resort for books.
-    extra.uuid,
   );
+  const itemUuid =
+    coerceInventoryUuid(extra.uuid) ??
+    coerceInventoryUuid(extra.UUID) ??
+    coerceInventoryUuid(extra.Uuid);
 
   const lore =
     Array.isArray(display.Lore)
@@ -166,6 +168,7 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     lore: lore && lore.length > 0 ? lore : undefined,
     customEnchants: customEnchants ?? undefined,
     nonce: nonce ?? undefined,
+    itemUuid: itemUuid ?? undefined,
     generation: typeof tag.generation === "number" ? String(tag.generation) : undefined,
     hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,
   };

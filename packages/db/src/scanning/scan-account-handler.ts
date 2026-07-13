@@ -1,5 +1,6 @@
 import {
   extractBookSlots,
+  resolveMysticIds,
   type InventorySource,
 } from "@pitantir/shared/inventory";
 import type { Job } from "../jobs/repository.js";
@@ -14,6 +15,7 @@ export interface ScanAccountHandlerResult {
   resolvedMcUuid?: string | null;
   inventorySource?: string;
   observedNonces?: string[];
+  observedItemUuids?: string[];
 }
 
 function asTriggeredBy(value: unknown): ScanTriggeredBy {
@@ -115,17 +117,20 @@ export class ScanAccountHandler {
       rawInventory: fetched.rawInventory,
     });
     const enqueued = await this.enqueueProcessScan(success.id);
-    const observedNonces = extractBookSlots(fetched.rawInventory)
-      .map((slot) =>
-        typeof slot.rawItem.nonce === "string" ? slot.rawItem.nonce : null,
-      )
+    const slots = extractBookSlots(fetched.rawInventory);
+    const observedNonces = slots
+      .map((slot) => resolveMysticIds(slot.rawItem).nonce)
       .filter((nonce): nonce is string => Boolean(nonce));
+    const observedItemUuids = slots
+      .map((slot) => resolveMysticIds(slot.rawItem).itemUuid)
+      .filter((uuid): uuid is string => Boolean(uuid));
     return {
       scan: success,
       enqueuedProcessScan: enqueued,
       resolvedMcUuid,
       inventorySource: this.inventory.id,
       observedNonces,
+      observedItemUuids,
     };
   }
 
