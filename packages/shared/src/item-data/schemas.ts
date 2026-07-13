@@ -40,9 +40,11 @@ export const itemSearchResponseSchema = z.object({
     "no_results",
     "invalid_search",
     "unsupported_search",
+    "configuration_error",
     "upstream_unavailable",
     "rate_limited",
   ]),
+  dataSource: z.enum(["pitpanda", "local_database"]).nullable().optional(),
   page: z.number().int(),
   hasNextPage: z.boolean(),
   items: z.array(

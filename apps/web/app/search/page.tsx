@@ -6,9 +6,14 @@ import type { ItemSearchResponse } from "@pitantir/shared/item-data";
 type SearchKind = "exact_nonce" | "current_owner" | "past_owner";
 
 const kindLabels: Record<SearchKind, string> = {
-  exact_nonce: "Exact nonce",
+  exact_nonce: "Nonce",
   current_owner: "Current owner",
   past_owner: "Past owner",
+};
+
+const dataSourceLabels: Record<NonNullable<ItemSearchResponse["dataSource"]>, string> = {
+  pitpanda: "PitPanda",
+  local_database: "Local database",
 };
 
 export default function SearchPage() {
@@ -33,6 +38,7 @@ export default function SearchPage() {
     } catch {
       setResult({
         status: "upstream_unavailable",
+        dataSource: "pitpanda",
         page: nextPage,
         hasNextPage: false,
         items: [],
@@ -45,8 +51,11 @@ export default function SearchPage() {
 
   return (
     <main>
-      <h1>Item search</h1>
-      <p>Search upstream item evidence via Pitantir. Results are ingested as observations for identity review.</p>
+      <h1>Item Search</h1>
+      <p>
+        Search upstream item evidence through Pitantir. The browser calls our server only; the
+        PitPanda API key never leaves the server.
+      </p>
 
       <form
         onSubmit={(event) => {
@@ -55,7 +64,7 @@ export default function SearchPage() {
         }}
         style={{ display: "grid", gap: "0.75rem", maxWidth: "32rem", marginTop: "1rem" }}
       >
-        <label>
+        <label style={{ display: "grid", gap: "0.25rem" }}>
           Search type
           <select value={kind} onChange={(event) => setKind(event.target.value as SearchKind)}>
             {Object.entries(kindLabels).map(([key, label]) => (
@@ -66,7 +75,7 @@ export default function SearchPage() {
           </select>
         </label>
 
-        <label>
+        <label style={{ display: "grid", gap: "0.25rem" }}>
           Value
           <input
             value={value}
@@ -88,26 +97,49 @@ export default function SearchPage() {
         <section style={{ marginTop: "1.5rem" }}>
           <StatusBanner result={result} />
           {result.status === "ok" ? (
-            <ul>
+            <ul style={{ listStyle: "none", padding: 0 }}>
               {result.items.map((item) => (
-                <li key={item.providerItemKey} style={{ marginBottom: "1rem" }}>
-                  <div>
-                    <strong>{item.source}</strong> · {item.providerItemKey}
+                <li
+                  key={item.providerItemKey}
+                  style={{
+                    marginBottom: "1.25rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "6px",
+                    padding: "1rem",
+                  }}
+                >
+                  <div style={{ marginBottom: "0.5rem" }}>
+                    <strong>Source:</strong>{" "}
+                    {result.dataSource ? dataSourceLabels[result.dataSource] : item.source}
                   </div>
-                  <div>Resolution: {item.resolutionStatus}</div>
                   <div>
-                    Canonical item: {item.canonicalItemId ?? "unassigned"}
+                    <strong>Provider key:</strong> {item.providerItemKey}
                   </div>
-                  <pre
-                    style={{
-                      background: "#f4f4f4",
-                      padding: "0.75rem",
-                      overflowX: "auto",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    {JSON.stringify(item.rawPayload, null, 2)}
-                  </pre>
+                  <div>
+                    <strong>Resolution:</strong> {item.resolutionStatus}
+                  </div>
+                  <div>
+                    <strong>Canonical item:</strong> {item.canonicalItemId ?? "unassigned"}
+                  </div>
+                  {item.observedAt ? (
+                    <div>
+                      <strong>Observed at:</strong> {item.observedAt}
+                    </div>
+                  ) : null}
+                  <details style={{ marginTop: "0.75rem" }}>
+                    <summary>Raw upstream JSON (development)</summary>
+                    <pre
+                      style={{
+                        background: "#f4f4f4",
+                        padding: "0.75rem",
+                        overflowX: "auto",
+                        fontSize: "0.85rem",
+                        marginTop: "0.5rem",
+                      }}
+                    >
+                      {JSON.stringify(item.rawPayload, null, 2)}
+                    </pre>
+                  </details>
                 </li>
               ))}
             </ul>
@@ -126,16 +158,24 @@ export default function SearchPage() {
 
 function StatusBanner({ result }: { result: ItemSearchResponse }) {
   if (result.status === "ok") {
-    return <p>Page {result.page + 1}: {result.items.length} result(s).</p>;
+    const sourceLabel = result.dataSource ? dataSourceLabels[result.dataSource] : "Unknown";
+    return (
+      <p>
+        Page {result.page + 1}: {result.items.length} result(s) from <strong>{sourceLabel}</strong>.
+      </p>
+    );
   }
 
   const messages: Record<ItemSearchResponse["status"], string> = {
     ok: "",
     no_results: result.message ?? "No results found.",
-    invalid_search: result.message ?? "Invalid search.",
-    unsupported_search: result.message ?? "Unsupported search.",
+    invalid_search: result.message ?? "Invalid search input.",
+    unsupported_search: result.message ?? "Unsupported search type.",
+    configuration_error:
+      result.message ??
+      "Search is not configured on the server. Add PITPANDA_API_KEY to apps/web/.env.local and restart the dev server.",
     upstream_unavailable: result.message ?? "Search is temporarily unavailable.",
-    rate_limited: result.message ?? "Rate limit reached.",
+    rate_limited: result.message ?? "Rate limit reached. Try again shortly.",
   };
 
   return <p role="alert">{messages[result.status]}</p>;

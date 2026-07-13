@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { itemSearchRequestSchema } from "@pitantir/shared/item-data";
+import {
+  ItemSearchError,
+  itemSearchRequestSchema,
+  type ItemSearchResponse,
+} from "@pitantir/shared/item-data";
 import { executeItemSearch, itemSearchCacheKey } from "../../../src/server/item-search-service";
 import { InMemoryRateLimiter } from "../../../src/server/rate-limit";
 import { TtlCache } from "../../../src/server/search-cache";
 import { getItemDataProvider, getUpstreamIngestor } from "../../../src/server/runtime";
-import type { ItemSearchResponse } from "@pitantir/shared/item-data";
 
 const rateLimiter = new InMemoryRateLimiter(20, 60_000);
 const searchCache = new TtlCache<ItemSearchResponse>(60_000);
@@ -17,6 +20,16 @@ function clientIp(request: Request): string {
   );
 }
 
+function configurationErrorResponse(page = 0): ItemSearchResponse {
+  return {
+    status: "configuration_error",
+    page,
+    hasNextPage: false,
+    items: [],
+    message: "Search is not configured on the server.",
+  };
+}
+
 export async function POST(request: Request) {
   const ip = clientIp(request);
   const limit = rateLimiter.check(ip);
@@ -24,6 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         status: "rate_limited",
+        dataSource: "pitpanda",
         page: 0,
         hasNextPage: false,
         items: [],
@@ -73,9 +87,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    const provider = getItemDataProvider();
     const result = await executeItemSearch(
       {
-        provider: getItemDataProvider(),
+        provider,
         ingestor: getUpstreamIngestor(),
       },
       parsed.data,
@@ -88,14 +103,20 @@ export async function POST(request: Request) {
         ? 429
         : result.status === "invalid_search"
           ? 400
-          : result.status === "upstream_unavailable"
+          : result.status === "configuration_error"
             ? 503
-            : 200;
+            : result.status === "upstream_unavailable"
+              ? 503
+              : 200;
     return NextResponse.json(result, { status: statusCode });
-  } catch {
+  } catch (error) {
+    if (error instanceof ItemSearchError && error.code === "configuration_error") {
+      return NextResponse.json(configurationErrorResponse(parsed.data.page), { status: 503 });
+    }
     return NextResponse.json(
       {
         status: "upstream_unavailable",
+        dataSource: "pitpanda",
         page: parsed.data.page,
         hasNextPage: false,
         items: [],

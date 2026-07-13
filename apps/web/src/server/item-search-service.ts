@@ -36,6 +36,7 @@ export async function executeItemSearch(
     if (page.items.length === 0) {
       return {
         status: "no_results",
+        dataSource: "pitpanda",
         page: page.page,
         hasNextPage: false,
         items: [],
@@ -49,6 +50,7 @@ export async function executeItemSearch(
 
     return {
       status: "ok",
+      dataSource: "pitpanda",
       page: page.page,
       hasNextPage: page.hasNextPage,
       items: page.items.map((item, index) => ({
@@ -104,14 +106,24 @@ function mapItemSearchError(error: ItemSearchError, page: number): ItemSearchRes
     case "upstream_rate_limited":
       return {
         status: "rate_limited",
+        dataSource: "pitpanda",
         page,
         hasNextPage: false,
         items: [],
         message: "Search rate limit reached. Try again shortly.",
       };
+    case "configuration_error":
+      return {
+        status: "configuration_error",
+        page,
+        hasNextPage: false,
+        items: [],
+        message: "Search is not configured on the server.",
+      };
     default:
       return {
         status: "upstream_unavailable",
+        dataSource: "pitpanda",
         page,
         hasNextPage: false,
         items: [],

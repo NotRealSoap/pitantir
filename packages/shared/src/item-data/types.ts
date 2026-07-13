@@ -40,10 +40,14 @@ export interface ItemDataProvider {
 export type ItemSearchErrorCode =
   | "invalid_search"
   | "unsupported_search"
+  | "configuration_error"
   | "upstream_unavailable"
   | "upstream_rate_limited"
   | "upstream_unauthorized"
   | "no_results";
+
+export const ITEM_DATA_SOURCES = ["pitpanda", "local_database"] as const;
+export type ItemDataSource = (typeof ITEM_DATA_SOURCES)[number];
 
 export class ItemSearchError extends Error {
   constructor(

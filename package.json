@@ -6,6 +6,8 @@
     "typecheck": "tsc -b && pnpm --filter @pitantir/web typecheck",
     "lint": "eslint .",
     "test": "vitest run",
+    "dev": "pnpm --filter @pitantir/web dev",
+    "build:web": "pnpm --filter @pitantir/web build",
     "db:migrate": "pnpm --filter @pitantir/db migrate",
     "db:generate": "pnpm --filter @pitantir/db db:generate"
   },

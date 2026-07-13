@@ -44,7 +44,10 @@ export function createItemDataProvider(config: ItemDataProviderFactoryConfig): I
 
   if (providerId === "pitpanda" || providerId === "composite") {
     if (!config.pitpandaApiKey) {
-      throw new ItemSearchError("upstream_unavailable", "PitPanda provider is not configured");
+      throw new ItemSearchError(
+        "configuration_error",
+        "Search is not configured on the server.",
+      );
     }
     providers.push(new PitPandaItemDataProvider({ apiKey: config.pitpandaApiKey }));
   }
