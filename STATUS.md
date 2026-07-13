@@ -49,4 +49,4 @@ pnpm db:migrate  # applies migrations/0000_init_identity.sql
 - Local dev: `docker compose up -d` or system Postgres with `.env` from `.env.example`.
 - Migration test uses `pitantir_test` database; drops `public` and `drizzle` schemas before each run.
 - PitPanda search uses in-memory identity store and in-memory rate limit/cache (single-process MVP).
-- Set `PITPANDA_API_KEY` in server environment only; never expose to client bundles.
+- Set `PITPANDA_API_KEY` via the Item Search “Connect PitPanda” form (saved to `apps/web/.env.local`) or env; never expose the key in API responses or client bundles.

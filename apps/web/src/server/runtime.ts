@@ -1,5 +1,6 @@
 import { createItemDataProvider } from "@pitantir/shared/item-data";
 import { IdentityService, MemoryIdentityStore, UpstreamObservationIngestor } from "@pitantir/db";
+import { getPitPandaApiKey } from "./pitpanda-key-store";
 
 let identityService: IdentityService | null = null;
 let ingestor: UpstreamObservationIngestor | null = null;
@@ -20,7 +21,7 @@ export function getUpstreamIngestor(): UpstreamObservationIngestor {
 
 export function getItemDataProvider() {
   return createItemDataProvider({
-    pitpandaApiKey: process.env.PITPANDA_API_KEY,
+    pitpandaApiKey: getPitPandaApiKey(),
     providerId: process.env.ITEM_DATA_PROVIDER,
   });
 }

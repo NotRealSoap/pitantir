@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ItemSearchResponse } from "@pitantir/shared/item-data";
 
 type SearchKind = "exact_nonce" | "current_owner" | "past_owner";
@@ -22,6 +22,50 @@ export default function SearchPage() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ItemSearchResponse | null>(null);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
+  const [keyMessage, setKeyMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refreshConfigured();
+  }, []);
+
+  async function refreshConfigured() {
+    try {
+      const response = await fetch("/api/settings/pitpanda");
+      const payload = (await response.json()) as { configured?: boolean };
+      setConfigured(Boolean(payload.configured));
+    } catch {
+      setConfigured(false);
+    }
+  }
+
+  async function saveApiKey() {
+    setSavingKey(true);
+    setKeyMessage(null);
+    try {
+      const response = await fetch("/api/settings/pitpanda", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: apiKeyInput }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; configured?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        setKeyMessage(payload.error ?? "Could not save API key.");
+        setConfigured(false);
+        return;
+      }
+      setConfigured(true);
+      setApiKeyInput("");
+      setKeyMessage("PitPanda API key saved on the server. You can search now.");
+      setResult(null);
+    } catch {
+      setKeyMessage("Could not save API key.");
+    } finally {
+      setSavingKey(false);
+    }
+  }
 
   async function runSearch(nextPage = 0) {
     setLoading(true);
@@ -35,6 +79,11 @@ export default function SearchPage() {
       const payload = (await response.json()) as ItemSearchResponse;
       setResult(payload);
       setPage(nextPage);
+      if (payload.status === "configuration_error") {
+        setConfigured(false);
+      } else if (payload.status === "ok" || payload.status === "no_results") {
+        setConfigured(true);
+      }
     } catch {
       setResult({
         status: "upstream_unavailable",
@@ -49,6 +98,8 @@ export default function SearchPage() {
     }
   }
 
+  const needsKey = configured === false;
+
   return (
     <main>
       <h1>Item Search</h1>
@@ -56,6 +107,65 @@ export default function SearchPage() {
         Search upstream item evidence through Pitantir. The browser calls our server only; the
         PitPanda API key never leaves the server.
       </p>
+
+      {needsKey ? (
+        <section
+          style={{
+            marginTop: "1rem",
+            marginBottom: "1.5rem",
+            padding: "1rem",
+            border: "1px solid #ccc",
+            borderRadius: "6px",
+            maxWidth: "32rem",
+            background: "#fafafa",
+          }}
+        >
+          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Connect PitPanda</h2>
+          <p style={{ marginTop: 0 }}>
+            Paste your PitPanda API key. It is sent to this app’s server route and stored only on
+            the server (local <code>.env.local</code>). It is never shown again in the UI.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveApiKey();
+            }}
+            style={{ display: "grid", gap: "0.75rem" }}
+          >
+            <label style={{ display: "grid", gap: "0.25rem" }}>
+              PitPanda API key
+              <input
+                type="password"
+                autoComplete="off"
+                value={apiKeyInput}
+                onChange={(event) => setApiKeyInput(event.target.value)}
+                placeholder="Paste key here"
+                required
+                minLength={8}
+              />
+            </label>
+            <button type="submit" disabled={savingKey || apiKeyInput.trim().length < 8}>
+              {savingKey ? "Saving…" : "Save key"}
+            </button>
+          </form>
+          {keyMessage ? <p role="status">{keyMessage}</p> : null}
+        </section>
+      ) : (
+        <p style={{ color: "#255", marginTop: "0.5rem" }}>
+          PitPanda: <strong>{configured === null ? "checking…" : "configured"}</strong>
+          {" · "}
+          <button
+            type="button"
+            onClick={() => {
+              setConfigured(false);
+              setKeyMessage(null);
+            }}
+            style={{ background: "none", border: "none", color: "#06c", cursor: "pointer", padding: 0 }}
+          >
+            Replace key
+          </button>
+        </p>
+      )}
 
       <form
         onSubmit={(event) => {
@@ -172,8 +282,7 @@ function StatusBanner({ result }: { result: ItemSearchResponse }) {
     invalid_search: result.message ?? "Invalid search input.",
     unsupported_search: result.message ?? "Unsupported search type.",
     configuration_error:
-      result.message ??
-      "Search is not configured on the server. Add PITPANDA_API_KEY to apps/web/.env.local and restart the dev server.",
+      result.message ?? "Search is not configured. Paste your PitPanda API key above.",
     upstream_unavailable: result.message ?? "Search is temporarily unavailable.",
     rate_limited: result.message ?? "Rate limit reached. Try again shortly.",
   };
