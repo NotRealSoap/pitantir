@@ -44,7 +44,7 @@ export async function executeItemSearch(
       };
     }
 
-    const ingestion = deps.ingestor.ingest(page.items, {
+    const ingestion = await deps.ingestor.ingest(page.items, {
       searchQuery: domainSearchQueryLabel(input),
     });
 

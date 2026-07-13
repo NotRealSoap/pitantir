@@ -14,22 +14,30 @@ export interface IdentitySnapshot {
   locationPeriods: ItemLocationPeriod[];
 }
 
-export function captureSnapshot(
+export async function captureSnapshot(
   store: IdentityStore,
   itemIds: string[],
   observationIds: string[] = [],
-): IdentitySnapshot {
-  const items = itemIds
-    .map((itemId) => store.getCanonicalItem(itemId))
-    .filter((item): item is CanonicalItem => item !== null);
+): Promise<IdentitySnapshot> {
+  const itemResults = await Promise.all(itemIds.map((itemId) => store.getCanonicalItem(itemId)));
+  const items = itemResults.filter((item): item is CanonicalItem => item !== null);
 
-  const identifiers = itemIds.flatMap((itemId) => store.listIdentifiersForItem(itemId));
+  const identifiersArrays = await Promise.all(
+    itemIds.map((itemId) => store.listIdentifiersForItem(itemId)),
+  );
+  const identifiers = identifiersArrays.flat();
 
-  const observations = observationIds
-    .map((observationId) => store.getObservation(observationId))
-    .filter((observation): observation is Observation => observation !== null);
+  const observationResults = await Promise.all(
+    observationIds.map((observationId) => store.getObservation(observationId)),
+  );
+  const observations = observationResults.filter(
+    (observation): observation is Observation => observation !== null,
+  );
 
-  const locationPeriods = itemIds.flatMap((itemId) => store.listLocationPeriodsForItem(itemId));
+  const locationPeriodsArrays = await Promise.all(
+    itemIds.map((itemId) => store.listLocationPeriodsForItem(itemId)),
+  );
+  const locationPeriods = locationPeriodsArrays.flat();
 
   return {
     items: structuredClone(items),
@@ -39,13 +47,16 @@ export function captureSnapshot(
   };
 }
 
-export function restoreSnapshot(store: IdentityStore, snapshot: IdentitySnapshot): void {
+export async function restoreSnapshot(
+  store: IdentityStore,
+  snapshot: IdentitySnapshot,
+): Promise<void> {
   for (const item of snapshot.items) {
-    store.updateCanonicalItem(item.id, item);
+    await store.updateCanonicalItem(item.id, item);
   }
 
   for (const observation of snapshot.observations) {
-    store.updateObservationResolution(observation.id, {
+    await store.updateObservationResolution(observation.id, {
       canonicalItemId: observation.canonicalItemId,
       resolutionStatus: observation.resolutionStatus,
       confidence: observation.confidence,
@@ -56,11 +67,11 @@ export function restoreSnapshot(store: IdentityStore, snapshot: IdentitySnapshot
   }
 
   for (const itemId of snapshot.items.map((item) => item.id)) {
-    store.supersedeLocationPeriodsForItem(itemId, new Date());
+    await store.supersedeLocationPeriodsForItem(itemId, new Date());
   }
 
   for (const period of snapshot.locationPeriods) {
-    store.createLocationPeriod({
+    await store.createLocationPeriod({
       itemId: period.itemId,
       accountId: period.accountId,
       startedAt: period.startedAt,

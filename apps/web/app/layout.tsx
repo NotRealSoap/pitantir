@@ -10,9 +10,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header style={{ marginBottom: "1.5rem" }}>
           <strong>Pitantir</strong>
           <nav style={{ marginTop: "0.5rem" }}>
-            <a href="/search" style={{ marginRight: "1rem" }}>
-              Item search
-            </a>
+        <a href="/search" style={{ marginRight: "1rem" }}>
+          Item search
+        </a>
+        <a href="/accounts">Accounts</a>
           </nav>
         </header>
         {children}

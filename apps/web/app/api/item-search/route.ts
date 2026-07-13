@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     const result = await executeItemSearch(
       {
         provider,
-        ingestor: getUpstreamIngestor(),
+        ingestor: await getUpstreamIngestor(),
       },
       parsed.data,
     );

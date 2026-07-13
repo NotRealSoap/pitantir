@@ -30,15 +30,17 @@ Mark of done for each task: code + automated test (or migration verification) + 
 - **Test:** migrate up on fresh DB
 - **Done:** 2026-07-13 — `docker-compose.yml`, `drizzle.config.ts`, `0000_init_identity` migration, `pnpm db:migrate`
 
-### T03 — Core enums & `admin_settings`
+### T03 — Core enums & `admin_settings` ✅
 - Create enums for scan/resolution/location/identity
 - `admin_settings` table with defaults (scan interval, thresholds)
 - **Test:** seed defaults; read round-trip
+- **Done:** 2026-07-13 — `admin_settings` migration + `seedAdminSettings`
 
-### T04 — `accounts` table + soft delete
+### T04 — `accounts` table + soft delete ✅
 - Schema per `DATA_MODEL.md`
 - Unique username constraint among active rows
 - **Test:** soft-deleted username can be re-added; enabled filter works
+- **Done:** 2026-07-13 — accounts migration, repository, `/accounts` UI + API
 
 ### T05 — `canonical_items` + `item_identifiers` ✅
 - Schema per `DATA_MODEL.md`

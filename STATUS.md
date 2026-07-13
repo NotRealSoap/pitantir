@@ -4,7 +4,7 @@ Last updated: 2026-07-13
 
 ## Current phase
 
-Phase 1 — Database foundation (in progress)
+Phase 1 — Database foundation + operator accounts UI
 
 ## Completed tasks
 
@@ -12,41 +12,33 @@ Phase 1 — Database foundation (in progress)
 |---|---|---|
 | T00 | Monorepo bootstrap | 2026-07-13 |
 | T01 | Documentation gate | 2026-07-13 |
-| T02 | Postgres + Drizzle setup (Compose, migrations, migrate runner) | 2026-07-13 |
-| T05 | `canonical_items` + `item_identifiers` (schema + memory store) | 2026-07-13 |
-| T06 | Observations + candidates (identity scope, in-memory) | 2026-07-13 |
-| T07 | Location periods (identity scope, in-memory) | 2026-07-13 |
-| T09 | `identity_decisions` audit (identity scope, in-memory) | 2026-07-13 |
-| T10 | Fingerprints + normalization | 2026-07-13 |
-| T11 | Zod schemas (identity inputs) | 2026-07-13 |
-| T12 | Candidate scoring + auto-resolver | 2026-07-13 |
-| T19 | Auto-resolve unique nonce | 2026-07-13 |
-| T20 | Ambiguity on colliding nonce | 2026-07-13 |
-| T22 | Manual resolve API | 2026-07-13 |
-| T23 | Merge items | 2026-07-13 |
-| T24 | Split item | 2026-07-13 |
+| T02 | Postgres + Drizzle setup | 2026-07-13 |
+| T03 | `admin_settings` + seed defaults | 2026-07-13 |
+| T04 | `accounts` table + soft delete + Accounts UI/API | 2026-07-13 |
+| T05–T07, T09 | Identity schema + memory store | 2026-07-13 |
+| T10–T12, T19–T20, T22–T24 | Identity domain logic | 2026-07-13 |
+| — | **PostgresIdentityStore** wired into web when `DATABASE_URL` is set | 2026-07-13 |
+| — | PitPanda search UI + key setup form | 2026-07-13 |
 
 ## Next task
 
-**T03 — Core enums & `admin_settings`**
+**T13 — DB job claim/lease loop** (scanner worker foundation)
 
-## Recent addition
-
-**PitPanda item search (vertical slice)** — provider-neutral `ItemDataProvider`, PitPanda adapter, `/search` UI, `POST /api/item-search` server route with rate limit + cache. See `ITEM_DATA_PROVIDERS.md`.
+Then T14–T18 scanning pipeline.
 
 ## Validation (latest)
 
 ```bash
 pnpm typecheck   # pass
 pnpm lint        # pass
-pnpm test        # 25 tests pass
-pnpm db:migrate  # applies migrations/0000_init_identity.sql
+pnpm test        # 34 tests pass
+pnpm build:web   # pass (/search, /accounts, APIs)
+pnpm db:migrate  # 0000 + 0001 applied
 ```
 
 ## Notes
 
-- Identity resolution uses `MemoryIdentityStore`; Drizzle schema is migrated to PostgreSQL but not yet wired as a repository.
-- Local dev: `docker compose up -d` or system Postgres with `.env` from `.env.example`.
-- Migration test uses `pitantir_test` database; drops `public` and `drizzle` schemas before each run.
-- PitPanda search uses in-memory identity store and in-memory rate limit/cache (single-process MVP).
-- Set `PITPANDA_API_KEY` via the Item Search “Connect PitPanda” form (saved to `apps/web/.env.local`) or env; never expose the key in API responses or client bundles.
+- With `DATABASE_URL` in `apps/web/.env.local`, identity + observations persist in Postgres; without it, memory store is used.
+- Accounts require Postgres (`/accounts` shows a clear error if `DATABASE_URL` is missing).
+- Scanner worker is not built yet — accounts are managed but not scanned.
+- Set `PITPANDA_API_KEY` via Item Search form or env; never expose the key in responses.

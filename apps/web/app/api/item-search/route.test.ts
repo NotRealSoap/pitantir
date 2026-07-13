@@ -13,7 +13,7 @@ import { PitPandaItemDataProvider } from "@pitantir/shared/item-data";
 
 describe("POST /api/item-search", () => {
   beforeEach(() => {
-    vi.mocked(getUpstreamIngestor).mockReturnValue(
+    vi.mocked(getUpstreamIngestor).mockResolvedValue(
       new UpstreamObservationIngestor(new IdentityService(new MemoryIdentityStore())),
     );
   });

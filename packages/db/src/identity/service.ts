@@ -22,36 +22,36 @@ import { now } from "./store.js";
 export class IdentityService {
   constructor(private readonly store: IdentityStore) {}
 
-  createItem(input?: {
+  async createItem(input?: {
     displayName?: string | null;
     category?: CanonicalItem["category"];
     primaryNonce?: string | null;
     strictFingerprint?: string | null;
     looseFingerprint?: string | null;
-  }): CanonicalItem {
+  }): Promise<CanonicalItem> {
     return this.store.createCanonicalItem(input);
   }
 
-  addIdentifier(
+  async addIdentifier(
     itemId: string,
     kind: ItemIdentifier["kind"],
     value: string,
     source: string | null = null,
-  ): ItemIdentifier {
+  ): Promise<ItemIdentifier> {
     return this.store.addIdentifier({ itemId, kind, value, source });
   }
 
-  createObservation(input: CreateObservationInput): Observation {
+  async createObservation(input: CreateObservationInput): Promise<Observation> {
     return this.store.createObservation(input);
   }
 
-  createObservationFromRaw(input: {
+  async createObservationFromRaw(input: {
     scanId: string;
     accountId: string;
     observedAt: Date;
     slotKey: string;
     rawItem: Record<string, unknown>;
-  }): Observation {
+  }): Promise<Observation> {
     const derived = fingerprintFromRawItem(input.rawItem);
     return this.createObservation({
       ...input,
@@ -62,19 +62,20 @@ export class IdentityService {
     });
   }
 
-  private identifiersByItemId(): Map<string, ItemIdentifier[]> {
+  private async identifiersByItemId(): Promise<Map<string, ItemIdentifier[]>> {
     const map = new Map<string, ItemIdentifier[]>();
-    for (const item of this.store.listActiveCanonicalItems()) {
-      map.set(item.id, this.store.listIdentifiersForItem(item.id));
+    const activeItems = await this.store.listActiveCanonicalItems();
+    for (const item of activeItems) {
+      map.set(item.id, await this.store.listIdentifiersForItem(item.id));
     }
     return map;
   }
 
-  resolveObservationAuto(
+  async resolveObservationAuto(
     observationId: string,
     options?: { reopen?: boolean; settings?: AutoResolveSettings },
-  ): ResolveObservationResult {
-    const observation = this.store.getObservation(observationId);
+  ): Promise<ResolveObservationResult> {
+    const observation = await this.store.getObservation(observationId);
     if (!observation) {
       throw new Error(`Observation not found: ${observationId}`);
     }
@@ -83,39 +84,39 @@ export class IdentityService {
       return {
         observation,
         decision: null,
-        candidates: this.store.listCandidates(observationId),
+        candidates: await this.store.listCandidates(observationId),
         createdItem: null,
       };
     }
 
     const idempotencyKey = `auto_resolve:${observationId}`;
-    const existingDecision = this.store.findDecisionByIdempotencyKey(idempotencyKey);
+    const existingDecision = await this.store.findDecisionByIdempotencyKey(idempotencyKey);
     if (existingDecision && !options?.reopen) {
       return {
-        observation: this.store.getObservation(observationId)!,
+        observation: (await this.store.getObservation(observationId))!,
         decision: existingDecision,
-        candidates: this.store.listCandidates(observationId),
+        candidates: await this.store.listCandidates(observationId),
         createdItem: existingDecision.toItemIds[0]
-          ? this.store.getCanonicalItem(existingDecision.toItemIds[0])
+          ? await this.store.getCanonicalItem(existingDecision.toItemIds[0])
           : null,
       };
     }
 
-    const before = captureSnapshot(this.store, [], [observationId]);
-    const settings = options?.settings ?? this.store.getSettings();
-    const openPresence = this.store
-      .listOpenPresenceOnAccount(observation.accountId)
-      .map((period) => period.itemId);
+    const before = await captureSnapshot(this.store, [], [observationId]);
+    const settings = options?.settings ?? (await this.store.getSettings());
+    const openPresence = (
+      await this.store.listOpenPresenceOnAccount(observation.accountId)
+    ).map((period) => period.itemId);
 
     const outcome = autoResolveObservation({
       observation,
-      activeItems: this.store.listActiveCanonicalItems(),
-      identifiersByItemId: this.identifiersByItemId(),
+      activeItems: await this.store.listActiveCanonicalItems(),
+      identifiersByItemId: await this.identifiersByItemId(),
       openPresenceOnAccountItemIds: new Set(openPresence),
       settings,
     });
 
-    const candidates = this.store.upsertObservationCandidates(
+    const candidates = await this.store.upsertObservationCandidates(
       observationId,
       outcome.candidates.map((candidate) => ({
         itemId: candidate.itemId,
@@ -128,7 +129,7 @@ export class IdentityService {
     let targetItemId = outcome.canonicalItemId;
 
     if (outcome.shouldCreateItem) {
-      createdItem = this.store.createCanonicalItem({
+      createdItem = await this.store.createCanonicalItem({
         category: outcome.createdItemCategory,
         primaryNonce: observation.observedNonce,
         strictFingerprint: observation.strictFingerprint,
@@ -138,25 +139,25 @@ export class IdentityService {
       targetItemId = createdItem.id;
 
       if (observation.observedNonce) {
-        this.store.addIdentifier({
+        await this.store.addIdentifier({
           itemId: createdItem.id,
           kind: "nonce",
           value: observation.observedNonce,
         });
       }
-      this.store.addIdentifier({
+      await this.store.addIdentifier({
         itemId: createdItem.id,
         kind: "strict_fingerprint",
         value: observation.strictFingerprint,
       });
-      this.store.addIdentifier({
+      await this.store.addIdentifier({
         itemId: createdItem.id,
         kind: "loose_fingerprint",
         value: observation.looseFingerprint,
       });
     }
 
-    const updatedObservation = this.store.updateObservationResolution(observationId, {
+    const updatedObservation = await this.store.updateObservationResolution(observationId, {
       canonicalItemId: targetItemId,
       resolutionStatus: outcome.status,
       confidence: outcome.confidence,
@@ -166,10 +167,10 @@ export class IdentityService {
     });
 
     if (targetItemId && (outcome.status === "resolved" || outcome.status === "manually_resolved")) {
-      this.ensurePresencePeriod(targetItemId, observation);
+      await this.ensurePresencePeriod(targetItemId, observation);
     }
 
-    const after = captureSnapshot(
+    const after = await captureSnapshot(
       this.store,
       targetItemId ? [targetItemId] : [],
       [observationId],
@@ -178,7 +179,7 @@ export class IdentityService {
     const decision =
       outcome.status === "unresolved" && !outcome.shouldCreateItem
         ? null
-        : this.store.appendDecision({
+        : await this.store.appendDecision({
             decisionType: outcome.shouldCreateItem ? "create_item" : "auto_resolve",
             actor: "system",
             observationId,
@@ -202,59 +203,59 @@ export class IdentityService {
     };
   }
 
-  resolveObservationManual(input: {
+  async resolveObservationManual(input: {
     observationId: string;
     itemId?: string;
     createNewItem?: boolean;
     actor: string;
     rationale: string;
     idempotencyKey?: string;
-  }): ResolveObservationResult {
+  }): Promise<ResolveObservationResult> {
     const parsed = manualResolveInputSchema.parse(input);
-    const observation = this.store.getObservation(parsed.observationId);
+    const observation = await this.store.getObservation(parsed.observationId);
     if (!observation) {
       throw new Error(`Observation not found: ${parsed.observationId}`);
     }
 
     const idempotencyKey =
       parsed.idempotencyKey ?? `manual_resolve:${parsed.observationId}:${parsed.itemId ?? "new"}`;
-    const existing = this.store.findDecisionByIdempotencyKey(idempotencyKey);
+    const existing = await this.store.findDecisionByIdempotencyKey(idempotencyKey);
     if (existing) {
       return {
-        observation: this.store.getObservation(parsed.observationId)!,
+        observation: (await this.store.getObservation(parsed.observationId))!,
         decision: existing,
-        candidates: this.store.listCandidates(parsed.observationId),
+        candidates: await this.store.listCandidates(parsed.observationId),
         createdItem: existing.toItemIds[0]
-          ? this.store.getCanonicalItem(existing.toItemIds[0])
+          ? await this.store.getCanonicalItem(existing.toItemIds[0])
           : null,
       };
     }
 
-    const before = captureSnapshot(this.store, [], [parsed.observationId]);
+    const before = await captureSnapshot(this.store, [], [parsed.observationId]);
     let targetItem: CanonicalItem | null = null;
 
     if (parsed.createNewItem || !parsed.itemId) {
-      targetItem = this.store.createCanonicalItem({
+      targetItem = await this.store.createCanonicalItem({
         category: observation.observedNonce ? "unique_nonce_candidate" : "nonce_less",
         primaryNonce: observation.observedNonce,
         strictFingerprint: observation.strictFingerprint,
         looseFingerprint: observation.looseFingerprint,
       });
       if (observation.observedNonce) {
-        this.store.addIdentifier({
+        await this.store.addIdentifier({
           itemId: targetItem.id,
           kind: "nonce",
           value: observation.observedNonce,
         });
       }
     } else {
-      targetItem = this.store.getCanonicalItem(parsed.itemId);
+      targetItem = await this.store.getCanonicalItem(parsed.itemId);
       if (!targetItem) {
         throw new Error(`Canonical item not found: ${parsed.itemId}`);
       }
     }
 
-    const updatedObservation = this.store.updateObservationResolution(parsed.observationId, {
+    const updatedObservation = await this.store.updateObservationResolution(parsed.observationId, {
       canonicalItemId: targetItem.id,
       resolutionStatus: "manually_resolved",
       confidence: 1,
@@ -263,10 +264,10 @@ export class IdentityService {
       resolvedBy: "manual",
     });
 
-    this.ensurePresencePeriod(targetItem.id, observation);
+    await this.ensurePresencePeriod(targetItem.id, observation);
 
-    const after = captureSnapshot(this.store, [targetItem.id], [parsed.observationId]);
-    const decision = this.store.appendDecision({
+    const after = await captureSnapshot(this.store, [targetItem.id], [parsed.observationId]);
+    const decision = await this.store.appendDecision({
       decisionType: "manual_resolve",
       actor: parsed.actor,
       observationId: parsed.observationId,
@@ -283,18 +284,18 @@ export class IdentityService {
     return {
       observation: updatedObservation,
       decision,
-      candidates: this.store.listCandidates(parsed.observationId),
+      candidates: await this.store.listCandidates(parsed.observationId),
       createdItem: parsed.createNewItem ? targetItem : null,
     };
   }
 
-  mergeItems(input: {
+  async mergeItems(input: {
     survivorItemId: string;
     loserItemId: string;
     actor: string;
     rationale: string;
     idempotencyKey?: string;
-  }): IdentityDecision {
+  }): Promise<IdentityDecision> {
     const parsed = mergeItemsInputSchema.parse(input);
     if (parsed.survivorItemId === parsed.loserItemId) {
       throw new Error("Cannot merge an item with itself");
@@ -302,13 +303,13 @@ export class IdentityService {
 
     const idempotencyKey =
       parsed.idempotencyKey ?? `merge:${parsed.survivorItemId}:${parsed.loserItemId}`;
-    const existing = this.store.findDecisionByIdempotencyKey(idempotencyKey);
+    const existing = await this.store.findDecisionByIdempotencyKey(idempotencyKey);
     if (existing) {
       return existing;
     }
 
-    const survivor = this.store.getCanonicalItem(parsed.survivorItemId);
-    const loser = this.store.getCanonicalItem(parsed.loserItemId);
+    const survivor = await this.store.getCanonicalItem(parsed.survivorItemId);
+    const loser = await this.store.getCanonicalItem(parsed.loserItemId);
     if (!survivor || !loser) {
       throw new Error("Both survivor and loser items must exist");
     }
@@ -316,22 +317,20 @@ export class IdentityService {
       throw new Error("Loser item is already merged away");
     }
 
-    const before = captureSnapshot(this.store, [survivor.id, loser.id]);
+    const before = await captureSnapshot(this.store, [survivor.id, loser.id]);
 
-    for (const identifier of this.store.listIdentifiersForItem(loser.id)) {
-      const duplicate = this.store
-        .listIdentifiersForItem(survivor.id)
-        .find(
-          (row) =>
-            row.kind === identifier.kind &&
-            row.source === identifier.source &&
-            row.value === identifier.value,
-        );
+    for (const identifier of await this.store.listIdentifiersForItem(loser.id)) {
+      const duplicate = (await this.store.listIdentifiersForItem(survivor.id)).find(
+        (row) =>
+          row.kind === identifier.kind &&
+          row.source === identifier.source &&
+          row.value === identifier.value,
+      );
 
-      this.store.invalidateIdentifier(identifier.id);
+      await this.store.invalidateIdentifier(identifier.id);
 
       if (!duplicate) {
-        this.store.addIdentifier({
+        await this.store.addIdentifier({
           itemId: survivor.id,
           kind: identifier.kind,
           value: identifier.value,
@@ -341,8 +340,8 @@ export class IdentityService {
       }
     }
 
-    for (const observation of this.store.listObservationsForItem(loser.id)) {
-      this.store.updateObservationResolution(observation.id, {
+    for (const observation of await this.store.listObservationsForItem(loser.id)) {
+      await this.store.updateObservationResolution(observation.id, {
         canonicalItemId: survivor.id,
         resolutionStatus: observation.resolutionStatus,
         confidence: observation.confidence,
@@ -352,8 +351,8 @@ export class IdentityService {
       });
     }
 
-    const survivorPeriods = this.store.listLocationPeriodsForItem(survivor.id);
-    const loserPeriods = this.store.listLocationPeriodsForItem(loser.id);
+    const survivorPeriods = await this.store.listLocationPeriodsForItem(survivor.id);
+    const loserPeriods = await this.store.listLocationPeriodsForItem(loser.id);
     for (const loserPeriod of loserPeriods) {
       const contradiction = survivorPeriods.some(
         (survivorPeriod) =>
@@ -364,7 +363,7 @@ export class IdentityService {
           loserPeriod.endedAt === null,
       );
 
-      this.store.createLocationPeriod({
+      await this.store.createLocationPeriod({
         itemId: survivor.id,
         accountId: loserPeriod.accountId,
         startedAt: loserPeriod.startedAt,
@@ -379,12 +378,12 @@ export class IdentityService {
       });
     }
 
-    this.store.updateCanonicalItem(loser.id, {
+    await this.store.updateCanonicalItem(loser.id, {
       status: "merged_away",
       mergedIntoItemId: survivor.id,
     });
 
-    const after = captureSnapshot(this.store, [survivor.id, loser.id]);
+    const after = await captureSnapshot(this.store, [survivor.id, loser.id]);
     return this.store.appendDecision({
       decisionType: "merge",
       actor: parsed.actor,
@@ -400,7 +399,7 @@ export class IdentityService {
     });
   }
 
-  splitItem(input: {
+  async splitItem(input: {
     sourceItemId: string;
     actor: string;
     rationale: string;
@@ -411,26 +410,26 @@ export class IdentityService {
       displayName?: string;
     }>;
     idempotencyKey?: string;
-  }): IdentityDecision {
+  }): Promise<IdentityDecision> {
     const parsed = splitItemInputSchema.parse(input);
-    const sourceItem = this.store.getCanonicalItem(parsed.sourceItemId);
+    const sourceItem = await this.store.getCanonicalItem(parsed.sourceItemId);
     if (!sourceItem) {
       throw new Error(`Source item not found: ${parsed.sourceItemId}`);
     }
 
     const idempotencyKey = parsed.idempotencyKey ?? `split:${parsed.sourceItemId}:${parsed.assignments.length}`;
-    const existing = this.store.findDecisionByIdempotencyKey(idempotencyKey);
+    const existing = await this.store.findDecisionByIdempotencyKey(idempotencyKey);
     if (existing) {
       return existing;
     }
 
-    const before = captureSnapshot(this.store, [sourceItem.id]);
+    const before = await captureSnapshot(this.store, [sourceItem.id]);
     const targetItems: CanonicalItem[] = [];
 
     for (const assignment of parsed.assignments) {
       let targetItem: CanonicalItem;
       if (assignment.createNewItem || !assignment.targetItemId) {
-        targetItem = this.store.createCanonicalItem({
+        targetItem = await this.store.createCanonicalItem({
           displayName: assignment.displayName ?? null,
           category: sourceItem.category,
           primaryNonce: sourceItem.primaryNonce,
@@ -438,17 +437,17 @@ export class IdentityService {
           looseFingerprint: sourceItem.looseFingerprint,
         });
       } else {
-        const existingItem = this.store.getCanonicalItem(assignment.targetItemId);
+        const existingItem = await this.store.getCanonicalItem(assignment.targetItemId);
         if (!existingItem) {
           throw new Error(`Target item not found: ${assignment.targetItemId}`);
         }
         targetItem = existingItem;
       }
 
-      for (const nonceIdentifier of this.store
-        .listIdentifiersForItem(sourceItem.id)
-        .filter((identifier) => identifier.kind === "nonce")) {
-        this.store.addIdentifier({
+      for (const nonceIdentifier of (await this.store.listIdentifiersForItem(sourceItem.id)).filter(
+        (identifier) => identifier.kind === "nonce",
+      )) {
+        await this.store.addIdentifier({
           itemId: targetItem.id,
           kind: "nonce",
           value: nonceIdentifier.value,
@@ -456,11 +455,11 @@ export class IdentityService {
       }
 
       for (const observationId of assignment.observationIds) {
-        const observation = this.store.getObservation(observationId);
+        const observation = await this.store.getObservation(observationId);
         if (!observation) {
           throw new Error(`Observation not found: ${observationId}`);
         }
-        this.store.updateObservationResolution(observationId, {
+        await this.store.updateObservationResolution(observationId, {
           canonicalItemId: targetItem.id,
           resolutionStatus: "manually_resolved",
           confidence: 1,
@@ -468,18 +467,18 @@ export class IdentityService {
           resolvedAt: now(),
           resolvedBy: "manual",
         });
-        this.ensurePresencePeriod(targetItem.id, observation);
+        await this.ensurePresencePeriod(targetItem.id, observation);
       }
 
       targetItems.push(targetItem);
     }
 
-    this.store.supersedeLocationPeriodsForItem(sourceItem.id, now());
-    this.store.updateCanonicalItem(sourceItem.id, {
+    await this.store.supersedeLocationPeriodsForItem(sourceItem.id, now());
+    await this.store.updateCanonicalItem(sourceItem.id, {
       status: "split_source",
     });
 
-    const after = captureSnapshot(
+    const after = await captureSnapshot(
       this.store,
       [sourceItem.id, ...targetItems.map((item) => item.id)],
       parsed.assignments.flatMap((assignment) => assignment.observationIds),
@@ -500,14 +499,14 @@ export class IdentityService {
     });
   }
 
-  revertDecision(input: {
+  async revertDecision(input: {
     decisionId: string;
     actor: string;
     rationale: string;
     idempotencyKey?: string;
-  }): IdentityDecision {
+  }): Promise<IdentityDecision> {
     const parsed = revertDecisionInputSchema.parse(input);
-    const original = this.store.getDecision(parsed.decisionId);
+    const original = await this.store.getDecision(parsed.decisionId);
     if (!original) {
       throw new Error(`Decision not found: ${parsed.decisionId}`);
     }
@@ -516,15 +515,15 @@ export class IdentityService {
     }
 
     const idempotencyKey = parsed.idempotencyKey ?? `revert:${parsed.decisionId}`;
-    const existing = this.store.findDecisionByIdempotencyKey(idempotencyKey);
+    const existing = await this.store.findDecisionByIdempotencyKey(idempotencyKey);
     if (existing) {
       return existing;
     }
 
     const before = structuredClone(original.afterState);
-    restoreSnapshot(this.store, original.beforeState as unknown as IdentitySnapshot);
+    await restoreSnapshot(this.store, original.beforeState as unknown as IdentitySnapshot);
 
-    const revertDecision = this.store.appendDecision({
+    const revertDecision = await this.store.appendDecision({
       decisionType: "revert",
       actor: parsed.actor,
       observationId: original.observationId,
@@ -538,25 +537,23 @@ export class IdentityService {
       revertsDecisionId: original.id,
     });
 
-    this.store.markDecisionReversed(original.id, revertDecision.id);
+    await this.store.markDecisionReversed(original.id, revertDecision.id);
     return revertDecision;
   }
 
-  private ensurePresencePeriod(itemId: string, observation: Observation): void {
-    const openOnAccount = this.store
-      .listLocationPeriodsForItem(itemId)
-      .find(
-        (period) =>
-          period.accountId === observation.accountId &&
-          period.endedAt === null &&
-          !period.isUnknownGap,
-      );
+  private async ensurePresencePeriod(itemId: string, observation: Observation): Promise<void> {
+    const openOnAccount = (await this.store.listLocationPeriodsForItem(itemId)).find(
+      (period) =>
+        period.accountId === observation.accountId &&
+        period.endedAt === null &&
+        !period.isUnknownGap,
+    );
 
     if (openOnAccount) {
       return;
     }
 
-    this.store.createLocationPeriod({
+    await this.store.createLocationPeriod({
       itemId,
       accountId: observation.accountId,
       startedAt: observation.observedAt,

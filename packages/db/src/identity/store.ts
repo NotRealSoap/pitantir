@@ -41,20 +41,23 @@ export interface CreateObservationInput {
 }
 
 export interface IdentityStore {
-  getSettings(): AutoResolveSettings;
-  createCanonicalItem(input?: CreateCanonicalItemInput): CanonicalItem;
-  getCanonicalItem(itemId: string): CanonicalItem | null;
-  listActiveCanonicalItems(): CanonicalItem[];
-  updateCanonicalItem(itemId: string, patch: Partial<CanonicalItem>): CanonicalItem;
+  getSettings(): Promise<AutoResolveSettings>;
+  createCanonicalItem(input?: CreateCanonicalItemInput): Promise<CanonicalItem>;
+  getCanonicalItem(itemId: string): Promise<CanonicalItem | null>;
+  listActiveCanonicalItems(): Promise<CanonicalItem[]>;
+  updateCanonicalItem(itemId: string, patch: Partial<CanonicalItem>): Promise<CanonicalItem>;
 
-  addIdentifier(input: AddIdentifierInput): ItemIdentifier;
-  listIdentifiersForItem(itemId: string): ItemIdentifier[];
-  listIdentifiersByKindValue(kind: ItemIdentifier["kind"], value: string): ItemIdentifier[];
-  invalidateIdentifier(identifierId: string): ItemIdentifier;
+  addIdentifier(input: AddIdentifierInput): Promise<ItemIdentifier>;
+  listIdentifiersForItem(itemId: string): Promise<ItemIdentifier[]>;
+  listIdentifiersByKindValue(
+    kind: ItemIdentifier["kind"],
+    value: string,
+  ): Promise<ItemIdentifier[]>;
+  invalidateIdentifier(identifierId: string): Promise<ItemIdentifier>;
 
-  createObservation(input: CreateObservationInput): Observation;
-  getObservation(observationId: string): Observation | null;
-  listObservationsForItem(itemId: string): Observation[];
+  createObservation(input: CreateObservationInput): Promise<Observation>;
+  getObservation(observationId: string): Promise<Observation | null>;
+  listObservationsForItem(itemId: string): Promise<Observation[]>;
   updateObservationResolution(
     observationId: string,
     patch: Pick<
@@ -66,30 +69,29 @@ export interface IdentityStore {
       | "resolvedAt"
       | "resolvedBy"
     >,
-  ): Observation;
+  ): Promise<Observation>;
 
   upsertObservationCandidates(
     observationId: string,
     candidates: Array<{ itemId: string; score: number; reasons: Record<string, unknown> }>,
-  ): ObservationCandidate[];
-  listCandidates(observationId: string): ObservationCandidate[];
+  ): Promise<ObservationCandidate[]>;
+  listCandidates(observationId: string): Promise<ObservationCandidate[]>;
 
   appendDecision(
-    decision: Omit<
-      IdentityDecision,
-      "id" | "createdAt" | "reversedByDecisionId"
-    > & { id?: string },
-  ): IdentityDecision;
-  getDecision(decisionId: string): IdentityDecision | null;
-  findDecisionByIdempotencyKey(key: string): IdentityDecision | null;
-  markDecisionReversed(decisionId: string, reversingDecisionId: string): void;
+    decision: Omit<IdentityDecision, "id" | "createdAt" | "reversedByDecisionId"> & {
+      id?: string;
+    },
+  ): Promise<IdentityDecision>;
+  getDecision(decisionId: string): Promise<IdentityDecision | null>;
+  findDecisionByIdempotencyKey(key: string): Promise<IdentityDecision | null>;
+  markDecisionReversed(decisionId: string, reversingDecisionId: string): Promise<void>;
 
-  listLocationPeriodsForItem(itemId: string): ItemLocationPeriod[];
-  listOpenPresenceOnAccount(accountId: string): ItemLocationPeriod[];
-  supersedeLocationPeriodsForItem(itemId: string, supersededAt: Date): void;
+  listLocationPeriodsForItem(itemId: string): Promise<ItemLocationPeriod[]>;
+  listOpenPresenceOnAccount(accountId: string): Promise<ItemLocationPeriod[]>;
+  supersedeLocationPeriodsForItem(itemId: string, supersededAt: Date): Promise<void>;
   createLocationPeriod(
     period: Omit<ItemLocationPeriod, "id" | "createdAt" | "supersededAt" | "supersededByPeriodId">,
-  ): ItemLocationPeriod;
+  ): Promise<ItemLocationPeriod>;
 }
 
 export function newId(): string {

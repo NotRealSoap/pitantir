@@ -41,6 +41,8 @@ describe("database migrations", () => {
       `;
 
       expect(tables.map((row) => row.table_name)).toEqual([
+        "accounts",
+        "admin_settings",
         "canonical_items",
         "identity_decisions",
         "item_identifiers",

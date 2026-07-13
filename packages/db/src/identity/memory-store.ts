@@ -26,7 +26,7 @@ export class MemoryIdentityStore implements IdentityStore {
   private decisions = new Map<string, IdentityDecision>();
   private periods = new Map<string, ItemLocationPeriod>();
 
-  getSettings(): AutoResolveSettings {
+  async getSettings(): Promise<AutoResolveSettings> {
     return { ...this.settings };
   }
 
@@ -34,7 +34,7 @@ export class MemoryIdentityStore implements IdentityStore {
     this.settings = { ...this.settings, ...settings };
   }
 
-  createCanonicalItem(input: CreateCanonicalItemInput = {}): CanonicalItem {
+  async createCanonicalItem(input: CreateCanonicalItemInput = {}): Promise<CanonicalItem> {
     const timestamp = now();
     const item: CanonicalItem = {
       id: newId(),
@@ -55,17 +55,17 @@ export class MemoryIdentityStore implements IdentityStore {
     return item;
   }
 
-  getCanonicalItem(itemId: string): CanonicalItem | null {
+  async getCanonicalItem(itemId: string): Promise<CanonicalItem | null> {
     return this.items.get(itemId) ?? null;
   }
 
-  listActiveCanonicalItems(): CanonicalItem[] {
+  async listActiveCanonicalItems(): Promise<CanonicalItem[]> {
     return [...this.items.values()].filter(
       (item) => item.status === "active" && item.deletedAt === null,
     );
   }
 
-  updateCanonicalItem(itemId: string, patch: Partial<CanonicalItem>): CanonicalItem {
+  async updateCanonicalItem(itemId: string, patch: Partial<CanonicalItem>): Promise<CanonicalItem> {
     const existing = this.items.get(itemId);
     if (!existing) {
       throw new Error(`Canonical item not found: ${itemId}`);
@@ -80,7 +80,7 @@ export class MemoryIdentityStore implements IdentityStore {
     return updated;
   }
 
-  addIdentifier(input: AddIdentifierInput): ItemIdentifier {
+  async addIdentifier(input: AddIdentifierInput): Promise<ItemIdentifier> {
     const item = this.items.get(input.itemId);
     if (!item) {
       throw new Error(`Canonical item not found: ${input.itemId}`);
@@ -134,20 +134,20 @@ export class MemoryIdentityStore implements IdentityStore {
     return identifier;
   }
 
-  listIdentifiersForItem(itemId: string): ItemIdentifier[] {
+  async listIdentifiersForItem(itemId: string): Promise<ItemIdentifier[]> {
     return [...this.identifiers.values()].filter(
       (identifier) => identifier.itemId === itemId && identifier.invalidatedAt === null,
     );
   }
 
-  listIdentifiersByKindValue(kind: ItemIdentifier["kind"], value: string): ItemIdentifier[] {
+  async listIdentifiersByKindValue(kind: ItemIdentifier["kind"], value: string): Promise<ItemIdentifier[]> {
     return [...this.identifiers.values()].filter(
       (identifier) =>
         identifier.kind === kind && identifier.value === value && identifier.invalidatedAt === null,
     );
   }
 
-  invalidateIdentifier(identifierId: string): ItemIdentifier {
+  async invalidateIdentifier(identifierId: string): Promise<ItemIdentifier> {
     const identifier = this.identifiers.get(identifierId);
     if (!identifier) {
       throw new Error(`Identifier not found: ${identifierId}`);
@@ -157,7 +157,7 @@ export class MemoryIdentityStore implements IdentityStore {
     return updated;
   }
 
-  createObservation(input: CreateObservationInput): Observation {
+  async createObservation(input: CreateObservationInput): Promise<Observation> {
     const duplicate = [...this.observations.values()].find(
       (observation) =>
         observation.scanId === input.scanId && observation.slotKey === input.slotKey,
@@ -189,17 +189,17 @@ export class MemoryIdentityStore implements IdentityStore {
     return observation;
   }
 
-  getObservation(observationId: string): Observation | null {
+  async getObservation(observationId: string): Promise<Observation | null> {
     return this.observations.get(observationId) ?? null;
   }
 
-  listObservationsForItem(itemId: string): Observation[] {
+  async listObservationsForItem(itemId: string): Promise<Observation[]> {
     return [...this.observations.values()].filter(
       (observation) => observation.canonicalItemId === itemId,
     );
   }
 
-  updateObservationResolution(
+  async updateObservationResolution(
     observationId: string,
     patch: Pick<
       Observation,
@@ -210,7 +210,7 @@ export class MemoryIdentityStore implements IdentityStore {
       | "resolvedAt"
       | "resolvedBy"
     >,
-  ): Observation {
+  ): Promise<Observation> {
     const observation = this.observations.get(observationId);
     if (!observation) {
       throw new Error(`Observation not found: ${observationId}`);
@@ -229,10 +229,10 @@ export class MemoryIdentityStore implements IdentityStore {
     return updated;
   }
 
-  upsertObservationCandidates(
+  async upsertObservationCandidates(
     observationId: string,
     candidateRows: Array<{ itemId: string; score: number; reasons: Record<string, unknown> }>,
-  ): ObservationCandidate[] {
+  ): Promise<ObservationCandidate[]> {
     for (const [candidateId, candidate] of this.candidates.entries()) {
       if (candidate.observationId === observationId) {
         this.candidates.delete(candidateId);
@@ -255,19 +255,19 @@ export class MemoryIdentityStore implements IdentityStore {
     return created;
   }
 
-  listCandidates(observationId: string): ObservationCandidate[] {
+  async listCandidates(observationId: string): Promise<ObservationCandidate[]> {
     return [...this.candidates.values()].filter(
       (candidate) => candidate.observationId === observationId,
     );
   }
 
-  appendDecision(
+  async appendDecision(
     decision: Omit<IdentityDecision, "id" | "createdAt" | "reversedByDecisionId"> & {
       id?: string;
     },
-  ): IdentityDecision {
+  ): Promise<IdentityDecision> {
     if (decision.idempotencyKey) {
-      const existing = this.findDecisionByIdempotencyKey(decision.idempotencyKey);
+      const existing = await this.findDecisionByIdempotencyKey(decision.idempotencyKey);
       if (existing) {
         return existing;
       }
@@ -293,17 +293,17 @@ export class MemoryIdentityStore implements IdentityStore {
     return row;
   }
 
-  getDecision(decisionId: string): IdentityDecision | null {
+  async getDecision(decisionId: string): Promise<IdentityDecision | null> {
     return this.decisions.get(decisionId) ?? null;
   }
 
-  findDecisionByIdempotencyKey(key: string): IdentityDecision | null {
+  async findDecisionByIdempotencyKey(key: string): Promise<IdentityDecision | null> {
     return (
       [...this.decisions.values()].find((decision) => decision.idempotencyKey === key) ?? null
     );
   }
 
-  markDecisionReversed(decisionId: string, reversingDecisionId: string): void {
+  async markDecisionReversed(decisionId: string, reversingDecisionId: string): Promise<void> {
     const decision = this.decisions.get(decisionId);
     if (!decision) {
       throw new Error(`Decision not found: ${decisionId}`);
@@ -314,13 +314,13 @@ export class MemoryIdentityStore implements IdentityStore {
     });
   }
 
-  listLocationPeriodsForItem(itemId: string): ItemLocationPeriod[] {
+  async listLocationPeriodsForItem(itemId: string): Promise<ItemLocationPeriod[]> {
     return [...this.periods.values()].filter(
       (period) => period.itemId === itemId && period.supersededAt === null,
     );
   }
 
-  listOpenPresenceOnAccount(accountId: string): ItemLocationPeriod[] {
+  async listOpenPresenceOnAccount(accountId: string): Promise<ItemLocationPeriod[]> {
     return [...this.periods.values()].filter(
       (period) =>
         period.accountId === accountId &&
@@ -330,7 +330,7 @@ export class MemoryIdentityStore implements IdentityStore {
     );
   }
 
-  supersedeLocationPeriodsForItem(itemId: string, supersededAt: Date): void {
+  async supersedeLocationPeriodsForItem(itemId: string, supersededAt: Date): Promise<void> {
     for (const [periodId, period] of this.periods.entries()) {
       if (period.itemId === itemId && period.supersededAt === null) {
         this.periods.set(periodId, { ...period, supersededAt });
@@ -338,9 +338,9 @@ export class MemoryIdentityStore implements IdentityStore {
     }
   }
 
-  createLocationPeriod(
+  async createLocationPeriod(
     period: Omit<ItemLocationPeriod, "id" | "createdAt" | "supersededAt" | "supersededByPeriodId">,
-  ): ItemLocationPeriod {
+  ): Promise<ItemLocationPeriod> {
     const row: ItemLocationPeriod = {
       ...period,
       id: newId(),
