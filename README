@@ -1,3 +1,22 @@
 # Pitantir
 
 A website for tracking historically significant Minecraft book items, their identities, locations, movements, and shared location histories.
+
+## Documentation
+
+Implementation has not started. Design docs:
+
+| Document | Description |
+|---|---|
+| [SPEC.md](./SPEC.md) | Product & technical specification |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | System architecture and stack |
+| [DATA_MODEL.md](./DATA_MODEL.md) | Database entities, constraints, deletion behavior |
+| [ITEM_IDENTITY.md](./ITEM_IDENTITY.md) | Identity resolution, merges, splits, nonce collisions |
+| [SCANNING_RULES.md](./SCANNING_RULES.md) | Scan lifecycle, observations, location inference |
+| [IMPORT_FORMAT.md](./IMPORT_FORMAT.md) | External historical import schema |
+| [MVP_TASKS.md](./MVP_TASKS.md) | Ordered, testable implementation tasks |
+| [CLAUDE.md](./CLAUDE.md) | Working rules for implementers and agents |
+
+Start with `SPEC.md`, then follow `MVP_TASKS.md` for build order.
+
+Upstream item search providers: see [ITEM_DATA_PROVIDERS.md](./ITEM_DATA_PROVIDERS.md).
