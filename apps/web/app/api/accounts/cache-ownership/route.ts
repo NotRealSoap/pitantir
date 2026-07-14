@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cachePitPandaOwnershipForAccounts } from "../../../../src/server/cache-account-ownership";
 import { ItemSearchError } from "@pitantir/shared/item-data";
+import { resolveMinecraftProfileByUsername } from "@pitantir/shared/inventory";
 import type { PublicAccount } from "@pitantir/db";
 import {
   getAccountHistoryItemProvider,
@@ -87,14 +88,18 @@ export async function POST(request: Request) {
     }
     let account = await repo.getByUsername(username);
     if (!account) {
-      // Case-insensitive search (DB unique index is lower(username)).
-      const listed = await repo.list();
-      account =
-        listed.find((row) => row.mcUsername.toLowerCase() === username.toLowerCase()) ?? null;
-    }
-    if (!account) {
+      let resolvedUsername = username;
+      let resolvedUuid: string | null = null;
+      try {
+        const profile = await resolveMinecraftProfileByUsername(username);
+        resolvedUsername = profile.username;
+        resolvedUuid = profile.uuid;
+      } catch {
+        // Keep provided casing if Mojang is unavailable.
+      }
       account = await repo.create({
-        mcUsername: username,
+        mcUsername: resolvedUsername,
+        mcUuid: resolvedUuid,
         enabled: false,
         watchlisted: false,
         notes: "auto:cache-ownership",

@@ -119,23 +119,33 @@ export class AccountsRepository {
     mcUuid?: string | null;
     displayName?: string | null;
   }): Promise<{ account: PublicAccount; created: boolean; promoted: boolean }> {
-    const existing = await this.getByUsername(input.mcUsername);
+    const username = input.mcUsername.trim();
+    const existing = await this.getByUsername(username);
     if (existing) {
-      if (existing.watchlisted && existing.enabled) {
+      const patch: UpdateAccountInput = {};
+      const wasOffWatchlist = !existing.watchlisted;
+      if (!existing.watchlisted || !existing.enabled) {
+        patch.watchlisted = true;
+        patch.enabled = true;
+      }
+      // Apply Mojang-correct casing even when the row was already watchlisted.
+      if (username !== existing.mcUsername) {
+        patch.mcUsername = username;
+      }
+      if (input.mcUuid !== undefined && input.mcUuid !== existing.mcUuid) {
+        patch.mcUuid = input.mcUuid;
+      }
+      if (input.displayName !== undefined) patch.displayName = input.displayName;
+
+      if (Object.keys(patch).length === 0) {
         return { account: existing, created: false, promoted: false };
       }
-      const patch: UpdateAccountInput = {
-        watchlisted: true,
-        enabled: true,
-      };
-      if (input.mcUuid !== undefined) patch.mcUuid = input.mcUuid;
-      if (input.displayName !== undefined) patch.displayName = input.displayName;
       const account = await this.update(existing.id, patch);
-      return { account, created: false, promoted: !existing.watchlisted };
+      return { account, created: false, promoted: wasOffWatchlist };
     }
 
     const account = await this.create({
-      mcUsername: input.mcUsername,
+      mcUsername: username,
       mcUuid: input.mcUuid ?? null,
       displayName: input.displayName ?? null,
       watchlisted: true,

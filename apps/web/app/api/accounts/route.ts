@@ -5,6 +5,10 @@ import {
   isUsingPostgres,
 } from "../../../src/server/runtime";
 import { getHypixelScansPaused } from "@pitantir/db";
+import {
+  MojangLookupError,
+  resolveMinecraftProfileByUsername,
+} from "@pitantir/shared/inventory";
 
 function explainAccountError(message: string): string {
   // Drizzle wraps every insert failure as "Failed query: insert ... watchlisted ..."
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
       ? (body as { watchlisted: boolean }).watchlisted
       : true;
 
-  const mcUuid =
+  let mcUuid =
     body !== null &&
     typeof body === "object" &&
     "mcUuid" in body &&
@@ -105,11 +109,27 @@ export async function POST(request: Request) {
       ? (body as { displayName: string }).displayName
       : null;
 
+  // Mojang-resolve so stored IGN matches in-game capitalization (imports are often all-lowercase).
+  let resolvedUsername = mcUsername.trim();
+  try {
+    const profile = await resolveMinecraftProfileByUsername(resolvedUsername);
+    resolvedUsername = profile.username;
+    if (!mcUuid) mcUuid = profile.uuid;
+  } catch (error) {
+    if (error instanceof MojangLookupError && error.code === "not_found") {
+      return NextResponse.json(
+        { error: `No Minecraft profile for “${mcUsername.trim()}”.` },
+        { status: 404 },
+      );
+    }
+    // Soft-fail upstream issues: still create with provided casing so import can proceed.
+  }
+
   try {
     // Watch-list adds: create OR promote an existing ownership contact.
     if (watchlisted) {
       const result = await repo.ensureOnWatchlist({
-        mcUsername,
+        mcUsername: resolvedUsername,
         mcUuid,
         displayName,
       });
@@ -124,7 +144,7 @@ export async function POST(request: Request) {
     }
 
     const account = await repo.create({
-      mcUsername,
+      mcUsername: resolvedUsername,
       mcUuid,
       displayName,
       enabled: false,

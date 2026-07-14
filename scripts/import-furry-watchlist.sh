@@ -57,7 +57,8 @@ for i, name in enumerate(names, 1):
         failed += 1
         failures.append((name, str(e)))
         print(f"[{i}/{len(names)}] {name}: FAIL {e}")
-    time.sleep(0.05)
+    # Mojang-resolve runs on each add for correct IGN casing — keep a short delay.
+    time.sleep(0.15)
 
 print()
 print(f"Done. ok={ok} created={created} promoted={promoted} already={already} failed={failed}")

@@ -107,6 +107,33 @@ export default function AccountsPage() {
     );
   }
 
+  async function fixUsernameCasing(scope: "watchlist" | "contacts" | "all") {
+    setError(null);
+    setNote(null);
+    const response = await fetch("/api/accounts/fix-usernames", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+    });
+    const payload = (await response.json()) as {
+      error?: string;
+      message?: string;
+      updated?: number;
+      results?: Array<{ previousUsername: string; mcUsername: string; changed: boolean }>;
+    };
+    if (!response.ok) {
+      setError(payload.error ?? "Unable to fix username casing.");
+      return;
+    }
+    const samples = (payload.results ?? [])
+      .filter((row) => row.changed && row.previousUsername !== row.mcUsername)
+      .slice(0, 5)
+      .map((row) => `${row.previousUsername} → ${row.mcUsername}`);
+    const sampleNote = samples.length > 0 ? ` Examples: ${samples.join(", ")}.` : "";
+    setNote((payload.message ?? "Username casing updated.") + sampleNote);
+    await load();
+  }
+
   async function patchAccount(account: PublicAccountDto, body: Record<string, unknown>) {
     setError(null);
     const response = await fetch(`/api/accounts/${account.id}`, {
@@ -161,9 +188,14 @@ export default function AccountsPage() {
               Pause all refreshing
             </button>
           )}
+          <button type="button" onClick={() => void fixUsernameCasing("watchlist")}>
+            Fix username casing
+          </button>
         </div>
         <p className="muted" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
           Pause stops scheduled worker scans only. Manual Scan now still works for one-offs.
+          “Fix username casing” uses Mojang (not Hypixel) so lowercase imports like{" "}
+          <code>3amcatnoises9</code> become <code>3AMCatNoises9</code>.
         </p>
       </div>
 
@@ -275,7 +307,10 @@ export default function AccountsPage() {
       <h2 className="section-title">Ownership contacts ({contacts.length})</h2>
       <p className="muted">
         IGNs seen on PitPanda item timelines / cache runs. Stored for attribution only — not
-        auto-refreshed.
+        auto-refreshed.{" "}
+        <button type="button" onClick={() => void fixUsernameCasing("contacts")}>
+          Fix contact casing
+        </button>
       </p>
       {contacts.length === 0 ? (
         <p className="muted">No ownership contacts yet. Caching item histories will fill this in.</p>
