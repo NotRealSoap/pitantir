@@ -30,15 +30,17 @@ function accountNodeId(username: string | null, uuid: string | null, accountId: 
 }
 
 function itemNodeId(item: AccountHistoryItem): string {
+  // Prefer game identity (canonical / nonce / item UUID) over PitPanda Mongo doc id.
   if (item.canonicalItemId) return `item:id:${item.canonicalItemId}`;
-  if (item.pitpandaItemId) return `item:pp:${item.pitpandaItemId}`;
   if (item.nonce) return `item:nonce:${item.nonce}`;
+  if (item.itemUuid) return `item:uuid:${item.itemUuid.toLowerCase()}`;
+  if (item.pitpandaItemId) return `item:pp:${item.pitpandaItemId}`;
   return `item:key:${item.key}`;
 }
 
 /**
  * Build a bipartite ownership graph: accounts ↔ items.
- * Dedupes accounts by UUID (preferred) or username; items by canonical / PitPanda id / nonce.
+ * Accounts keyed by Minecraft UUID; items by canonical / nonce / item UUID (PitPanda `_id` last).
  */
 export function buildOwnershipGraph(input: BuildOwnershipGraphInput): {
   nodes: AccountHistoryGraphNode[];
@@ -111,7 +113,7 @@ export function buildOwnershipGraph(input: BuildOwnershipGraphInput): {
         existing.lastSeenAt = maxIso(existing.lastSeenAt ?? null, owner.seenAt);
       }
 
-      const edgeId = `edge:${aId}->${iId}:pp:${owner.recordId ?? owner.seenAt}`;
+      const edgeId = `edge:${aId}->${iId}:pp:${owner.uuid}:${owner.pitpandaEventId ?? owner.seenAt}`;
       if (!links.has(edgeId)) {
         links.set(edgeId, {
           id: edgeId,
@@ -235,7 +237,7 @@ export function buildItemTimeline(
     return owners.map((owner, index) => {
       const prev = index > 0 ? owners[index - 1] : null;
       return {
-        eventId: `pp:${item.key}:${owner.recordId ?? owner.seenAt}`,
+        eventId: `pp:${item.key}:${owner.uuid}:${owner.pitpandaEventId ?? owner.seenAt}`,
         eventType: index === 0 ? "first_seen" : "owner_change",
         label: index === 0 ? "First seen (PitPanda)" : "Owner change (PitPanda)",
         eventTime: owner.seenAt,

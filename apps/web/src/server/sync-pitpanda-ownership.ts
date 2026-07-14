@@ -50,7 +50,8 @@ function normalizeUuidKey(value: string | null | undefined): string | null {
 
 /**
  * Persist PitPanda owners[] for one already-identified canonical item.
- * Fetches /api/item/{_id} when the payload is missing owners.
+ * Fetches GET /api/item/{mongoDocId} when the payload is missing owners.
+ * mongoDocId is PitPanda’s document `_id`/`id` (fetch key), never a player UUID.
  */
 export async function syncPitPandaOwnershipFromPayload(
   deps: SyncPitPandaOwnershipDeps,

@@ -101,18 +101,23 @@ export const accountHistoryItemSchema = z.object({
   resolutionStatus: z.string().nullable(),
   hasLocalHistory: z.boolean(),
   priorOwnerCount: z.number().int().nonnegative(),
-  /** PitPanda owners timeline (uuid + first-seen-at-that-owner time). */
+  /**
+   * PitPanda owners timeline.
+   * `uuid` = Minecraft player UUID (useful identity).
+   * `pitpandaEventId` = PitPanda owners[] `_id` (internal event marker only).
+   */
   pitpandaOwners: z.array(
     z.object({
       uuid: z.string(),
       username: z.string().nullable(),
       seenAt: z.string(),
-      recordId: z.string().nullable(),
+      pitpandaEventId: z.string().nullable(),
     }),
   ),
   ownershipPeriods: z.array(ownershipPeriodSummarySchema),
   ownershipEvents: z.array(ownershipEventSummarySchema),
   historySource: z.enum(["local_database", "pitpanda", "mixed", "none"]),
+  /** PitPanda Mongo item doc id — fetch key only, not a Minecraft UUID. */
   pitpandaItemId: z.string().nullable(),
   rawPayload: z.record(z.string(), z.unknown()).optional(),
 });

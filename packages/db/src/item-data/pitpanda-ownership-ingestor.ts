@@ -1,11 +1,15 @@
 import { normalizeUuid } from "@pitantir/shared";
 import type { IdentityStore } from "../identity/store.js";
 
-/** Minimal owner evidence from PitPanda (uuid + sighting time). */
+/**
+ * Minimal owner evidence from PitPanda.
+ * `uuid` is the Minecraft player; `pitpandaEventId` is only PitPanda’s owners[] `_id`.
+ */
 export interface PitPandaOwnerEvidence {
   uuid: string;
   seenAt: string;
-  recordId: string | null;
+  /** PitPanda internal owners[] event `_id` — not a player/item UUID. */
+  pitpandaEventId: string | null;
 }
 
 export interface OwnershipAccountRef {
@@ -41,6 +45,8 @@ export interface PitPandaOwnershipIngestResult {
 /**
  * Persist PitPanda `owners[{uuid,time}]` as import location periods/events.
  *
+ * - Ownership identity is player `uuid` (+ time); owners[] `_id` is only for idempotency
+ * - PitPanda item `_id` is stored as external_ref fetch key — not a Minecraft UUID
  * - Does not invent transfer times beyond consecutive owner sightings
  * - Uses certainty=uncertain and start_reason=import (never confirmed scan presence)
  * - Idempotent via import_presence event keys
@@ -65,13 +71,14 @@ export class PitPandaOwnershipIngestor {
 
     if (input.pitpandaItemId) {
       try {
+        // Mongo doc id is a PitPanda fetch key / external handle — not preferred game identity.
         await this.store.addIdentifier({
           itemId: input.canonicalItemId,
           kind: "external_ref",
           source: "pitpanda",
           value: input.pitpandaItemId,
-          confidence: "high",
-          isPreferred: true,
+          confidence: "medium",
+          isPreferred: false,
         });
       } catch {
         // External ref may already belong to another item — keep going with owners.
@@ -145,8 +152,9 @@ export class PitPandaOwnershipIngestor {
         endReason = "corrected";
       }
 
+      // Prefer PitPanda event `_id` for dedupe when present; fall back to player uuid + time.
       const ownerKey =
-        current.owner.recordId ?? `${current.owner.uuid}:${current.owner.seenAt}`;
+        current.owner.pitpandaEventId ?? `${current.owner.uuid}:${current.owner.seenAt}`;
       const idempotencyKey = `pp:import_presence:${input.canonicalItemId}:${ownerKey}`;
 
       const eventResult = await this.store.createLocationEvent({
@@ -163,7 +171,7 @@ export class PitPandaOwnershipIngestor {
         payload: {
           source: "pitpanda",
           pitpandaItemId: input.pitpandaItemId,
-          ownerRecordId: current.owner.recordId,
+          pitpandaEventId: current.owner.pitpandaEventId,
           ownerUuid: current.owner.uuid,
           ownerUsername: current.account.mcUsername,
         },
@@ -199,8 +207,9 @@ export class PitPandaOwnershipIngestor {
         closingObservationContextScanId: null,
         notes: [
           "pitpanda-owner-import",
-          input.pitpandaItemId ? `item=${input.pitpandaItemId}` : null,
-          current.owner.recordId ? `ownerRecord=${current.owner.recordId}` : null,
+          input.pitpandaItemId ? `ppItem=${input.pitpandaItemId}` : null,
+          current.owner.pitpandaEventId ? `ppEvent=${current.owner.pitpandaEventId}` : null,
+          `ownerUuid=${current.owner.uuid}`,
           openConfirmedElsewhere ? "open-confirmed-scan-elsewhere" : null,
         ]
           .filter(Boolean)

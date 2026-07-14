@@ -27,14 +27,22 @@ Application services depend on `ItemDataProvider`, not PitPanda.
   - `current_owner` → `uuid{playerName}`
   - `past_owner` → `past{playerName}`
 - **HTTP:**
-  - Search: `GET https://pitpanda.rocks/api/itemSearch/{query}?page={n}&sort=-lastseen`
-  - Detail: `GET https://pitpanda.rocks/api/item/{_id}` — includes `owners: [{ _id, uuid, time }]` ownership timeline (search list rows often omit `owners`)
+  - Search: `GET https://pitpanda.rocks/api/itemSearch/{query}?page={n}&sort=-lastseen&raw=true`
+  - Detail: `GET https://pitpanda.rocks/api/item/{mongoDocId}` — Mongo `_id` is a **fetch key only**, not a Minecraft UUID
 - **Auth header:** `X-API-Key`
 - **Pagination:** one page per request; account history bounds pages + detail lookups
 - **Caching:** in-memory TTL cache per identical validated request
 - **Rate limits:** app-level per-IP limits on search and account-history routes; adapter retries HTTP 429 with backoff
 - **History caveat:** PitPanda ownership is index/search based, not exhaustive Hypixel truth
-- **Local persistence:** when account-history indexes items, `owners` are written as local `item_location_periods` (`start_reason=import`, `certainty=uncertain`) and `item_location_events` (`import_presence`) via `PitPandaOwnershipIngestor`. Does not invent transfer times beyond consecutive owner sightings. Does not open Hypixel-style scan presence for upstream observations.
+- **Identity fields (do not mix):**
+  | Field | Meaning |
+  |---|---|
+  | `owners[].uuid` / `owner` | Minecraft **player** UUID — useful ownership identity |
+  | `nonce` | Pit mystic nonce — primary game item identity when available |
+  | item NBT UUID | Minecraft **item** UUID — distinct from player UUID and PitPanda `_id` |
+  | item `_id` / search `id` | PitPanda Mongo **document** id — API fetch key only |
+  | `owners[]._id` | PitPanda Mongo id for that ownership **event** — internal dedupe marker only |
+- **Local persistence:** when account-history indexes items, `owners` are written as local `item_location_periods` (`start_reason=import`, `certainty=uncertain`) and `item_location_events` (`import_presence`) via `PitPandaOwnershipIngestor`. Ownership identity uses player `uuid`; event `_id` is only for idempotency. Does not invent transfer times beyond consecutive owner sightings. Does not open Hypixel-style scan presence for upstream observations.
 
 ### Observed response shape (do not assume item fields)
 
@@ -49,9 +57,15 @@ Detail:
 {
   "success": true,
   "item": {
-    "_id": "...",
-    "owner": "<undashed uuid>",
-    "owners": [{ "_id": "...", "uuid": "<undashed>", "time": "ISO" }],
+    "_id": "<pitpanda mongo doc id — not a uuid>",
+    "owner": "<player uuid undashed>",
+    "owners": [
+      {
+        "_id": "<pitpanda event marker — not a uuid>",
+        "uuid": "<player uuid undashed>",
+        "time": "ISO"
+      }
+    ],
     "enchants": [{ "key": "...", "level": 1 }],
     "nonce": 0,
     "lives": 0,

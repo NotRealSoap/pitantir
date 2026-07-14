@@ -27,13 +27,13 @@ function sampleItem(overrides: Partial<AccountHistoryItem> = {}): AccountHistory
         uuid: "610fb968-20e7-40f4-b222-399a82779e41",
         username: "Alice",
         seenAt: "2023-10-04T13:01:13.152Z",
-        recordId: "r1",
+        pitpandaEventId: "r1",
       },
       {
         uuid: "0dee7969-1224-44ae-a463-fdb0fc72d568",
         username: "Current",
         seenAt: "2024-01-30T22:46:58.293Z",
-        recordId: "r2",
+        pitpandaEventId: "r2",
       },
     ],
     ownershipPeriods: [

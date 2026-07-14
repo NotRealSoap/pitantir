@@ -64,7 +64,7 @@ describe("parseUpstreamItemFields / PitPanda owners", () => {
       {
         uuid: "0dee7969-1224-44ae-a463-fdb0fc72d568",
         seenAt: "2024-01-01T00:00:00.000Z",
-        recordId: "rec1",
+        pitpandaEventId: "rec1",
       },
     ]);
   });

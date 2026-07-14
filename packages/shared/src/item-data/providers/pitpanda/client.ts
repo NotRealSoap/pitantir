@@ -69,8 +69,10 @@ export async function pitPandaItemSearch(
 }
 
 /**
- * Fetch a single PitPanda item by Mongo `_id`.
- * Detail responses include `owners: [{ uuid, time }]` ownership timeline.
+ * Fetch a single PitPanda item by Mongo document `_id`.
+ * That id is PitPanda’s internal doc key — not a Minecraft player/item UUID.
+ * Detail responses include `owners: [{ uuid, time, _id }]` where `uuid` is the player
+ * and each owners[] `_id` is only an internal event marker.
  */
 export async function pitPandaGetItem(
   options: PitPandaClientOptions,

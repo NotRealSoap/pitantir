@@ -42,12 +42,12 @@ describe("PitPandaOwnershipIngestor", () => {
       {
         uuid: "610fb968-20e7-40f4-b222-399a82779e41",
         seenAt: "2023-10-04T13:01:13.152Z",
-        recordId: "rec-1",
+        pitpandaEventId: "rec-1",
       },
       {
         uuid: "0dee7969-1224-44ae-a463-fdb0fc72d568",
         seenAt: "2024-01-30T22:46:58.293Z",
-        recordId: "rec-2",
+        pitpandaEventId: "rec-2",
       },
     ];
 
@@ -110,7 +110,7 @@ describe("PitPandaOwnershipIngestor", () => {
         {
           uuid: "610fb968-20e7-40f4-b222-399a82779e41",
           seenAt: "2023-10-04T13:01:13.152Z",
-          recordId: "rec-1",
+          pitpandaEventId: "rec-1",
         },
       ],
       usernameByUuid: new Map(),
@@ -139,12 +139,12 @@ describe("PitPandaOwnershipIngestor", () => {
         {
           uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
           seenAt: t1,
-          recordId: "a",
+          pitpandaEventId: "a",
         },
         {
           uuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
           seenAt: t2,
-          recordId: "b",
+          pitpandaEventId: "b",
         },
       ],
       usernameByUuid: new Map([

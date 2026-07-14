@@ -539,7 +539,7 @@ export async function getAccountItemHistory(
         uuid,
         username: usernameByUuid.get(uuid) ?? null,
         seenAt: owner.seenAt,
-        recordId: owner.recordId,
+        pitpandaEventId: owner.pitpandaEventId,
       };
     });
 
@@ -590,9 +590,10 @@ export async function getAccountItemHistory(
     );
 
     const key =
+      fields.nonce ??
+      fields.itemUuid ??
       fields.pitpandaItemId ??
       item.providerItemKey ??
-      fields.nonce ??
       `idx:${index}`;
 
     return {

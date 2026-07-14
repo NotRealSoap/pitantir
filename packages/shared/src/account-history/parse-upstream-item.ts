@@ -1,12 +1,16 @@
 /**
  * Best-effort parsing of PitPanda item payloads.
  *
- * Confirmed real detail shape from GET /api/item/{_id}:
- * - `_id`, `owner` (uuid undashed), `owners: [{ _id, uuid, time }]`
- * - `enchants: [{ key, level }]`, `nonce`, `lives`, `maxLives`
- * - `item: { id, meta, name }`, `lastseen`, `tier`, `flags`, …
+ * Confirmed real detail shape from GET /api/item/{mongoDocId}:
+ * - `_id` — PitPanda Mongo doc id only (fetch key), not a player/item UUID
+ * - `owner` — current owner Minecraft player UUID (undashed)
+ * - `owners: [{ _id, uuid, time }]` — ownership sightings:
+ *   - `uuid` — player Minecraft UUID (the useful identity)
+ *   - `_id` — PitPanda’s internal marker for that ownership *event* (dedupe only)
+ *   - `time` — when PitPanda recorded that owner sighting
+ * - `nonce`, `enchants`, `lives`, `maxLives`, `item`, `lastseen`, …
  *
- * Search list items may omit `owners`; use detail lookup when missing.
+ * Search list items may omit `owners`; use detail lookup via item `_id`/`id` when missing.
  */
 
 import { coerceInventoryNonce, coerceInventoryUuid, resolveMysticIds } from "../inventory/nonce.js";
@@ -16,16 +20,26 @@ function stripMcFormatting(value: string): string {
 }
 
 export interface PitPandaOwnerRecord {
+  /** Minecraft player UUID (dashed). This is the useful ownership identity. */
   uuid: string;
   seenAt: string;
-  recordId: string | null;
+  /**
+   * PitPanda Mongo `_id` for this owners[] *event* row.
+   * Internal marker only — not a player UUID, not an item UUID. Used for idempotent import keys.
+   */
+  pitpandaEventId: string | null;
 }
 
 export interface ParsedUpstreamItemFields {
+  /**
+   * PitPanda Mongo doc id for this item (`_id` / search `id`).
+   * Fetch key for GET /api/item/{id} only — not a Minecraft UUID or Pit nonce.
+   */
   pitpandaItemId: string | null;
   title: string | null;
   kind: string | null;
   nonce: string | null;
+  /** Minecraft item UUID when present in NBT/payload — distinct from PitPanda `_id`. */
   itemUuid: string | null;
   lives: number | null;
   maxLives: number | null;
@@ -33,6 +47,7 @@ export interface ParsedUpstreamItemFields {
   lore: string[] | null;
   lastSeenAt: string | null;
   ownerUsername: string | null;
+  /** Current owner Minecraft player UUID. */
   ownerUuid: string | null;
   /** Ownership timeline from PitPanda when present (detail endpoint). */
   owners: PitPandaOwnerRecord[];
@@ -101,6 +116,7 @@ function parseEnchantList(value: unknown): Record<string, number> | null {
 
 /**
  * Parse PitPanda `owners` array into normalized timeline entries (chronological).
+ * Identity for each row is `uuid` (player). `_id` is only PitPanda’s event marker.
  * Does not invent history when the array is absent.
  */
 export function parsePitPandaOwners(value: unknown): PitPandaOwnerRecord[] {
@@ -119,14 +135,16 @@ export function parsePitPandaOwners(value: unknown): PitPandaOwnerRecord[] {
     out.push({
       uuid,
       seenAt,
-      recordId: asString(record._id),
+      // Opaque PitPanda event marker — never treat as player/item UUID.
+      pitpandaEventId: asString(record._id),
     });
   }
   return out.sort((a, b) => a.seenAt.localeCompare(b.seenAt));
 }
 
 function asMongoObjectId(value: unknown): string | null {
-  // PitPanda raw docs use `_id`; dbToItem search rows use `id`.
+  // PitPanda Mongo ids only (item doc or owners[] event). Never a Minecraft UUID.
+  // Raw docs use `_id`; dbToItem search rows rename item `_id` → `id`.
   if (typeof value === "string" && /^[a-f0-9]{24}$/i.test(value.trim())) {
     return value.trim().toLowerCase();
   }
