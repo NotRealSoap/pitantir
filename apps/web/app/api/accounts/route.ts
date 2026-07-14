@@ -107,6 +107,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ account }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create account.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const needsMigrate =
+      /watchlisted/i.test(message) &&
+      (/does not exist|column/i.test(message) || /Failed query/i.test(message));
+    return NextResponse.json(
+      {
+        error: needsMigrate
+          ? "Database is missing the watchlist column. Run: npx pnpm@10.11.0 db:migrate"
+          : message,
+      },
+      { status: 400 },
+    );
   }
 }
