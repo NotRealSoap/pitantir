@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@pitantir/shared", "@pitantir/db"],
-  // Keep postgres/drizzle out of the webpack graph for server routes.
+  // Client-safe shared code only. @pitantir/db stays server-external (postgres).
+  transpilePackages: ["@pitantir/shared"],
   serverExternalPackages: ["@pitantir/db", "postgres", "drizzle-orm"],
   webpack: (config) => {
     config.resolve.extensionAlias = {
