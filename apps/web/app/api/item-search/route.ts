@@ -8,7 +8,11 @@ import {
 import { executeItemSearch, itemSearchCacheKey } from "../../../src/server/item-search-service";
 import { InMemoryRateLimiter } from "../../../src/server/rate-limit";
 import { TtlCache } from "../../../src/server/search-cache";
-import { getItemDataProvider, getUpstreamIngestor } from "../../../src/server/runtime";
+import {
+  getItemDataProvider,
+  getPitPandaOwnershipIngestor,
+  getUpstreamIngestor,
+} from "../../../src/server/runtime";
 
 const rateLimiter = new InMemoryRateLimiter(20, 60_000);
 const searchCache = new TtlCache<ItemSearchResponse>(60_000);
@@ -109,6 +113,7 @@ export async function POST(request: Request) {
       {
         provider,
         ingestor: await getUpstreamIngestor(),
+        ownershipIngestor: await getPitPandaOwnershipIngestor(),
       },
       parsed.data,
     );

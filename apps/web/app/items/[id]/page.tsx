@@ -31,27 +31,50 @@ export default function ItemDetailPage() {
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+
+  async function load(forcePitPandaSync = false) {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = forcePitPandaSync ? "?syncPitPanda=1" : "";
+      const response = await fetch(`/api/items/${params.id}${qs}`);
+      const payload = (await response.json()) as {
+        item?: ItemDetail;
+        error?: string;
+        ownershipSync?: {
+          attempted: boolean;
+          eventsCreated: number;
+          periodsCreated: number;
+          message?: string;
+        } | null;
+      };
+      if (!response.ok) {
+        setError(payload.error ?? "Unable to load item.");
+        setDetail(null);
+        return;
+      }
+      setDetail(payload.item ?? null);
+      if (payload.ownershipSync?.attempted) {
+        if ((payload.ownershipSync.eventsCreated ?? 0) > 0) {
+          setSyncNote(
+            `Imported ${payload.ownershipSync.eventsCreated} PitPanda owner sighting(s) into local history.`,
+          );
+        } else if (payload.ownershipSync.message) {
+          setSyncNote(payload.ownershipSync.message);
+        } else {
+          setSyncNote(null);
+        }
+      }
+    } catch {
+      setError("Unable to load item.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/items/${params.id}`);
-        const payload = (await response.json()) as { item?: ItemDetail; error?: string };
-        if (!response.ok) {
-          setError(payload.error ?? "Unable to load item.");
-          setDetail(null);
-          return;
-        }
-        setDetail(payload.item ?? null);
-      } catch {
-        setError("Unable to load item.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    void load();
+    void load(false);
   }, [params.id]);
 
   if (loading) {
@@ -101,6 +124,12 @@ export default function ItemDetailPage() {
       <p className="page-lede">
         {item.category} · confidence {item.identityConfidence} · status {item.status}
       </p>
+      <div className="row-actions">
+        <button type="button" onClick={() => void load(true)}>
+          Refresh ownership from PitPanda
+        </button>
+      </div>
+      {syncNote ? <p className="muted">{syncNote}</p> : null}
 
       <MysticItemCard
         title={item.displayName ?? item.primaryNonce}

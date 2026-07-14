@@ -1,17 +1,20 @@
 import { createHash } from "node:crypto";
 import {
   ItemSearchError,
+  PitPandaItemDataProvider,
   type ItemDataProvider,
   type ItemSearchRequest,
   validateSearchValue,
   domainSearchQueryLabel,
 } from "@pitantir/shared/item-data";
 import type { ItemSearchResponse } from "@pitantir/shared/item-data";
-import type { UpstreamObservationIngestor } from "@pitantir/db";
+import type { PitPandaOwnershipIngestor, UpstreamObservationIngestor } from "@pitantir/db";
+import { syncPitPandaOwnershipFromPayload } from "./sync-pitpanda-ownership";
 
 export interface ItemSearchExecutionDeps {
   provider: ItemDataProvider;
   ingestor: UpstreamObservationIngestor;
+  ownershipIngestor?: PitPandaOwnershipIngestor | null;
 }
 
 export async function executeItemSearch(
@@ -47,6 +50,27 @@ export async function executeItemSearch(
     const ingestion = await deps.ingestor.ingest(page.items, {
       searchQuery: domainSearchQueryLabel(input),
     });
+
+    // Persist PitPanda owners[] onto indexed canonical items when possible.
+    if (deps.ownershipIngestor && deps.provider instanceof PitPandaItemDataProvider) {
+      const limit = Math.min(page.items.length, 15);
+      for (let index = 0; index < limit; index += 1) {
+        const canonicalItemId = ingestion.ingested[index]?.canonicalItemId;
+        const item = page.items[index];
+        if (!canonicalItemId || !item) continue;
+        try {
+          await syncPitPandaOwnershipFromPayload(
+            {
+              provider: deps.provider,
+              ownershipIngestor: deps.ownershipIngestor,
+            },
+            { canonicalItemId, rawPayload: item.rawPayload },
+          );
+        } catch {
+          // Best-effort; identity ingest already succeeded.
+        }
+      }
+    }
 
     return {
       status: "ok",

@@ -286,7 +286,9 @@ export default function AccountPage() {
               </button>
             </div>
             <div className="panel" style={{ marginTop: "0.75rem", overflow: "hidden" }}>
-              <OwnershipGraph nodes={result.graph.nodes} links={result.graph.links} />
+              <GraphErrorBoundary>
+                <OwnershipGraph nodes={result.graph.nodes} links={result.graph.links} />
+              </GraphErrorBoundary>
             </div>
           </section>
 
