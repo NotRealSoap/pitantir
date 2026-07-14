@@ -10,6 +10,7 @@ describe("PitPanda provider contract", () => {
         expect(String(url)).toContain("https://pitpanda.rocks/api/itemSearch/");
         expect(String(url)).toContain("page=0");
         expect(String(url)).toContain("sort=-lastseen");
+        expect(String(url)).toContain("raw=true");
         const headers = init?.headers as Record<string, string>;
         expect(headers["X-API-Key"]).toBe("test-key");
 

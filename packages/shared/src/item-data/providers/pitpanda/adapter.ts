@@ -118,8 +118,15 @@ function buildProviderItemKey(
   page: number,
   index: number,
 ): string {
-  if (typeof rawPayload._id === "string" && rawPayload._id.trim()) {
-    return `pp:${rawPayload._id.trim()}`;
+  const mongoId =
+    (typeof rawPayload._id === "string" && /^[a-f0-9]{24}$/i.test(rawPayload._id.trim())
+      ? rawPayload._id.trim()
+      : null) ??
+    (typeof rawPayload.id === "string" && /^[a-f0-9]{24}$/i.test(rawPayload.id.trim())
+      ? rawPayload.id.trim()
+      : null);
+  if (mongoId) {
+    return `pp:${mongoId.toLowerCase()}`;
   }
   const digest = createHash("sha256").update(JSON.stringify(rawPayload)).digest("hex").slice(0, 16);
   return `page${page}:idx${index}:${digest}`;

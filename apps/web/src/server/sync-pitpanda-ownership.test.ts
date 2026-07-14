@@ -87,10 +87,12 @@ describe("syncPitPandaOwnership", () => {
                 observedAt: null,
                 retrievedAt: new Date(),
                 searchQuery: "exact_nonce:2042600219",
+                // Shape PitPanda returns without raw=true (dbToItem): id, no owners
                 rawPayload: {
-                  _id: "bbbbbbbbbbbbbbbbbbbbbbbb",
+                  id: "bbbbbbbbbbbbbbbbbbbbbbbb",
                   nonce: 2042600219,
-                  // owners omitted → detail fetch
+                  owner: "0dee7969122444aea463fdb0fc72d568",
+                  lastseen: 1707185830,
                 },
               },
             ],

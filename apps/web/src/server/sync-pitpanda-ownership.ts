@@ -84,7 +84,9 @@ export async function syncPitPandaOwnershipFromPayload(
       eventsCreated: 0,
       periodsCreated: 0,
       skippedOwnersWithoutUsername: 0,
-      message: "No PitPanda owners timeline on this item.",
+      message: fields.pitpandaItemId
+        ? "PitPanda item detail had no owners[] timeline."
+        : "PitPanda search hit had no item id, so owners timeline could not be loaded. Retry after updating.",
     };
   }
 

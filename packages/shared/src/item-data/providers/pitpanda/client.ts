@@ -55,6 +55,9 @@ export async function pitPandaItemSearch(
   const body = await pitPandaGetJson<PitPandaSearchBody>(options, `/itemSearch/${encodeURIComponent(query)}`, {
     page: String(page),
     sort: "-lastseen",
+    // Default search mapping (dbToItem) strips `owners` and renames `_id` → `id`.
+    // Raw mystic docs keep the ownership timeline we need for import.
+    raw: "true",
   });
 
   if (!body.success) {

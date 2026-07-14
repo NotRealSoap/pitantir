@@ -360,12 +360,15 @@ export async function getAccountItemHistory(
   for (let index = 0; index < collected.length; index += 1) {
     const item = collected[index]!;
     if (hasEmbeddedOwners(item.rawPayload)) continue;
-    const id =
-      typeof item.rawPayload._id === "string" && /^[a-f0-9]{24}$/i.test(item.rawPayload._id.trim())
+    const idCandidate =
+      (typeof item.rawPayload._id === "string" && /^[a-f0-9]{24}$/i.test(item.rawPayload._id.trim())
         ? item.rawPayload._id.trim()
-        : null;
-    if (!id) continue;
-    needDetail.push({ index, itemId: id });
+        : null) ??
+      (typeof item.rawPayload.id === "string" && /^[a-f0-9]{24}$/i.test(item.rawPayload.id.trim())
+        ? item.rawPayload.id.trim()
+        : null);
+    if (!idCandidate) continue;
+    needDetail.push({ index, itemId: idCandidate });
   }
 
   const lookupBudget = Math.min(needDetail.length, ACCOUNT_HISTORY_LIMITS.maxItemHistoryLookups);

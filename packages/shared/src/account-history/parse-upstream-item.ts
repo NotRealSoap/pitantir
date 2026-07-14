@@ -125,6 +125,19 @@ export function parsePitPandaOwners(value: unknown): PitPandaOwnerRecord[] {
   return out.sort((a, b) => a.seenAt.localeCompare(b.seenAt));
 }
 
+function asMongoObjectId(value: unknown): string | null {
+  // PitPanda raw docs use `_id`; dbToItem search rows use `id`.
+  if (typeof value === "string" && /^[a-f0-9]{24}$/i.test(value.trim())) {
+    return value.trim().toLowerCase();
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const oid = asString(record.$oid) ?? asString(record.oid);
+    if (oid && /^[a-f0-9]{24}$/i.test(oid)) return oid.toLowerCase();
+  }
+  return null;
+}
+
 export function parseUpstreamItemFields(raw: Record<string, unknown>): ParsedUpstreamItemFields {
   const nestedItem =
     raw.item && typeof raw.item === "object" && !Array.isArray(raw.item)
@@ -150,7 +163,9 @@ export function parseUpstreamItemFields(raw: Record<string, unknown>): ParsedUps
     ? raw.lore.map(String)
     : Array.isArray(raw.description)
       ? raw.description.map(String)
-      : null;
+      : Array.isArray(nestedItem?.description)
+        ? nestedItem!.description.map(String)
+        : null;
 
   const owners = parsePitPandaOwners(raw.owners);
   const ownerUuid =
@@ -160,7 +175,7 @@ export function parseUpstreamItemFields(raw: Record<string, unknown>): ParsedUps
     null;
 
   return {
-    pitpandaItemId: asString(raw._id),
+    pitpandaItemId: asMongoObjectId(raw._id) ?? asMongoObjectId(raw.id),
     title,
     kind:
       asString(raw.kind) ??
