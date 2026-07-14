@@ -16,6 +16,8 @@ export interface Account {
   mcUsername: string;
   displayName: string | null;
   enabled: boolean;
+  /** On the Hypixel refresh roster (primary). Ownership contacts are false. */
+  watchlisted: boolean;
   priority: number;
   scanIntervalSeconds: number;
   nextScanAt: Date;
@@ -32,6 +34,7 @@ export interface CreateAccountInput {
   mcUuid?: string | null;
   displayName?: string | null;
   enabled?: boolean;
+  watchlisted?: boolean;
   priority?: number;
   scanIntervalSeconds?: number;
   notes?: string | null;
@@ -42,6 +45,7 @@ export interface UpdateAccountInput {
   mcUuid?: string | null;
   displayName?: string | null;
   enabled?: boolean;
+  watchlisted?: boolean;
   priority?: number;
   scanIntervalSeconds?: number;
   notes?: string | null;
@@ -54,6 +58,7 @@ function mapAccount(row: AccountRow): Account {
     mcUsername: row.mcUsername,
     displayName: row.displayName,
     enabled: row.enabled,
+    watchlisted: row.watchlisted,
     priority: row.priority,
     scanIntervalSeconds: row.scanIntervalSeconds,
     nextScanAt: row.nextScanAt,
@@ -154,6 +159,7 @@ export class AccountsRepository {
         mcUsername: shadowName,
         mcUuid: normalized,
         enabled: false,
+        watchlisted: false,
         notes: `auto:pitpanda-owner (username collision with ${username})`,
       });
     }
@@ -162,6 +168,7 @@ export class AccountsRepository {
       mcUsername: username,
       mcUuid: normalized,
       enabled: false,
+      watchlisted: false,
       notes: "auto:pitpanda-owner",
     });
   }
@@ -180,12 +187,16 @@ export class AccountsRepository {
     }
 
     const timestamp = now();
+    // Default creates land on the Hypixel watch list; shadows/cache pass watchlisted:false.
+    const watchlisted = input.watchlisted ?? true;
+    const enabled = input.enabled ?? true;
     const row = {
       id: newId(),
       mcUuid,
       mcUsername: username,
       displayName: input.displayName ?? null,
-      enabled: input.enabled ?? true,
+      enabled,
+      watchlisted,
       priority: input.priority ?? 100,
       scanIntervalSeconds: input.scanIntervalSeconds ?? 3600,
       nextScanAt: timestamp,
@@ -212,6 +223,7 @@ export class AccountsRepository {
       mcUuid: existing.mcUuid,
       displayName: input.displayName === undefined ? existing.displayName : input.displayName,
       enabled: input.enabled ?? existing.enabled,
+      watchlisted: input.watchlisted ?? existing.watchlisted,
       priority: input.priority ?? existing.priority,
       scanIntervalSeconds: input.scanIntervalSeconds ?? existing.scanIntervalSeconds,
       notes: input.notes === undefined ? existing.notes : input.notes,
@@ -241,10 +253,11 @@ export class AccountsRepository {
     }
     await this.db
       .update(accounts)
-      .set({ deletedAt: now(), enabled: false, updatedAt: now() })
+      .set({ deletedAt: now(), enabled: false, watchlisted: false, updatedAt: now() })
       .where(eq(accounts.id, id));
   }
 
+  /** Due accounts on the Hypixel refresh roster (watchlisted + enabled). */
   async listEnabledForScan(asOf: Date = now()): Promise<PublicAccount[]> {
     const rows = await this.db
       .select()
@@ -252,10 +265,30 @@ export class AccountsRepository {
       .where(
         and(
           isNull(accounts.deletedAt),
+          eq(accounts.watchlisted, true),
           eq(accounts.enabled, true),
           lte(accounts.nextScanAt, asOf),
         ),
       );
+    return rows.map(mapAccount);
+  }
+
+  async listWatchlist(): Promise<PublicAccount[]> {
+    const rows = await this.db
+      .select()
+      .from(accounts)
+      .where(and(isNull(accounts.deletedAt), eq(accounts.watchlisted, true)))
+      .orderBy(asc(accounts.mcUsername));
+    return rows.map(mapAccount);
+  }
+
+  /** Auto-collected IGNs from ownership imports (not on the refresh roster). */
+  async listOwnershipContacts(): Promise<PublicAccount[]> {
+    const rows = await this.db
+      .select()
+      .from(accounts)
+      .where(and(isNull(accounts.deletedAt), eq(accounts.watchlisted, false)))
+      .orderBy(asc(accounts.mcUsername));
     return rows.map(mapAccount);
   }
 }

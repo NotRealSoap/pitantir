@@ -50,6 +50,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       mcUsername?: string;
       displayName?: string | null;
       enabled?: boolean;
+      watchlisted?: boolean;
+      scanIntervalSeconds?: number;
       notes?: string | null;
     });
     return NextResponse.json({ account });

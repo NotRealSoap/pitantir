@@ -25,6 +25,11 @@ export const accounts = pgTable(
     mcUsername: text("mc_username").notNull(),
     displayName: text("display_name"),
     enabled: boolean("enabled").notNull().default(true),
+    /**
+     * Hypixel refresh roster membership (primary site function).
+     * Ownership-contact / shadow IGNs stay false so they never consume scan quota.
+     */
+    watchlisted: boolean("watchlisted").notNull().default(false),
     priority: integer("priority").notNull().default(100),
     scanIntervalSeconds: integer("scan_interval_seconds").notNull().default(3600),
     nextScanAt: timestamp("next_scan_at", { withTimezone: true }).notNull(),
@@ -45,6 +50,9 @@ export const accounts = pgTable(
       .where(sql`deleted_at IS NULL`),
     enabledNextScanIdx: index("accounts_enabled_next_scan_idx")
       .on(table.enabled, table.nextScanAt)
+      .where(sql`deleted_at IS NULL`),
+    watchlistScanIdx: index("accounts_watchlisted_enabled_next_scan_idx")
+      .on(table.watchlisted, table.enabled, table.nextScanAt)
       .where(sql`deleted_at IS NULL`),
   }),
 );

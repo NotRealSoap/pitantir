@@ -10,6 +10,7 @@ function fakeAccount(overrides: Partial<PublicAccount> = {}): PublicAccount {
     mcUuid: "069a79f4-44e9-4726-a5be-fca90e38aaf5",
     displayName: null,
     enabled: true,
+    watchlisted: true,
     priority: 100,
     scanIntervalSeconds: 3600,
     nextScanAt: new Date(),
@@ -58,7 +59,10 @@ describe("cachePitPandaOwnershipForAccounts", () => {
     expect(result.results).toHaveLength(2);
     expect(result.results.map((r) => r.mcUsername)).toEqual(["Alice", "Bob"]);
     expect(searchItems).toHaveBeenCalled();
-    expect(searchItems.mock.calls[0]?.[0]).toMatchObject({
+    const firstCall = searchItems.mock.calls.at(0)?.at(0) as
+      | { kind?: string; value?: string }
+      | undefined;
+    expect(firstCall).toMatchObject({
       kind: "current_owner",
       value: "Alice",
     });

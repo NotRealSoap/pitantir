@@ -95,7 +95,8 @@ export async function POST(request: Request) {
     if (!account) {
       account = await repo.create({
         mcUsername: username,
-        enabled: true,
+        enabled: false,
+        watchlisted: false,
         notes: "auto:cache-ownership",
       });
     }

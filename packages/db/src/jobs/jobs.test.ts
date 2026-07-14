@@ -147,10 +147,19 @@ describe("T13/T14 job claim/lease + scheduler", () => {
       mcUsername: "DuePlayer",
       scanIntervalSeconds: 3600,
       priority: 10,
+      watchlisted: true,
+      enabled: true,
     });
     const disabled = await accounts.create({
       mcUsername: "OffPlayer",
+      watchlisted: true,
       enabled: false,
+    });
+    const contact = await accounts.create({
+      mcUsername: "ContactOnly",
+      watchlisted: false,
+      enabled: false,
+      notes: "auto:pitpanda-owner",
     });
 
     const slotKey = `scan_account:${enabled.id}:${enabled.nextScanAt.toISOString()}`;
@@ -174,6 +183,11 @@ describe("T13/T14 job claim/lease + scheduler", () => {
       `scan_account:${disabled.id}:${disabled.nextScanAt.toISOString()}`,
     );
     expect(disabledJobs).toBeNull();
+
+    const contactJobs = await jobsA.getByIdempotencyKey(
+      `scan_account:${contact.id}:${contact.nextScanAt.toISOString()}`,
+    );
+    expect(contactJobs).toBeNull();
 
     const dup = await jobsA.enqueue({
       type: "scan_account",

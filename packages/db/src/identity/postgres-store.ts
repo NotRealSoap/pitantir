@@ -631,6 +631,17 @@ export class PostgresIdentityStore implements IdentityStore {
 export async function seedAdminSettings(db: Database): Promise<void> {
   const existing = await db.select().from(adminSettings).where(eq(adminSettings.key, "auto_resolve"));
   if (existing[0]) {
+    const paused = await db
+      .select()
+      .from(adminSettings)
+      .where(eq(adminSettings.key, "hypixel_scans_paused"));
+    if (!paused[0]) {
+      await db.insert(adminSettings).values({
+        key: "hypixel_scans_paused",
+        value: false,
+        updatedAt: now(),
+      });
+    }
     return;
   }
   await db.insert(adminSettings).values([
@@ -642,6 +653,11 @@ export async function seedAdminSettings(db: Database): Promise<void> {
     {
       key: "scan_default_interval_seconds",
       value: 3600,
+      updatedAt: now(),
+    },
+    {
+      key: "hypixel_scans_paused",
+      value: false,
       updatedAt: now(),
     },
   ]);

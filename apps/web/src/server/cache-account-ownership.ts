@@ -52,7 +52,7 @@ export async function cachePitPandaOwnershipForAccounts(
         page: 0,
         pageSize: 25,
         hideNoPriorOwners: false,
-        includeRaw: false,
+        minCertainty: "any",
       },
     );
 

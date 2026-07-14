@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
+import { getHypixelScansPaused } from "../accounts/scan-control.js";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
 
@@ -10,12 +11,13 @@ export interface ScheduleTickResult {
   enqueued: number;
   skippedDuplicate: number;
   skippedDisabled: number;
+  paused: boolean;
 }
 
 /**
- * Enqueue `scan_account` jobs for enabled accounts whose `next_scan_at` is due.
- * Idempotency key is `scan_account:{accountId}:{nextScanAtISO}` so a slot cannot double-enqueue.
- * Schedule cursor advances after each account is considered (create or duplicate).
+ * Enqueue `scan_account` jobs for watchlisted+enabled accounts whose `next_scan_at` is due.
+ * Global `hypixel_scans_paused` stops scheduled refresh without removing the watch list.
+ * Manual Scan now still works so one-off checks don't require unpausing.
  */
 export class ScanScheduler {
   private readonly accounts: AccountsRepository;
@@ -27,6 +29,16 @@ export class ScanScheduler {
   }
 
   async tick(asOf: Date = now()): Promise<ScheduleTickResult> {
+    if (await getHypixelScansPaused(this.db)) {
+      return {
+        considered: 0,
+        enqueued: 0,
+        skippedDuplicate: 0,
+        skippedDisabled: 0,
+        paused: true,
+      };
+    }
+
     const due = await this.accounts.listEnabledForScan(asOf);
     let enqueued = 0;
     let skippedDuplicate = 0;
@@ -64,17 +76,24 @@ export class ScanScheduler {
       enqueued,
       skippedDuplicate,
       skippedDisabled: 0,
+      paused: false,
     };
   }
 
   /** Manual scan-now: enqueue immediately with a unique key; does not move schedule cursor. */
-  async enqueueManualScan(accountId: string, asOf: Date = now()): Promise<{ jobId: string; created: boolean }> {
+  async enqueueManualScan(
+    accountId: string,
+    asOf: Date = now(),
+  ): Promise<{ jobId: string; created: boolean }> {
     const account = await this.accounts.get(accountId);
     if (!account) {
       throw new Error("Account not found");
     }
+    if (!account.watchlisted) {
+      throw new Error("Account is not on the watch list (ownership contacts are not auto-scanned)");
+    }
     if (!account.enabled) {
-      throw new Error("Account is disabled");
+      throw new Error("Account refresh is paused for this IGN");
     }
 
     const result = await this.jobs.enqueue({

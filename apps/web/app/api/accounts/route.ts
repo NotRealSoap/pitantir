@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAccountsRepository, isUsingPostgres } from "../../../src/server/runtime";
+import {
+  getAccountsRepository,
+  getDatabase,
+  isUsingPostgres,
+} from "../../../src/server/runtime";
+import { getHypixelScansPaused } from "@pitantir/db";
 
 export async function GET() {
   if (!isUsingPostgres()) {
@@ -13,12 +18,23 @@ export async function GET() {
   }
 
   const repo = await getAccountsRepository();
-  if (!repo) {
+  const db = getDatabase();
+  if (!repo || !db) {
     return NextResponse.json({ error: "Accounts repository unavailable." }, { status: 503 });
   }
 
-  const accounts = await repo.list();
-  return NextResponse.json({ accounts });
+  const [watchlist, contacts, scansPaused] = await Promise.all([
+    repo.listWatchlist(),
+    repo.listOwnershipContacts(),
+    getHypixelScansPaused(db),
+  ]);
+
+  return NextResponse.json({
+    watchlist,
+    contacts,
+    accounts: [...watchlist, ...contacts],
+    scansPaused,
+  });
 }
 
 export async function POST(request: Request) {
@@ -53,6 +69,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "mcUsername is required." }, { status: 400 });
   }
 
+  const watchlisted =
+    body !== null &&
+    typeof body === "object" &&
+    "watchlisted" in body &&
+    typeof (body as { watchlisted: unknown }).watchlisted === "boolean"
+      ? (body as { watchlisted: boolean }).watchlisted
+      : true;
+
   try {
     const account = await repo.create({
       mcUsername,
@@ -76,7 +100,9 @@ export async function POST(request: Request) {
         "enabled" in body &&
         typeof (body as { enabled: unknown }).enabled === "boolean"
           ? (body as { enabled: boolean }).enabled
-          : true,
+          : watchlisted,
+      watchlisted,
+      notes: watchlisted ? null : "manual:ownership-contact",
     });
     return NextResponse.json({ account }, { status: 201 });
   } catch (error) {

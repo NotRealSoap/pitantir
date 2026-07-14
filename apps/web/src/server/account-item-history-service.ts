@@ -41,7 +41,13 @@ export interface AccountItemHistoryDeps {
   /** Persists PitPanda owners[] into local import periods/events when available. */
   ownershipIngestor?: PitPandaOwnershipIngestor | null;
   /** Override explorer caps (used by bulk cache). Defaults to ACCOUNT_HISTORY_LIMITS. */
-  limits?: Partial<typeof ACCOUNT_HISTORY_LIMITS>;
+  limits?: {
+    maxUpstreamPages?: number;
+    maxItems?: number;
+    maxItemHistoryLookups?: number;
+    itemHistoryConcurrency?: number;
+    maxUsernameResolutions?: number;
+  };
   resolveProfileByUsername?: (
     username: string,
     fetchImpl?: typeof fetch,

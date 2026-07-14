@@ -1,51 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { PublicAccount } from "@pitantir/db";
 
-type CacheResult = {
-  results: Array<{
-    accountId: string;
-    mcUsername: string;
-    ok: boolean;
-    status: string;
-    itemsFetched: number;
-    isComplete: boolean;
-    message: string | null;
-  }>;
-  cachedAccounts: number;
-  incompleteAccounts: number;
-};
+function formatWhen(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const date = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
 
 export default function AccountsPage() {
-  const [accounts, setAccounts] = useState<PublicAccount[]>([]);
+  const [watchlist, setWatchlist] = useState<PublicAccount[]>([]);
+  const [contacts, setContacts] = useState<PublicAccount[]>([]);
+  const [scansPaused, setScansPaused] = useState(false);
   const [username, setUsername] = useState("");
   const [mcUuid, setMcUuid] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [caching, setCaching] = useState(false);
-  const [cacheResult, setCacheResult] = useState<CacheResult | null>(null);
-
-  const selectedIds = useMemo(
-    () => Object.entries(selected).filter(([, on]) => on).map(([id]) => id),
-    [selected],
-  );
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/accounts");
-      const payload = (await response.json()) as { accounts?: PublicAccount[]; error?: string };
+      const payload = (await response.json()) as {
+        watchlist?: PublicAccount[];
+        contacts?: PublicAccount[];
+        scansPaused?: boolean;
+        error?: string;
+      };
       if (!response.ok) {
         setError(payload.error ?? "Unable to load accounts.");
-        setAccounts([]);
+        setWatchlist([]);
+        setContacts([]);
         return;
       }
-      setAccounts(payload.accounts ?? []);
+      setWatchlist(payload.watchlist ?? []);
+      setContacts(payload.contacts ?? []);
+      setScansPaused(Boolean(payload.scansPaused));
     } catch {
       setError("Unable to load accounts.");
     } finally {
@@ -57,42 +51,67 @@ export default function AccountsPage() {
     void load();
   }, []);
 
-  async function createAccount() {
+  async function addToWatchlist() {
     setError(null);
+    setNote(null);
     const response = await fetch("/api/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mcUsername: username,
         mcUuid: mcUuid.trim() ? mcUuid.trim() : null,
+        watchlisted: true,
+        enabled: true,
       }),
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Unable to create account.");
+      setError(payload.error ?? "Unable to add account.");
       return;
     }
     setUsername("");
     setMcUuid("");
+    setNote(`Added ${username} to the refresh watch list.`);
     await load();
   }
 
-  async function toggleEnabled(account: PublicAccount) {
-    await fetch(`/api/accounts/${account.id}`, {
+  async function setPaused(paused: boolean) {
+    setError(null);
+    const response = await fetch("/api/scan-control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paused }),
+    });
+    const payload = (await response.json()) as { paused?: boolean; error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Unable to update scan pause.");
+      return;
+    }
+    setScansPaused(Boolean(payload.paused));
+    setNote(
+      payload.paused
+        ? "Scheduled Hypixel refresh is paused (API quota protected)."
+        : "Scheduled Hypixel refresh resumed.",
+    );
+  }
+
+  async function patchAccount(account: PublicAccount, body: Record<string, unknown>) {
+    setError(null);
+    const response = await fetch(`/api/accounts/${account.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: !account.enabled }),
+      body: JSON.stringify(body),
     });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Unable to update account.");
+      return;
+    }
     await load();
   }
 
   async function removeAccount(account: PublicAccount) {
     await fetch(`/api/accounts/${account.id}`, { method: "DELETE" });
-    setSelected((prev) => {
-      const next = { ...prev };
-      delete next[account.id];
-      return next;
-    });
     await load();
   }
 
@@ -108,61 +127,45 @@ export default function AccountsPage() {
     setNote(payload.message ?? "Scan enqueued.");
   }
 
-  async function cacheSelectedOwnership() {
-    setError(null);
-    setNote(null);
-    setCacheResult(null);
-    if (selectedIds.length === 0) {
-      setError("Select at least one account to cache.");
-      return;
-    }
-    setCaching(true);
-    try {
-      const response = await fetch("/api/accounts/cache-ownership", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountIds: selectedIds }),
-      });
-      const payload = (await response.json()) as CacheResult & { error?: string };
-      if (!response.ok) {
-        setError(payload.error ?? "Unable to cache ownership.");
-        return;
-      }
-      setCacheResult(payload);
-      setNote(
-        `Cached PitPanda ownership for ${payload.cachedAccounts}/${payload.results.length} account(s)` +
-          (payload.incompleteAccounts
-            ? ` (${payload.incompleteAccounts} incomplete — PitPanda index caps may apply).`
-            : "."),
-      );
-    } catch {
-      setError("Unable to cache ownership.");
-    } finally {
-      setCaching(false);
-    }
-  }
-
-  function setAllSelected(on: boolean) {
-    const next: Record<string, boolean> = {};
-    for (const account of accounts) next[account.id] = on;
-    setSelected(next);
-  }
-
   return (
     <>
-      <h1 className="page-title">Accounts</h1>
+      <h1 className="page-title">Watch list</h1>
       <p className="page-lede">
-        Manage Minecraft accounts to scan. Select accounts below to cache PitPanda ownership
-        histories for every currently indexed item into local DB. Scan now still needs the worker.
+        Primary roster for Hypixel inventory refresh. Ownership IGNs collected from item histories
+        stay in a separate contacts list and never consume your scan quota.
       </p>
+
+      <div className="panel" style={{ marginTop: "1rem" }}>
+        <div className="row-actions" style={{ margin: 0, alignItems: "center" }}>
+          <span className="chip">
+            Scheduled refresh: <strong>{scansPaused ? "paused" : "running"}</strong>
+          </span>
+          {scansPaused ? (
+            <button type="button" className="primary" onClick={() => void setPaused(false)}>
+              Resume refreshing
+            </button>
+          ) : (
+            <button type="button" onClick={() => void setPaused(true)}>
+              Pause all refreshing
+            </button>
+          )}
+        </div>
+        <p className="muted" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
+          Pause stops scheduled worker scans only. Manual Scan now still works for one-offs.
+        </p>
+      </div>
 
       <form
         className="form-stack panel"
+        style={{ marginTop: "1.25rem" }}
         onSubmit={(event) => {
           event.preventDefault();
-          void createAccount();
+          void addToWatchlist();
         }}
       >
+        <h2 className="section-title" style={{ marginTop: 0, fontSize: "1.05rem" }}>
+          Add to watch list
+        </h2>
         <label>
           Minecraft username
           <input
@@ -182,28 +185,9 @@ export default function AccountsPage() {
           />
         </label>
         <button type="submit" className="primary">
-          Add account
+          Add to watch list
         </button>
       </form>
-
-      <div className="row-actions" style={{ marginTop: "1.25rem" }}>
-        <button type="button" onClick={() => setAllSelected(true)} disabled={accounts.length === 0}>
-          Select all
-        </button>
-        <button type="button" onClick={() => setAllSelected(false)} disabled={selectedIds.length === 0}>
-          Clear selection
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void cacheSelectedOwnership()}
-          disabled={caching || selectedIds.length === 0}
-        >
-          {caching
-            ? `Caching ${selectedIds.length}…`
-            : `Cache PitPanda ownership (${selectedIds.length})`}
-        </button>
-      </div>
 
       {note ? (
         <p role="status" style={{ marginTop: "1rem" }}>
@@ -215,70 +199,111 @@ export default function AccountsPage() {
           {error}
         </p>
       ) : null}
-      {cacheResult ? (
-        <ul className="mystic-list panel" style={{ marginTop: "1rem" }}>
-          {cacheResult.results.map((row) => (
-            <li key={row.accountId}>
-              <strong>{row.mcUsername}</strong> · {row.status} · {row.itemsFetched} items
-              {row.isComplete ? "" : " · incomplete"}
-              {row.message ? ` — ${row.message}` : ""}
+      {loading ? <p className="muted">Loading…</p> : null}
+
+      <h2 className="section-title">Refreshing ({watchlist.length})</h2>
+      {watchlist.length === 0 ? (
+        <p className="muted">No watch-list accounts yet. Add IGNs you want scanned often.</p>
+      ) : (
+        <ul className="mystic-list">
+          {watchlist.map((account) => (
+            <li key={account.id} className="account-card">
+              <div>
+                <Link href={`/accounts/${account.id}`} className="mystic-title">
+                  {account.mcUsername}
+                </Link>
+              </div>
+              <div className="meta-row">
+                <span className="chip">{account.enabled ? "refresh on" : "refresh off"}</span>
+                <span className="chip">
+                  every <strong>{Math.round(account.scanIntervalSeconds / 60)}m</strong>
+                </span>
+                <span className="chip">
+                  next <strong>{formatWhen(account.nextScanAt)}</strong>
+                </span>
+                <span className="chip">
+                  UUID <strong>{account.mcUuid ? account.mcUuid.slice(0, 8) : "pending"}</strong>
+                </span>
+              </div>
+              <div className="row-actions" style={{ margin: "0.35rem 0 0" }}>
+                <Link className="button" href={`/accounts/${account.id}`}>
+                  History
+                </Link>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void scanNow(account)}
+                  disabled={!account.enabled}
+                >
+                  Scan now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void patchAccount(account, { enabled: !account.enabled })}
+                >
+                  {account.enabled ? "Pause this IGN" : "Resume this IGN"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void patchAccount(account, { watchlisted: false, enabled: false })
+                  }
+                >
+                  Move to contacts
+                </button>
+                <button type="button" onClick={() => void removeAccount(account)}>
+                  Soft delete
+                </button>
+              </div>
             </li>
           ))}
         </ul>
-      ) : null}
-      {loading ? <p className="muted">Loading…</p> : null}
+      )}
 
-      <ul className="mystic-list" style={{ marginTop: "1.5rem" }}>
-        {accounts.map((account) => (
-          <li key={account.id} className="account-card">
-            <label style={{ display: "flex", gap: "0.65rem", alignItems: "flex-start" }}>
-              <input
-                type="checkbox"
-                checked={Boolean(selected[account.id])}
-                onChange={(event) =>
-                  setSelected((prev) => ({ ...prev, [account.id]: event.target.checked }))
-                }
-                style={{ marginTop: "0.35rem" }}
-              />
-              <div style={{ flex: 1 }}>
-                <div>
-                  <Link href={`/accounts/${account.id}`} className="mystic-title">
-                    {account.mcUsername}
-                  </Link>
-                  {account.displayName ? (
-                    <span className="muted"> ({account.displayName})</span>
-                  ) : null}
-                </div>
-                <div className="meta-row">
-                  <span className="chip">{account.enabled ? "enabled" : "disabled"}</span>
-                  <span className="chip">
-                    UUID <strong>{account.mcUuid ? account.mcUuid.slice(0, 8) : "pending"}</strong>
-                  </span>
-                </div>
-                <div className="row-actions" style={{ margin: "0.35rem 0 0" }}>
-                  <Link className="button" href={`/accounts/${account.id}`}>
-                    History
-                  </Link>
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => void scanNow(account)}
-                    disabled={!account.enabled}
-                  >
-                    Scan now
-                  </button>
-                  <button type="button" onClick={() => void toggleEnabled(account)}>
-                    {account.enabled ? "Disable" : "Enable"}
-                  </button>
-                  <button type="button" onClick={() => void removeAccount(account)}>
-                    Soft delete
-                  </button>
-                </div>
+      <h2 className="section-title">Ownership contacts ({contacts.length})</h2>
+      <p className="muted">
+        IGNs seen on PitPanda item timelines / cache runs. Stored for attribution only — not
+        auto-refreshed.
+      </p>
+      {contacts.length === 0 ? (
+        <p className="muted">No ownership contacts yet. Caching item histories will fill this in.</p>
+      ) : (
+        <ul className="mystic-list">
+          {contacts.map((account) => (
+            <li key={account.id} className="account-card">
+              <div>
+                <Link href={`/accounts/${account.id}`} className="mystic-title">
+                  {account.mcUsername}
+                </Link>
+                {account.notes ? <div className="muted">{account.notes}</div> : null}
               </div>
-            </label>
-          </li>
-        ))}
-      </ul>
+              <div className="meta-row">
+                <span className="chip">contact</span>
+                <span className="chip">
+                  UUID <strong>{account.mcUuid ? account.mcUuid.slice(0, 8) : "pending"}</strong>
+                </span>
+              </div>
+              <div className="row-actions" style={{ margin: "0.35rem 0 0" }}>
+                <Link className="button" href={`/accounts/${account.id}`}>
+                  View
+                </Link>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    void patchAccount(account, { watchlisted: true, enabled: true })
+                  }
+                >
+                  Add to watch list
+                </button>
+                <button type="button" onClick={() => void removeAccount(account)}>
+                  Soft delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }
