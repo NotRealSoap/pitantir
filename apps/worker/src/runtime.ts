@@ -155,7 +155,7 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
   );
   await runMigrations(connectionString, migrationsFolder);
 
-  const { db, client } = createDb(connectionString, { max: 5 });
+  const { db, client } = createDb(connectionString, { max: 3 });
   await seedAdminSettings(db);
 
   const jobs = new JobsRepository(db);

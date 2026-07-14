@@ -4,7 +4,12 @@ import postgres from "postgres";
 import * as schema from "./schema/index.js";
 
 export function createDb(connectionString: string, options?: { max?: number }) {
-  const client = postgres(connectionString, { max: options?.max ?? 10 });
+  const client = postgres(connectionString, {
+    max: options?.max ?? 10,
+    // Recycle idle connections so Next HMR / short-lived clients don't pin slots forever.
+    idle_timeout: 20,
+    max_lifetime: 60 * 30,
+  });
   const db = drizzle(client, { schema });
   return { db, client };
 }

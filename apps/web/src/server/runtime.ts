@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type postgres from "postgres";
 import {
   createDb,
   IdentityService,
@@ -21,17 +22,39 @@ import { createItemDataProvider, PitPandaItemDataProvider } from "@pitantir/shar
 import { ItemSearchError } from "@pitantir/shared/item-data";
 import { getPitPandaApiKey } from "./pitpanda-key-store";
 
+/**
+ * HMR-safe process singleton. Next.js re-evaluates this module on hot reload;
+ * without globalThis, each reload opens another postgres pool until Postgres
+ * returns "sorry, too many clients already".
+ */
+type WebDbGlobals = {
+  databaseUrl?: string;
+  database?: Database;
+  sql?: postgres.Sql;
+  dbReady?: Promise<void> | null;
+  migratedForUrl?: string | null;
+  identityStore?: IdentityStore | null;
+  accountsRepo?: AccountsRepository | null;
+  scanScheduler?: ScanScheduler | null;
+  accountHistory?: AccountHistoryService | null;
+  catalog?: CatalogRepository | null;
+  localOwnershipEnricher?: LocalOwnershipEnricher | null;
+};
+
+const globalForDb = globalThis as typeof globalThis & {
+  __pitantirWebDb?: WebDbGlobals;
+};
+
+function dbGlobals(): WebDbGlobals {
+  if (!globalForDb.__pitantirWebDb) {
+    globalForDb.__pitantirWebDb = {};
+  }
+  return globalForDb.__pitantirWebDb;
+}
+
 let identityService: IdentityService | null = null;
-let identityStore: IdentityStore | null = null;
 let ingestor: UpstreamObservationIngestor | null = null;
 let ownershipIngestor: PitPandaOwnershipIngestor | null = null;
-let accountsRepo: AccountsRepository | null = null;
-let scanScheduler: ScanScheduler | null = null;
-let accountHistory: AccountHistoryService | null = null;
-let catalog: CatalogRepository | null = null;
-let localOwnershipEnricher: LocalOwnershipEnricher | null = null;
-let database: Database | null = null;
-let dbReady: Promise<void> | null = null;
 
 function migrationsFolder(): string {
   return path.join(
@@ -58,28 +81,63 @@ async function ensureDatabase(): Promise<{
     };
   }
 
-  if (!dbReady) {
-    dbReady = (async () => {
-      await runMigrations(databaseUrl, migrationsFolder());
-      const { db } = createDb(databaseUrl, { max: 10 });
-      database = db;
-      await seedAdminSettings(db);
-      identityStore = new PostgresIdentityStore(db);
-      accountsRepo = new AccountsRepository(db);
-      scanScheduler = new ScanScheduler(db);
-      accountHistory = new AccountHistoryService(db, identityStore);
-      catalog = new CatalogRepository(db);
-      localOwnershipEnricher = new LocalOwnershipEnricher(db);
-    })();
+  const g = dbGlobals();
+
+  // URL changed (rare) — drop the old pool so we don't leak it.
+  if (g.databaseUrl && g.databaseUrl !== databaseUrl && g.sql) {
+    await g.sql.end({ timeout: 1 }).catch(() => undefined);
+    g.sql = undefined;
+    g.database = undefined;
+    g.dbReady = null;
+    g.migratedForUrl = null;
+    g.accountsRepo = null;
+    g.scanScheduler = null;
+    g.accountHistory = null;
+    g.catalog = null;
+    g.localOwnershipEnricher = null;
+    g.identityStore = null;
   }
 
-  await dbReady;
+  if (!g.dbReady) {
+    g.dbReady = (async () => {
+      // Migrations open their own short-lived client. Only run once per URL
+      // per process — live-status polls must not re-migrate every second.
+      if (g.migratedForUrl !== databaseUrl) {
+        await runMigrations(databaseUrl, migrationsFolder());
+        g.migratedForUrl = databaseUrl;
+      }
+
+      if (!g.sql || !g.database) {
+        const created = createDb(databaseUrl, {
+          // Keep the web pool small; worker + Next HMR used to exhaust Postgres.
+          max: 4,
+        });
+        g.sql = created.client;
+        g.database = created.db;
+        g.databaseUrl = databaseUrl;
+      }
+
+      await seedAdminSettings(g.database);
+      g.identityStore = new PostgresIdentityStore(g.database);
+      g.accountsRepo = new AccountsRepository(g.database);
+      g.scanScheduler = new ScanScheduler(g.database);
+      g.accountHistory = new AccountHistoryService(g.database, g.identityStore);
+      g.catalog = new CatalogRepository(g.database);
+      g.localOwnershipEnricher = new LocalOwnershipEnricher(g.database);
+    })().catch((error) => {
+      // Allow a later request to retry after "too many clients"/transient failures.
+      g.dbReady = null;
+      throw error;
+    });
+  }
+
+  await g.dbReady;
   return {
-    store: identityStore ?? new MemoryIdentityStore(),
-    accounts: accountsRepo,
-    scheduler: scanScheduler,
-    history: accountHistory,
-    catalogRepo: catalog,
+    store: g.identityStore ?? new MemoryIdentityStore(),
+    accounts: g.accountsRepo ?? null,
+    scheduler: g.scanScheduler ?? null,
+    history: g.accountHistory ?? null,
+    catalogRepo: g.catalog ?? null,
   };
 }
 
@@ -139,7 +197,7 @@ export function getAccountHistoryItemProvider(): PitPandaItemDataProvider {
 
 export async function getLocalOwnershipEnricher(): Promise<LocalOwnershipEnricher | null> {
   await ensureDatabase();
-  return localOwnershipEnricher;
+  return dbGlobals().localOwnershipEnricher ?? null;
 }
 
 export async function getPitPandaOwnershipIngestor(): Promise<PitPandaOwnershipIngestor | null> {
@@ -165,5 +223,5 @@ export function isUsingPostgres(): boolean {
 }
 
 export function getDatabase(): Database | null {
-  return database;
+  return dbGlobals().database ?? null;
 }

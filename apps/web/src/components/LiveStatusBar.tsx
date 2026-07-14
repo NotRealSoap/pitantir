@@ -100,7 +100,8 @@ export function LiveStatusBar() {
     }
 
     void load();
-    const pollId = window.setInterval(() => void load(), 1_000);
+    // 2s is enough for the strip; local reset countdown still ticks every 1s.
+    const pollId = window.setInterval(() => void load(), 2_000);
     const tickId = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => {
       cancelled = true;
