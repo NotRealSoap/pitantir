@@ -124,13 +124,13 @@ export class AccountsRepository {
       if (existing.watchlisted && existing.enabled) {
         return { account: existing, created: false, promoted: false };
       }
-      const account = await this.update(existing.id, {
+      const patch: UpdateAccountInput = {
         watchlisted: true,
         enabled: true,
-        mcUuid: input.mcUuid === undefined ? undefined : input.mcUuid,
-        displayName: input.displayName === undefined ? undefined : input.displayName,
-        notes: existing.notes?.startsWith("auto:") ? existing.notes : existing.notes,
-      });
+      };
+      if (input.mcUuid !== undefined) patch.mcUuid = input.mcUuid;
+      if (input.displayName !== undefined) patch.displayName = input.displayName;
+      const account = await this.update(existing.id, patch);
       return { account, created: false, promoted: !existing.watchlisted };
     }
 
