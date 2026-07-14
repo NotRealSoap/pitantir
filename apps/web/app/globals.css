@@ -303,6 +303,59 @@ code {
   color: var(--pit-danger);
 }
 
+.live-stat-value-wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.25;
+}
+
+.live-stat-signal {
+  grid-column: 1 / -1;
+}
+
+.live-signal-rail {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  scrollbar-width: thin;
+}
+
+.live-signal-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  max-width: 22rem;
+  padding: 0.32rem 0.65rem;
+  border: 1px solid var(--pit-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-signal-pill.is-inventory_changed {
+  border-color: color-mix(in srgb, var(--pit-gold) 45%, var(--pit-border));
+  color: #f6e2a8;
+}
+
+.live-signal-pill.is-came_online {
+  border-color: color-mix(in srgb, var(--pit-ok) 45%, var(--pit-border));
+  color: #c6efd5;
+}
+
+.live-signal-pill.is-went_offline {
+  border-color: color-mix(in srgb, var(--pit-muted) 45%, var(--pit-border));
+}
+
+.live-signal-pill.is-flash,
+.live-stat-value.is-flash {
+  animation: live-flash 0.85s ease;
+}
+
 .live-call-rail {
   display: flex;
   gap: 0.4rem;

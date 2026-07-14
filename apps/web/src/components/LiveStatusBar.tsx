@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { describeLiveSignal } from "@pitantir/shared";
 
 type ApiCall = {
   id: string;
@@ -17,6 +18,7 @@ type LiveEvent = {
   id: string;
   kind: string;
   mcUsername: string;
+  at?: string;
   detail?: string | null;
 };
 
@@ -59,11 +61,12 @@ function formatAge(iso: string | null | undefined, nowMs: number): string {
   return `${Math.floor(seconds / 60)}m ago`;
 }
 
-function eventLabel(kind: string): string {
-  if (kind === "came_online") return "came online";
-  if (kind === "went_offline") return "went offline";
-  if (kind === "inventory_changed") return "inventory changed";
-  return kind;
+function formatSignal(event: LiveEvent): string {
+  return describeLiveSignal({
+    kind: event.kind,
+    mcUsername: event.mcUsername,
+    detail: event.detail,
+  });
 }
 
 export function LiveStatusBar() {
@@ -72,6 +75,7 @@ export function LiveStatusBar() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const [localReset, setLocalReset] = useState<number | null>(null);
   const inFlight = useRef(false);
+  const lastSignalId = useRef<string | null>(null);
   const lastCallId = useRef<string | null>(null);
   const resetAnchor = useRef<{ at: number; seconds: number } | null>(null);
 
@@ -85,11 +89,16 @@ export function LiveStatusBar() {
         const response = await fetch("/api/live-status", { cache: "no-store" });
         const payload = (await response.json()) as LiveStatusPayload;
         if (!cancelled && response.ok) {
+          const signalId = payload.events?.[0]?.id ?? null;
           const callId = payload.latestCall?.id ?? null;
-          if (callId && callId !== lastCallId.current) {
+          if (signalId && signalId !== lastSignalId.current) {
+            lastSignalId.current = signalId;
+            setFlashId(signalId);
+          } else if (callId && callId !== lastCallId.current) {
             lastCallId.current = callId;
             setFlashId(callId);
           }
+          if (callId) lastCallId.current = callId;
           setStatus(payload);
         }
       } catch {
@@ -228,25 +237,37 @@ export function LiveStatusBar() {
             </span>
           </div>
 
-          <div className="live-stat">
+          <div className="live-stat live-stat-signal">
             <span className="live-stat-label">Signal</span>
-            <span className="live-stat-value">
-              {latestEvent ? (
-                <span className="live-mono">{latestEvent.mcUsername}</span>
-              ) : (
-                <span className="live-dim">quiet</span>
-              )}
+            <span
+              className={`live-stat-value live-stat-value-wrap${
+                flashId && latestEvent?.id === flashId ? " is-flash" : ""
+              }`}
+            >
+              {latestEvent ? formatSignal(latestEvent) : <span className="live-dim">quiet</span>}
             </span>
             <span className="live-stat-note">
-              {latestEvent
-                ? `${eventLabel(latestEvent.kind)}${
-                    latestEvent.detail ? ` · ${latestEvent.detail}` : ""
-                  }`
-                : "no new events"}
+              {latestEvent ? formatAge(latestEvent.at, nowMs) : "no new events"}
             </span>
           </div>
         </section>
       </div>
+
+      {(status?.events?.length ?? 0) > 0 ? (
+        <div className="live-signal-rail" aria-label="Recent watch signals">
+          {(status?.events ?? []).slice(0, 6).map((event) => (
+            <span
+              key={event.id}
+              className={`live-signal-pill is-${event.kind}${
+                flashId === event.id ? " is-flash" : ""
+              }`}
+              title={formatAge(event.at, nowMs)}
+            >
+              {formatSignal(event)}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="live-call-rail" aria-label="Recent Hypixel calls">
         {recentCalls.length > 0 ? (
