@@ -3,7 +3,44 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import type { AccountHistory, PublicScanSummary } from "@pitantir/db";
+import type { PublicScanSummaryDto } from "../../../src/types/public-dtos";
+
+type AccountHistory = {
+  account: {
+    id: string;
+    mcUsername: string;
+    displayName: string | null;
+    enabled: boolean;
+    lastSuccessScanAt: string | Date | null;
+    lastFailureScanAt: string | Date | null;
+  };
+  scans: PublicScanSummaryDto[];
+  failures: PublicScanSummaryDto[];
+  heldItems: Array<{
+    itemId: string;
+    periodId: string;
+    displayName: string | null;
+    primaryNonce: string | null;
+    category: string;
+    identityConfidence: string;
+    presenceStartedAt: string | Date;
+    certainty: string;
+  }>;
+  latestObservedItems: Array<{
+    observationId: string;
+    title: string | null;
+    slotKey: string;
+    nonce: string | null;
+    itemUuid: string | null;
+    lives: number | null;
+    maxLives: number | null;
+    lore: string[] | null;
+    customEnchants: Record<string, number> | null;
+    kind: string | null;
+    resolutionStatus: string;
+    canonicalItemId: string | null;
+  }>;
+};
 import { MysticItemCard } from "../../../src/components/MysticItemCard";
 
 function formatWhen(value: string | Date | null | undefined): string {
@@ -12,7 +49,7 @@ function formatWhen(value: string | Date | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
-function ScanRow({ scan }: { scan: PublicScanSummary }) {
+function ScanRow({ scan }: { scan: PublicScanSummaryDto }) {
   const isFailure = scan.status === "failure";
   return (
     <li className={`scan-card${isFailure ? " is-failure" : ""}`}>

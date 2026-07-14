@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { PublicAccount } from "@pitantir/db";
+import type { PublicAccountDto } from "../../src/types/public-dtos";
 
 function formatWhen(value: string | Date | null | undefined): string {
   if (!value) return "—";
@@ -11,8 +11,8 @@ function formatWhen(value: string | Date | null | undefined): string {
 }
 
 export default function AccountsPage() {
-  const [watchlist, setWatchlist] = useState<PublicAccount[]>([]);
-  const [contacts, setContacts] = useState<PublicAccount[]>([]);
+  const [watchlist, setWatchlist] = useState<PublicAccountDto[]>([]);
+  const [contacts, setContacts] = useState<PublicAccountDto[]>([]);
   const [scansPaused, setScansPaused] = useState(false);
   const [username, setUsername] = useState("");
   const [mcUuid, setMcUuid] = useState("");
@@ -26,8 +26,8 @@ export default function AccountsPage() {
     try {
       const response = await fetch("/api/accounts");
       const payload = (await response.json()) as {
-        watchlist?: PublicAccount[];
-        contacts?: PublicAccount[];
+        watchlist?: PublicAccountDto[];
+        contacts?: PublicAccountDto[];
         scansPaused?: boolean;
         error?: string;
       };
@@ -95,7 +95,7 @@ export default function AccountsPage() {
     );
   }
 
-  async function patchAccount(account: PublicAccount, body: Record<string, unknown>) {
+  async function patchAccount(account: PublicAccountDto, body: Record<string, unknown>) {
     setError(null);
     const response = await fetch(`/api/accounts/${account.id}`, {
       method: "PATCH",
@@ -110,12 +110,12 @@ export default function AccountsPage() {
     await load();
   }
 
-  async function removeAccount(account: PublicAccount) {
+  async function removeAccount(account: PublicAccountDto) {
     await fetch(`/api/accounts/${account.id}`, { method: "DELETE" });
     await load();
   }
 
-  async function scanNow(account: PublicAccount) {
+  async function scanNow(account: PublicAccountDto) {
     setError(null);
     setNote(null);
     const response = await fetch(`/api/accounts/${account.id}/scan`, { method: "POST" });
