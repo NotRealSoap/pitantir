@@ -81,8 +81,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "DATABASE_URL is required." }, { status: 503 });
   }
 
-  const db = getDatabase();
   const repo = await getAccountsRepository();
+  const db = getDatabase();
   if (!db || !repo) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
