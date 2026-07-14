@@ -8,6 +8,7 @@
     "test": "vitest run",
     "dev": "pnpm --filter @pitantir/web dev",
     "dev:clean": "pnpm --filter @pitantir/web dev:clean",
+    "restart:web": "bash scripts/restart-web.sh",
     "dev:worker": "pnpm --filter @pitantir/worker dev",
     "start:worker": "pnpm --filter @pitantir/worker start",
     "build:web": "pnpm --filter @pitantir/web build",
