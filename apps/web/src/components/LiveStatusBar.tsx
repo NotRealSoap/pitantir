@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { describeLiveSignal } from "@pitantir/shared/live-signal-copy";
+import { describeLiveSignal, type InventoryChangeItem } from "@pitantir/shared/live-signal-copy";
 
 type ApiCall = {
   id: string;
@@ -20,6 +20,7 @@ type LiveEvent = {
   mcUsername: string;
   at?: string;
   detail?: string | null;
+  changes?: InventoryChangeItem[] | null;
 };
 
 type LiveStatusPayload = {
@@ -66,6 +67,7 @@ function formatSignal(event: LiveEvent): string {
     kind: event.kind,
     mcUsername: event.mcUsername,
     detail: event.detail,
+    changes: event.changes,
   });
 }
 
@@ -238,16 +240,31 @@ export function LiveStatusBar() {
           </div>
 
           <div className="live-stat live-stat-signal">
-            <span className="live-stat-label">Signal</span>
-            <span
-              className={`live-stat-value live-stat-value-wrap${
+            <span className="live-stat-label">
+              <Link href="/events" className="live-signal-link">
+                Signal
+              </Link>
+            </span>
+            <Link
+              href={latestEvent ? `/events#${latestEvent.id}` : "/events"}
+              className={`live-stat-value live-stat-value-wrap live-signal-open${
                 flashId && latestEvent?.id === flashId ? " is-flash" : ""
               }`}
+              title={latestEvent ? formatSignal(latestEvent) : "Open events"}
             >
               {latestEvent ? formatSignal(latestEvent) : <span className="live-dim">quiet</span>}
-            </span>
+            </Link>
             <span className="live-stat-note">
-              {latestEvent ? formatAge(latestEvent.at, nowMs) : "no new events"}
+              {latestEvent ? (
+                <>
+                  {formatAge(latestEvent.at, nowMs)} ·{" "}
+                  <Link href="/events" className="live-signal-link">
+                    all events
+                  </Link>
+                </>
+              ) : (
+                "no new events"
+              )}
             </span>
           </div>
         </section>
@@ -256,16 +273,20 @@ export function LiveStatusBar() {
       {(status?.events?.length ?? 0) > 0 ? (
         <div className="live-signal-rail" aria-label="Recent watch signals">
           {(status?.events ?? []).slice(0, 6).map((event) => (
-            <span
+            <Link
               key={event.id}
+              href={`/events#${event.id}`}
               className={`live-signal-pill is-${event.kind}${
                 flashId === event.id ? " is-flash" : ""
               }`}
-              title={formatAge(event.at, nowMs)}
+              title={formatSignal(event)}
             >
               {formatSignal(event)}
-            </span>
+            </Link>
           ))}
+          <Link href="/events" className="live-signal-pill live-signal-more">
+            All events →
+          </Link>
         </div>
       ) : null}
 

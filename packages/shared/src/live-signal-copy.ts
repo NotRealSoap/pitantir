@@ -1,6 +1,12 @@
 /** Human-readable live-signal copy for Hypixel watch events. */
 
+import type { InventoryChangeItem } from "./inventory/inventory-diff.js";
+import { formatInventoryChangeLabel } from "./inventory/inventory-diff.js";
+
 export type LiveSignalKind = "came_online" | "went_offline" | "inventory_changed" | "scanned";
+
+export type { InventoryChangeItem };
+export { formatInventoryChangeLabel };
 
 /** Crazy → Crazy's, Iris → Iris' */
 export function possessiveName(username: string): string {
@@ -9,18 +15,33 @@ export function possessiveName(username: string): string {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
+function formatChangeClause(change: InventoryChangeItem): string {
+  const label = formatInventoryChangeLabel(change);
+  if (change.direction === "gained") return `gained ${label}`;
+  if (change.direction === "lost") return `lost ${label}`;
+  return `updated ${label}`;
+}
+
 export function describeLiveSignal(input: {
   kind: LiveSignalKind | string;
   mcUsername: string;
   detail?: string | null;
+  changes?: InventoryChangeItem[] | null;
 }): string {
   const who = input.mcUsername.trim() || "Unknown";
   const owned = possessiveName(who);
   switch (input.kind) {
-    case "inventory_changed":
+    case "inventory_changed": {
+      if (input.changes && input.changes.length > 0) {
+        const shown = input.changes.slice(0, 4).map(formatChangeClause);
+        const more =
+          input.changes.length > 4 ? `; +${input.changes.length - 4} more` : "";
+        return `${who} ${shown.join("; ")}${more}`;
+      }
       return input.detail
         ? `${owned} inventory changed · ${input.detail}`
         : `${owned} inventory changed`;
+    }
     case "came_online":
       return input.detail ? `${who} came online · ${input.detail}` : `${who} came online`;
     case "went_offline":

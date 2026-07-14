@@ -16,7 +16,34 @@ describe("possessiveName", () => {
 });
 
 describe("describeLiveSignal", () => {
-  it("names whose inventory changed", () => {
+  it("lists concrete item moves when changes are present", () => {
+    expect(
+      describeLiveSignal({
+        kind: "inventory_changed",
+        mcUsername: "Crazy",
+        changes: [
+          {
+            direction: "gained",
+            nonce: "123",
+            title: "Tier III Mystic Sword",
+            summary: "11/18 Lifesteal 3",
+            slotKey: "inv:0",
+          },
+          {
+            direction: "lost",
+            nonce: "456",
+            title: "Fresh Pants",
+            summary: null,
+            slotKey: "inv:1",
+          },
+        ],
+      }),
+    ).toBe(
+      "Crazy gained Tier III Mystic Sword · 11/18 Lifesteal 3 · nonce 123; lost Fresh Pants · nonce 456",
+    );
+  });
+
+  it("falls back to detail when no structured changes", () => {
     expect(
       describeLiveSignal({
         kind: "inventory_changed",

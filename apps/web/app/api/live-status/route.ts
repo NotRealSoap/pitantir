@@ -63,6 +63,15 @@ export async function GET() {
       source: row.lastPresenceSource,
     }));
 
+  const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);
+  const latestCall = recentCalls[0] ?? null;
+
+  const hintByAccount = new Map<string, string>();
+  for (const event of noteworthy) {
+    if (event.kind !== "inventory_changed" || hintByAccount.has(event.accountId)) continue;
+    if (event.detail) hintByAccount.set(event.accountId, event.detail);
+  }
+
   const recentlyChanged = watchlist
     .filter((row) => row.lastInventoryChangedAt)
     .sort((a, b) => {
@@ -75,11 +84,8 @@ export async function GET() {
       id: row.id,
       mcUsername: row.mcUsername,
       changedAt: row.lastInventoryChangedAt,
-      itemHint: null as string | null,
+      itemHint: hintByAccount.get(row.id) ?? null,
     }));
-
-  const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);
-  const latestCall = recentCalls[0] ?? null;
 
   return NextResponse.json({
     ...usage,

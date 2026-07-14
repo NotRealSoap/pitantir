@@ -3,6 +3,7 @@ export * from "./types.js";
 export * from "./nonce.js";
 export * from "./mystic-display.js";
 export * from "./extract.js";
+export * from "./inventory-diff.js";
 export * from "./mock.js";
 export * from "./mojang.js";
 export * from "./hypixel-rate-limit.js";

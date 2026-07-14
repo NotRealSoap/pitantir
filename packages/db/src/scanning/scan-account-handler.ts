@@ -1,5 +1,7 @@
 import {
+  diffInventoriesByNonce,
   extractBookSlots,
+  formatInventoryChangeDetail,
   resolveMysticIds,
   type InventorySource,
 } from "@pitantir/shared/inventory";
@@ -10,7 +12,6 @@ import {
   appendHypixelLiveEvents,
   type HypixelLiveEvent,
 } from "../accounts/live-events.js";
-import { summarizeNonceDelta } from "@pitantir/shared";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
@@ -203,6 +204,7 @@ export class ScanAccountHandler {
     }
     if (inventoryChanged) {
       let detail = `${success.itemCount ?? 0} mystic slot(s)`;
+      let changes: HypixelLiveEvent["changes"] = null;
       try {
         const recent = await this.scans.listForAccount(account.id, 8);
         const previousSuccess = recent.find(
@@ -212,13 +214,12 @@ export class ScanAccountHandler {
             row.rawInventory != null,
         );
         if (previousSuccess?.rawInventory) {
-          const prevNonces = extractBookSlots(previousSuccess.rawInventory)
-            .map((slot) => resolveMysticIds(slot.rawItem).nonce)
-            .filter((nonce): nonce is string => Boolean(nonce));
-          const currNonces = extractBookSlots(fetched.rawInventory)
-            .map((slot) => resolveMysticIds(slot.rawItem).nonce)
-            .filter((nonce): nonce is string => Boolean(nonce));
-          detail = summarizeNonceDelta(prevNonces, currNonces);
+          const diff = diffInventoriesByNonce(
+            previousSuccess.rawInventory,
+            fetched.rawInventory,
+          );
+          changes = diff.changes;
+          detail = formatInventoryChangeDetail(diff);
         }
       } catch {
         // keep slot-count fallback
@@ -230,6 +231,7 @@ export class ScanAccountHandler {
         mcUsername: account.mcUsername,
         at,
         detail,
+        changes,
       });
     }
     liveEvents.push({
