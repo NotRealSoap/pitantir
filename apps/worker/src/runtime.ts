@@ -65,17 +65,26 @@ function createInventorySource(db: Database): InventorySource {
     const accounts = new AccountsRepository(db);
     return new HypixelPitInventorySource({
       apiKey,
-      onUuidResolved: async (accountId, mcUuid) => {
+      onIdentityResolved: async (accountId, identity) => {
         try {
-          await accounts.update(accountId, { mcUuid });
+          await accounts.update(accountId, {
+            mcUuid: identity.mcUuid,
+            mcUsername: identity.mcUsername,
+          });
         } catch (error) {
-          console.warn(
-            JSON.stringify({
-              msg: "failed to persist resolved mc_uuid",
-              accountId,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+          // Case-only username updates should succeed; if username uniquely collides, still save UUID.
+          try {
+            await accounts.update(accountId, { mcUuid: identity.mcUuid });
+          } catch (uuidError) {
+            console.warn(
+              JSON.stringify({
+                msg: "failed to persist resolved identity",
+                accountId,
+                error: error instanceof Error ? error.message : String(error),
+                uuidError: uuidError instanceof Error ? uuidError.message : String(uuidError),
+              }),
+            );
+          }
         }
       },
     });

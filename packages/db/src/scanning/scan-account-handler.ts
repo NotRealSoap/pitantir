@@ -105,11 +105,35 @@ export class ScanAccountHandler {
       };
     }
 
+    // Persist Hypixel/Mojang identity from the scan payload (correct UUID + in-game casing).
     const payloadUuid =
       typeof fetched.rawInventory.uuid === "string" ? fetched.rawInventory.uuid : null;
-    if (!account.mcUuid && payloadUuid) {
-      await this.accounts.update(account.id, { mcUuid: payloadUuid });
-      resolvedMcUuid = payloadUuid;
+    const displaynameRaw =
+      typeof fetched.rawInventory.displayname === "string"
+        ? fetched.rawInventory.displayname.trim()
+        : "";
+    const displayname = /^[A-Za-z0-9_]{3,16}$/.test(displaynameRaw) ? displaynameRaw : null;
+
+    const identityPatch: { mcUuid?: string; mcUsername?: string } = {};
+    if (payloadUuid) identityPatch.mcUuid = payloadUuid;
+    if (displayname) identityPatch.mcUsername = displayname;
+
+    if (Object.keys(identityPatch).length > 0) {
+      try {
+        account = await this.accounts.update(account.id, identityPatch);
+        resolvedMcUuid = account.mcUuid;
+      } catch (error) {
+        // Unique collision on username is unlikely for case-only fixes; still keep UUID if we can.
+        if (identityPatch.mcUuid && identityPatch.mcUuid !== account.mcUuid) {
+          try {
+            account = await this.accounts.update(account.id, { mcUuid: identityPatch.mcUuid });
+            resolvedMcUuid = account.mcUuid;
+          } catch {
+            // leave account as-is
+          }
+        }
+        void error;
+      }
     }
 
     const success = await this.scans.markSuccess(scan.id, {

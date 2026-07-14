@@ -3,7 +3,7 @@ import type {
   InventoryFetchResult,
   InventorySource,
 } from "./types.js";
-import { MojangLookupError, resolveMinecraftUuid } from "./mojang.js";
+import { MojangLookupError, formatUndashedUuid, resolveMinecraftProfileByUsername, resolveMinecraftUuid } from "./mojang.js";
 import {
   bookFieldsFromNbtItem,
   decodePitInventoryPayload,
@@ -14,9 +14,16 @@ export interface HypixelPitInventorySourceOptions {
   apiKey: string;
   fetchImpl?: typeof fetch;
   resolveUuid?: typeof resolveMinecraftUuid;
+  resolveProfile?: typeof resolveMinecraftProfileByUsername;
   /**
-   * Called when a username is resolved to a UUID so the caller can persist it.
+   * Called whenever Mojang/Hypixel identity is confirmed so the caller can persist
+   * the correct UUID and in-game username casing.
    */
+  onIdentityResolved?: (
+    accountId: string,
+    identity: { mcUuid: string; mcUsername: string },
+  ) => Promise<void> | void;
+  /** @deprecated Prefer onIdentityResolved */
   onUuidResolved?: (accountId: string, mcUuid: string) => Promise<void> | void;
 }
 
@@ -41,16 +48,18 @@ export class HypixelPitInventorySource implements InventorySource {
   readonly id = "hypixel_pit";
   private readonly fetchImpl: typeof fetch;
   private readonly resolveUuid: typeof resolveMinecraftUuid;
+  private readonly resolveProfile: typeof resolveMinecraftProfileByUsername;
 
   constructor(private readonly options: HypixelPitInventorySourceOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.resolveUuid = options.resolveUuid ?? resolveMinecraftUuid;
+    this.resolveProfile = options.resolveProfile ?? resolveMinecraftProfileByUsername;
   }
 
   async fetchInventory(account: InventoryAccountRef): Promise<InventoryFetchResult> {
     try {
-      const uuid = await this.ensureUuid(account);
-      const player = await this.fetchPlayer(uuid);
+      const identity = await this.resolveIdentity(account);
+      const player = await this.fetchPlayer(identity.uuid);
       if (!player) {
         return {
           ok: false,
@@ -67,6 +76,27 @@ export class HypixelPitInventorySource implements InventorySource {
           errorMessage: `No Pit profile for ${account.mcUsername} (player may never have played Pit)`,
         };
       }
+
+      // Prefer Hypixel displayname for in-game casing; fall back to Mojang profile name.
+      const displaynameRaw =
+        typeof player.displayname === "string" && player.displayname.trim()
+          ? player.displayname.trim()
+          : identity.username;
+      const displayname = /^[A-Za-z0-9_]{3,16}$/.test(displaynameRaw)
+        ? displaynameRaw
+        : identity.username;
+
+      // Hypixel player.uuid is typically undashed; normalize when present.
+      let uuid = identity.uuid;
+      if (typeof player.uuid === "string" && player.uuid.trim()) {
+        try {
+          uuid = formatUndashedUuid(player.uuid.replace(/-/g, ""));
+        } catch {
+          uuid = identity.uuid;
+        }
+      }
+
+      await this.persistIdentity(account.id, { mcUuid: uuid, mcUsername: displayname });
 
       const inventory = await decodeBooksFromPayload(profile.inv_contents);
       const ender_chest = await decodeBooksFromPayload(
@@ -103,7 +133,7 @@ export class HypixelPitInventorySource implements InventorySource {
         rawInventory: {
           source: "hypixel_pit",
           uuid,
-          displayname: player.displayname ?? account.mcUsername,
+          displayname,
           inventory,
           ender_chest,
           ...(containers.length > 0 ? { containers } : {}),
@@ -115,17 +145,33 @@ export class HypixelPitInventorySource implements InventorySource {
     }
   }
 
-  private async ensureUuid(account: InventoryAccountRef): Promise<string> {
-    if (account.mcUuid) {
-      return account.mcUuid.replace(/-/g, "").length === 32
-        ? account.mcUuid
-        : account.mcUuid;
+  /**
+   * Always resolve UUID from the watch-list username via Mojang.
+   * Never trust a previously stored UUID alone — a wrong UUID scans the wrong player.
+   */
+  private async resolveIdentity(
+    account: InventoryAccountRef,
+  ): Promise<{ uuid: string; username: string }> {
+    // Tests may stub resolveUuid without providing resolveProfile.
+    if (this.options.resolveUuid && !this.options.resolveProfile) {
+      const uuid = await this.resolveUuid(account.mcUsername, this.fetchImpl);
+      return { uuid, username: account.mcUsername };
     }
-    const uuid = await this.resolveUuid(account.mcUsername, this.fetchImpl);
+    const profile = await this.resolveProfile(account.mcUsername, this.fetchImpl);
+    return { uuid: profile.uuid, username: profile.username };
+  }
+
+  private async persistIdentity(
+    accountId: string,
+    identity: { mcUuid: string; mcUsername: string },
+  ): Promise<void> {
+    if (this.options.onIdentityResolved) {
+      await this.options.onIdentityResolved(accountId, identity);
+      return;
+    }
     if (this.options.onUuidResolved) {
-      await this.options.onUuidResolved(account.id, uuid);
+      await this.options.onUuidResolved(accountId, identity.mcUuid);
     }
-    return uuid;
   }
 
   private async fetchPlayer(uuid: string): Promise<HypixelPlayerResponse["player"]> {

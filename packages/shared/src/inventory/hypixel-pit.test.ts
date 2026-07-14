@@ -256,31 +256,41 @@ describe("HypixelPitInventorySource", () => {
     });
 
     const onUuidResolved = vi.fn(async () => undefined);
+    const onIdentityResolved = vi.fn(async () => undefined);
     const source = new HypixelPitInventorySource({
       apiKey: "test-key",
       fetchImpl: fetchImpl as unknown as typeof fetch,
       onUuidResolved,
+      onIdentityResolved,
+      resolveProfile: async () => ({
+        uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        username: "Demo",
+      }),
     });
 
     const result = await source.fetchInventory({
       id: "acct-1",
-      mcUsername: "Demo",
-      mcUuid: null,
+      mcUsername: "demo",
+      mcUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", // stale / wrong — must not be trusted
     });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.rawInventory.source).toBe("hypixel_pit");
+      expect(result.rawInventory.uuid).toBe("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+      expect(result.rawInventory.displayname).toBe("Demo");
       expect(result.rawInventory.inventory).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ title: "Alpha", nonce: "live-nonce", slot: 2 }),
         ]),
       );
     }
-    expect(onUuidResolved).toHaveBeenCalledWith(
-      "acct-1",
-      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    );
+    expect(onIdentityResolved).toHaveBeenCalledWith("acct-1", {
+      mcUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      mcUsername: "Demo",
+    });
+    // Deprecated callback is skipped when onIdentityResolved is provided.
+    expect(onUuidResolved).not.toHaveBeenCalled();
   });
 
   it("maps unauthorized key failures", async () => {
