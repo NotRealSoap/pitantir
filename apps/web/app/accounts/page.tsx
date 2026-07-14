@@ -64,14 +64,26 @@ export default function AccountsPage() {
         enabled: true,
       }),
     });
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      created?: boolean;
+      promoted?: boolean;
+      account?: { mcUsername?: string };
+    };
     if (!response.ok) {
       setError(payload.error ?? "Unable to add account.");
       return;
     }
+    const name = payload.account?.mcUsername ?? username;
     setUsername("");
     setMcUuid("");
-    setNote(`Added ${username} to the refresh watch list.`);
+    if (payload.promoted) {
+      setNote(`Moved ${name} from ownership contacts onto the refresh watch list.`);
+    } else if (payload.created === false) {
+      setNote(`${name} was already on the watch list.`);
+    } else {
+      setNote(`Added ${name} to the refresh watch list.`);
+    }
     await load();
   }
 

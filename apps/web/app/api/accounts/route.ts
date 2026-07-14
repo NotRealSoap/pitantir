@@ -6,6 +6,18 @@ import {
 } from "../../../src/server/runtime";
 import { getHypixelScansPaused } from "@pitantir/db";
 
+function explainAccountError(message: string): string {
+  // Drizzle wraps every insert failure as "Failed query: insert ... watchlisted ..."
+  // Do NOT treat that as a missing-column migration problem.
+  if (/column ["']?watchlisted["']? does not exist/i.test(message)) {
+    return "Database is missing the watchlist column. Run: npx pnpm@10.11.0 db:migrate";
+  }
+  if (/duplicate key|unique constraint|already exists/i.test(message)) {
+    return "That Minecraft username (or UUID) is already in the database. Check Ownership contacts and use “Add to watch list”, or pick another IGN.";
+  }
+  return message;
+}
+
 export async function GET() {
   if (!isUsingPostgres()) {
     return NextResponse.json(
@@ -77,46 +89,51 @@ export async function POST(request: Request) {
       ? (body as { watchlisted: boolean }).watchlisted
       : true;
 
+  const mcUuid =
+    body !== null &&
+    typeof body === "object" &&
+    "mcUuid" in body &&
+    typeof (body as { mcUuid: unknown }).mcUuid === "string"
+      ? (body as { mcUuid: string }).mcUuid
+      : null;
+
+  const displayName =
+    body !== null &&
+    typeof body === "object" &&
+    "displayName" in body &&
+    typeof (body as { displayName: unknown }).displayName === "string"
+      ? (body as { displayName: string }).displayName
+      : null;
+
   try {
+    // Watch-list adds: create OR promote an existing ownership contact.
+    if (watchlisted) {
+      const result = await repo.ensureOnWatchlist({
+        mcUsername,
+        mcUuid,
+        displayName,
+      });
+      return NextResponse.json(
+        {
+          account: result.account,
+          created: result.created,
+          promoted: result.promoted,
+        },
+        { status: result.created ? 201 : 200 },
+      );
+    }
+
     const account = await repo.create({
       mcUsername,
-      mcUuid:
-        body !== null &&
-        typeof body === "object" &&
-        "mcUuid" in body &&
-        typeof (body as { mcUuid: unknown }).mcUuid === "string"
-          ? (body as { mcUuid: string }).mcUuid
-          : null,
-      displayName:
-        body !== null &&
-        typeof body === "object" &&
-        "displayName" in body &&
-        typeof (body as { displayName: unknown }).displayName === "string"
-          ? (body as { displayName: string }).displayName
-          : null,
-      enabled:
-        body !== null &&
-        typeof body === "object" &&
-        "enabled" in body &&
-        typeof (body as { enabled: unknown }).enabled === "boolean"
-          ? (body as { enabled: boolean }).enabled
-          : watchlisted,
-      watchlisted,
-      notes: watchlisted ? null : "manual:ownership-contact",
+      mcUuid,
+      displayName,
+      enabled: false,
+      watchlisted: false,
+      notes: "manual:ownership-contact",
     });
-    return NextResponse.json({ account }, { status: 201 });
+    return NextResponse.json({ account, created: true, promoted: false }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create account.";
-    const needsMigrate =
-      /watchlisted/i.test(message) &&
-      (/does not exist|column/i.test(message) || /Failed query/i.test(message));
-    return NextResponse.json(
-      {
-        error: needsMigrate
-          ? "Database is missing the watchlist column. Run: npx pnpm@10.11.0 db:migrate"
-          : message,
-      },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: explainAccountError(message) }, { status: 400 });
   }
 }

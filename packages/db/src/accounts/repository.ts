@@ -103,7 +103,45 @@ export class AccountsRepository {
       .where(and(eq(accounts.mcUsername, trimmed), isNull(accounts.deletedAt)))
       .limit(1);
     const row = rows[0];
-    return row ? mapAccount(row) : null;
+    if (row) return mapAccount(row);
+
+    // Case-insensitive fallback (unique index is lower(mc_username)).
+    const listed = await this.list();
+    return listed.find((account) => account.mcUsername.toLowerCase() === trimmed.toLowerCase()) ?? null;
+  }
+
+  /**
+   * Add to Hypixel watch list, or promote an existing ownership-contact row.
+   * Avoids unique-username failures when the IGN was already collected from PitPanda.
+   */
+  async ensureOnWatchlist(input: {
+    mcUsername: string;
+    mcUuid?: string | null;
+    displayName?: string | null;
+  }): Promise<{ account: PublicAccount; created: boolean; promoted: boolean }> {
+    const existing = await this.getByUsername(input.mcUsername);
+    if (existing) {
+      if (existing.watchlisted && existing.enabled) {
+        return { account: existing, created: false, promoted: false };
+      }
+      const account = await this.update(existing.id, {
+        watchlisted: true,
+        enabled: true,
+        mcUuid: input.mcUuid === undefined ? undefined : input.mcUuid,
+        displayName: input.displayName === undefined ? undefined : input.displayName,
+        notes: existing.notes?.startsWith("auto:") ? existing.notes : existing.notes,
+      });
+      return { account, created: false, promoted: !existing.watchlisted };
+    }
+
+    const account = await this.create({
+      mcUsername: input.mcUsername,
+      mcUuid: input.mcUuid ?? null,
+      displayName: input.displayName ?? null,
+      watchlisted: true,
+      enabled: true,
+    });
+    return { account, created: true, promoted: false };
   }
 
   async findByMcUuid(mcUuid: string): Promise<PublicAccount | null> {
