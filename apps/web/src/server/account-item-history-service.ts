@@ -40,6 +40,8 @@ export interface AccountItemHistoryDeps {
   enricher: LocalOwnershipEnricher | null;
   /** Persists PitPanda owners[] into local import periods/events when available. */
   ownershipIngestor?: PitPandaOwnershipIngestor | null;
+  /** Override explorer caps (used by bulk cache). Defaults to ACCOUNT_HISTORY_LIMITS. */
+  limits?: Partial<typeof ACCOUNT_HISTORY_LIMITS>;
   resolveProfileByUsername?: (
     username: string,
     fetchImpl?: typeof fetch,
@@ -211,6 +213,7 @@ export async function getAccountItemHistory(
   rawRequest: AccountHistoryRequest,
 ): Promise<AccountHistoryResponse> {
   const request = accountHistoryRequestSchema.parse(rawRequest);
+  const limits = { ...ACCOUNT_HISTORY_LIMITS, ...deps.limits };
   const resolveByUsername = deps.resolveProfileByUsername ?? resolveMinecraftProfileByUsername;
   const resolveByUuid = deps.resolveProfileByUuid ?? resolveMinecraftProfileByUuid;
   const fetchImpl = deps.fetchImpl ?? fetch;
@@ -265,7 +268,7 @@ export async function getAccountItemHistory(
   const seenKeys = new Set<string>();
 
   try {
-    for (let page = 0; page < ACCOUNT_HISTORY_LIMITS.maxUpstreamPages; page += 1) {
+    for (let page = 0; page < limits.maxUpstreamPages; page += 1) {
       const pageResult = await deps.provider.searchItems({
         kind: "current_owner",
         value: searchedUsername,
@@ -287,11 +290,11 @@ export async function getAccountItemHistory(
         if (seenKeys.has(dedupeKey)) continue;
         seenKeys.add(dedupeKey);
         collected.push(item);
-        if (collected.length >= ACCOUNT_HISTORY_LIMITS.maxItems) break;
+        if (collected.length >= limits.maxItems) break;
       }
 
       hasMoreUpstreamPages = pageResult.hasNextPage === true;
-      if (collected.length >= ACCOUNT_HISTORY_LIMITS.maxItems) {
+      if (collected.length >= limits.maxItems) {
         hasMoreUpstreamPages = true;
         break;
       }
@@ -371,7 +374,7 @@ export async function getAccountItemHistory(
     needDetail.push({ index, itemId: idCandidate });
   }
 
-  const lookupBudget = Math.min(needDetail.length, ACCOUNT_HISTORY_LIMITS.maxItemHistoryLookups);
+  const lookupBudget = Math.min(needDetail.length, limits.maxItemHistoryLookups);
   const toLookup = needDetail.slice(0, lookupBudget);
   const skippedItemHistoryLookups = needDetail.length - toLookup.length;
   let itemHistoryLookups = 0;
@@ -393,7 +396,7 @@ export async function getAccountItemHistory(
     return promise;
   };
 
-  await mapPool(toLookup, ACCOUNT_HISTORY_LIMITS.itemHistoryConcurrency, async (entry) => {
+  await mapPool(toLookup, limits.itemHistoryConcurrency, async (entry) => {
     const detail = await getDetailCached(entry.itemId);
     if (!detail) return;
     const current = collected[entry.index]!;
@@ -446,7 +449,7 @@ export async function getAccountItemHistory(
   }
 
   const stillUnresolved = unresolved.filter((uuid) => !usernameByUuid.has(uuid));
-  const mojangBudget = Math.min(stillUnresolved.length, ACCOUNT_HISTORY_LIMITS.maxUsernameResolutions);
+  const mojangBudget = Math.min(stillUnresolved.length, limits.maxUsernameResolutions);
   for (let i = 0; i < mojangBudget; i += 1) {
     const uuid = stillUnresolved[i]!;
     try {
@@ -680,7 +683,7 @@ export async function getAccountItemHistory(
   }
   if (hasMoreUpstreamPages) {
     warnings.push(
-      `Stopped after ${ACCOUNT_HISTORY_LIMITS.maxUpstreamPages} upstream pages or ${ACCOUNT_HISTORY_LIMITS.maxItems} items; more may exist.`,
+      `Stopped after ${limits.maxUpstreamPages} upstream pages or ${limits.maxItems} items; more may exist.`,
     );
   }
   if (skippedItemHistoryLookups > 0) {
@@ -721,9 +724,9 @@ export async function getAccountItemHistory(
       missingHistoryCount,
       warnings,
       upstreamCalls,
-      maxUpstreamPages: ACCOUNT_HISTORY_LIMITS.maxUpstreamPages,
+      maxUpstreamPages: limits.maxUpstreamPages,
       itemHistoryLookups,
-      maxItemHistoryLookups: ACCOUNT_HISTORY_LIMITS.maxItemHistoryLookups,
+      maxItemHistoryLookups: limits.maxItemHistoryLookups,
       skippedItemHistoryLookups,
     },
   };
