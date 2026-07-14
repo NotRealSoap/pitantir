@@ -1,0 +1,23 @@
+{
+  "name": "@pitantir/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "dump-scan-item": "tsx src/dump-scan-item.ts"
+  },
+  "dependencies": {
+    "@pitantir/db": "workspace:*",
+    "@pitantir/shared": "workspace:*",
+    "dotenv": "^17.4.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1",
+    "typescript": "^5.8.3"
+  }
+}
