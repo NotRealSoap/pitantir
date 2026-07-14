@@ -249,7 +249,14 @@ describe("HypixelPitInventorySource", () => {
               },
             },
           }),
-          { status: 200 },
+          {
+            status: 200,
+            headers: {
+              "RateLimit-Limit": "300",
+              "RateLimit-Remaining": "299",
+              "RateLimit-Reset": "300",
+            },
+          },
         );
       }
       return new Response("not found", { status: 404 });
@@ -257,11 +264,13 @@ describe("HypixelPitInventorySource", () => {
 
     const onUuidResolved = vi.fn(async () => undefined);
     const onIdentityResolved = vi.fn(async () => undefined);
+    const onRateLimitObserved = vi.fn(async () => undefined);
     const source = new HypixelPitInventorySource({
       apiKey: "test-key",
       fetchImpl: fetchImpl as unknown as typeof fetch,
       onUuidResolved,
       onIdentityResolved,
+      onRateLimitObserved,
       resolveProfile: async () => ({
         uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         username: "Demo",
@@ -291,6 +300,14 @@ describe("HypixelPitInventorySource", () => {
     });
     // Deprecated callback is skipped when onIdentityResolved is provided.
     expect(onUuidResolved).not.toHaveBeenCalled();
+    expect(onRateLimitObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 300,
+        remaining: 299,
+        resetSeconds: 300,
+        source: "scan",
+      }),
+    );
   });
 
   it("maps unauthorized key failures", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type KeySectionProps = {
   title: string;
@@ -92,6 +92,237 @@ function KeySection({
   );
 }
 
+type HypixelUsagePayload = {
+  configured?: boolean;
+  used?: number | null;
+  snapshot?: {
+    limit: number;
+    remaining: number;
+    resetSeconds: number;
+    observedAt: string;
+    source: string;
+    windowSeconds: number;
+  } | null;
+  resetAt?: string | null;
+  secondsUntilReset?: number | null;
+  stale?: boolean;
+  watchlistCount?: number;
+  refreshingCount?: number;
+  currentIntervalSeconds?: number | null;
+  recommendedIntervalSeconds?: number | null;
+  estimatedRequestsPerWindow?: number | null;
+  estimatedBudgetPerWindow?: number | null;
+  databaseReady?: boolean;
+  error?: string;
+  message?: string;
+  ok?: boolean;
+};
+
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rem = seconds % 60;
+  if (minutes < 60) return rem ? `${minutes}m ${rem}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
+  const [usage, setUsage] = useState<HypixelUsagePayload | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [customInterval, setCustomInterval] = useState("300");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/hypixel/usage");
+      const payload = (await response.json()) as HypixelUsagePayload;
+      setUsage(payload);
+      if (payload.recommendedIntervalSeconds) {
+        setCustomInterval(String(payload.recommendedIntervalSeconds));
+      }
+    } catch {
+      setUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const id = window.setInterval(() => void load(), 15_000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  async function runAction(body: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/hypixel/usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as HypixelUsagePayload;
+      if (!response.ok) {
+        setError(payload.error ?? "Request failed.");
+        return;
+      }
+      setUsage(payload);
+      setMessage(payload.message ?? "Updated.");
+      if (payload.recommendedIntervalSeconds) {
+        setCustomInterval(String(payload.recommendedIntervalSeconds));
+      }
+    } catch {
+      setError("Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const snapshot = usage?.snapshot ?? null;
+  const pct =
+    snapshot && snapshot.limit > 0
+      ? Math.min(100, Math.round(((snapshot.limit - snapshot.remaining) / snapshot.limit) * 100))
+      : 0;
+
+  return (
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Hypixel API usage
+      </h2>
+      <p className="muted">
+        Live from Hypixel <code>RateLimit-*</code> headers on each scan (or Refresh quota). Leave
+        headroom so you do not trip the key throttle while refreshing as often as possible.
+      </p>
+
+      {!enabled ? (
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Save a Hypixel API key above to track quota.
+        </p>
+      ) : (
+        <>
+          <div className="meta-row" style={{ marginTop: "0.75rem" }}>
+            <span className="chip">
+              used{" "}
+              <strong>
+                {usage?.used ?? "—"}/{snapshot?.limit ?? "—"}
+              </strong>
+            </span>
+            <span className="chip">
+              remaining <strong>{snapshot?.remaining ?? "—"}</strong>
+            </span>
+            <span className="chip">
+              resets in <strong>{formatDuration(usage?.secondsUntilReset)}</strong>
+            </span>
+            {usage?.stale ? <span className="chip">stale — refresh</span> : null}
+          </div>
+
+          <div
+            aria-hidden="true"
+            style={{
+              marginTop: "0.75rem",
+              height: "0.55rem",
+              borderRadius: "999px",
+              background: "color-mix(in srgb, var(--text) 12%, transparent)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                background: pct >= 90 ? "#c45c3e" : "var(--accent, #2f6f5e)",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+
+          <p className="muted" style={{ marginTop: "0.75rem" }}>
+            Watch list: <strong>{usage?.refreshingCount ?? 0}</strong> refreshing /{" "}
+            {usage?.watchlistCount ?? 0} total. Current interval:{" "}
+            <strong>{formatDuration(usage?.currentIntervalSeconds)}</strong>
+            {usage?.recommendedIntervalSeconds != null ? (
+              <>
+                {" "}
+                · recommended: <strong>{formatDuration(usage.recommendedIntervalSeconds)}</strong>
+              </>
+            ) : null}
+          </p>
+          {usage?.estimatedBudgetPerWindow != null ? (
+            <p className="muted" style={{ marginTop: "0.35rem" }}>
+              Budget ≈ <strong>{usage.estimatedBudgetPerWindow}</strong> scans / ~
+              {formatDuration(snapshot?.windowSeconds ?? null)} window (85% of limit). At the current
+              interval, estimated load ≈{" "}
+              <strong>{usage.estimatedRequestsPerWindow ?? "—"}</strong> / window.
+            </p>
+          ) : (
+            <p className="muted" style={{ marginTop: "0.35rem" }}>
+              No quota sample yet. Click Refresh quota (1 Hypixel request) or wait for a scan.
+            </p>
+          )}
+
+          <div className="row-actions" style={{ marginTop: "0.85rem" }}>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => void runAction({ action: "probe" })}
+            >
+              {busy ? "Working…" : "Refresh quota"}
+            </button>
+            <button
+              type="button"
+              disabled={busy || usage?.recommendedIntervalSeconds == null}
+              onClick={() => void runAction({ action: "apply_recommended_interval" })}
+            >
+              Apply recommended interval
+            </button>
+          </div>
+
+          <form
+            className="form-stack"
+            style={{ marginTop: "0.85rem", maxWidth: "100%" }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const seconds = Number(customInterval);
+              void runAction({ action: "set_interval", scanIntervalSeconds: seconds });
+            }}
+          >
+            <label>
+              Custom interval (seconds)
+              <input
+                type="number"
+                min={30}
+                max={86400}
+                value={customInterval}
+                onChange={(event) => setCustomInterval(event.target.value)}
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              Set watch-list interval
+            </button>
+          </form>
+
+          {message ? <p role="status">{message}</p> : null}
+          {error ? (
+            <p role="alert" className="alert">
+              {error}
+            </p>
+          ) : null}
+          {snapshot ? (
+            <p className="muted" style={{ marginBottom: 0, fontSize: "0.85rem" }}>
+              Last sample: {new Date(snapshot.observedAt).toLocaleString()} ({snapshot.source})
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const [pitpandaConfigured, setPitpandaConfigured] = useState<boolean | null>(null);
   const [hypixelConfigured, setHypixelConfigured] = useState<boolean | null>(null);
@@ -148,6 +379,8 @@ export default function SettingsPage() {
         }}
       />
 
+      <HypixelUsagePanel enabled={Boolean(hypixelConfigured)} />
+
       <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
         <h2 className="section-title" style={{ marginTop: 0 }}>
           Notes
@@ -157,6 +390,10 @@ export default function SettingsPage() {
           <li>
             After saving the Hypixel key, restart the worker. Username-only accounts resolve UUID
             automatically via Mojang on first scan.
+          </li>
+          <li>
+            Quota updates automatically as the worker scans. Refresh quota spends one request to
+            sample headers without scanning an account.
           </li>
         </ul>
       </section>

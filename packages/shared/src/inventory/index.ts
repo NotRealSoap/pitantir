@@ -5,4 +5,5 @@ export * from "./mystic-display.js";
 export * from "./extract.js";
 export * from "./mock.js";
 export * from "./mojang.js";
+export * from "./hypixel-rate-limit.js";
 

@@ -9,6 +9,11 @@ import {
   decodePitInventoryPayload,
   type DecodedInventoryItem,
 } from "./pit-nbt.js";
+import {
+  buildHypixelRateLimitSnapshot,
+  parseHypixelRateLimitHeaders,
+  type HypixelRateLimitSnapshot,
+} from "./hypixel-rate-limit.js";
 
 export interface HypixelPitInventorySourceOptions {
   apiKey: string;
@@ -25,6 +30,10 @@ export interface HypixelPitInventorySourceOptions {
   ) => Promise<void> | void;
   /** @deprecated Prefer onIdentityResolved */
   onUuidResolved?: (accountId: string, mcUuid: string) => Promise<void> | void;
+  /** Called when Hypixel returns RateLimit-* headers so callers can surface quota usage. */
+  onRateLimitObserved?: (snapshot: HypixelRateLimitSnapshot) => Promise<void> | void;
+  /** Previous window estimate used to refine snapshot.windowSeconds. */
+  getPreviousWindowSeconds?: () => Promise<number | null> | number | null;
 }
 
 interface HypixelPlayerResponse {
@@ -174,6 +183,21 @@ export class HypixelPitInventorySource implements InventorySource {
     }
   }
 
+  private async noteRateLimit(headers: Headers): Promise<void> {
+    if (!this.options.onRateLimitObserved) return;
+    const parsed = parseHypixelRateLimitHeaders(headers);
+    if (!parsed) return;
+    const previous =
+      typeof this.options.getPreviousWindowSeconds === "function"
+        ? await this.options.getPreviousWindowSeconds()
+        : (this.options.getPreviousWindowSeconds ?? null);
+    const snapshot = buildHypixelRateLimitSnapshot(parsed, {
+      source: "scan",
+      previousWindowSeconds: previous,
+    });
+    await this.options.onRateLimitObserved(snapshot);
+  }
+
   private async fetchPlayer(uuid: string): Promise<HypixelPlayerResponse["player"]> {
     const undashed = uuid.replace(/-/g, "").toLowerCase();
     const response = await this.fetchImpl(
@@ -185,6 +209,8 @@ export class HypixelPitInventorySource implements InventorySource {
         },
       },
     );
+
+    await this.noteRateLimit(response.headers).catch(() => undefined);
 
     if (response.status === 403) {
       throw Object.assign(new Error("Hypixel API key rejected"), { code: "upstream_unauthorized" });

@@ -12,6 +12,8 @@ import {
   createDb,
   runMigrations,
   seedAdminSettings,
+  getHypixelRateLimitSnapshot,
+  setHypixelRateLimitSnapshot,
   type Database,
 } from "@pitantir/db";
 import {
@@ -65,6 +67,22 @@ function createInventorySource(db: Database): InventorySource {
     const accounts = new AccountsRepository(db);
     return new HypixelPitInventorySource({
       apiKey,
+      getPreviousWindowSeconds: async () => {
+        const previous = await getHypixelRateLimitSnapshot(db);
+        return previous?.windowSeconds ?? null;
+      },
+      onRateLimitObserved: async (snapshot) => {
+        try {
+          await setHypixelRateLimitSnapshot(db, snapshot);
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "failed to persist hypixel rate limit",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      },
       onIdentityResolved: async (accountId, identity) => {
         try {
           await accounts.update(accountId, {

@@ -19,19 +19,23 @@ export default function AccountsPage() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hypixelUsageLabel, setHypixelUsageLabel] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/accounts");
-      const payload = (await response.json()) as {
+      const [accountsResponse, usageResponse] = await Promise.all([
+        fetch("/api/accounts"),
+        fetch("/api/settings/hypixel/usage"),
+      ]);
+      const payload = (await accountsResponse.json()) as {
         watchlist?: PublicAccountDto[];
         contacts?: PublicAccountDto[];
         scansPaused?: boolean;
         error?: string;
       };
-      if (!response.ok) {
+      if (!accountsResponse.ok) {
         setError(payload.error ?? "Unable to load accounts.");
         setWatchlist([]);
         setContacts([]);
@@ -40,6 +44,25 @@ export default function AccountsPage() {
       setWatchlist(payload.watchlist ?? []);
       setContacts(payload.contacts ?? []);
       setScansPaused(Boolean(payload.scansPaused));
+
+      if (usageResponse.ok) {
+        const usage = (await usageResponse.json()) as {
+          used?: number | null;
+          snapshot?: { limit?: number; remaining?: number } | null;
+          recommendedIntervalSeconds?: number | null;
+        };
+        if (usage.snapshot?.limit != null && usage.used != null) {
+          const rec =
+            usage.recommendedIntervalSeconds != null
+              ? ` · aim ~${Math.round(usage.recommendedIntervalSeconds / 60)}m`
+              : "";
+          setHypixelUsageLabel(
+            `Hypixel ${usage.used}/${usage.snapshot.limit} used (${usage.snapshot.remaining} left)${rec}`,
+          );
+        } else {
+          setHypixelUsageLabel("Hypixel quota: no sample yet — open Settings");
+        }
+      }
     } catch {
       setError("Unable to load accounts.");
     } finally {
@@ -197,6 +220,11 @@ export default function AccountsPage() {
           “Fix username casing” uses Mojang (not Hypixel) so lowercase imports like{" "}
           <code>3amcatnoises9</code> become <code>3AMCatNoises9</code>.
         </p>
+        {hypixelUsageLabel ? (
+          <p className="muted" style={{ marginBottom: 0, marginTop: "0.5rem" }}>
+            <Link href="/settings">{hypixelUsageLabel}</Link>
+          </p>
+        ) : null}
       </div>
 
       <form

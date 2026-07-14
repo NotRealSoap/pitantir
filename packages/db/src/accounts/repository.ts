@@ -339,4 +339,22 @@ export class AccountsRepository {
       .orderBy(asc(accounts.mcUsername));
     return rows.map(mapAccount);
   }
+
+  /**
+   * Set scanIntervalSeconds for every watch-listed account (enabled or paused).
+   * Returns how many rows were updated.
+   */
+  async setWatchlistScanInterval(scanIntervalSeconds: number): Promise<number> {
+    const seconds = Math.floor(scanIntervalSeconds);
+    if (!Number.isFinite(seconds) || seconds < 30 || seconds > 86_400) {
+      throw new Error("scanIntervalSeconds must be between 30 and 86400");
+    }
+    const timestamp = now();
+    const updated = await this.db
+      .update(accounts)
+      .set({ scanIntervalSeconds: seconds, updatedAt: timestamp })
+      .where(and(isNull(accounts.deletedAt), eq(accounts.watchlisted, true)))
+      .returning({ id: accounts.id });
+    return updated.length;
+  }
 }
