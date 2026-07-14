@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ApiCall = {
   id: string;
@@ -13,179 +13,257 @@ type ApiCall = {
   detail?: string | null;
 };
 
+type LiveEvent = {
+  id: string;
+  kind: string;
+  mcUsername: string;
+  detail?: string | null;
+};
+
 type LiveStatusPayload = {
   used?: number | null;
   snapshot?: {
     limit: number;
     remaining: number;
-    windowSeconds: number;
   } | null;
   secondsUntilReset?: number | null;
   stale?: boolean;
-  refreshingCount?: number;
-  recommendedIntervalSeconds?: number | null;
   currentIntervalSeconds?: number | null;
   onlineCount?: number;
-  online?: Array<{ id: string; mcUsername: string; sessionGame?: string | null }>;
-  events?: Array<{
-    id: string;
-    kind: string;
-    mcUsername: string;
-    at: string;
-    detail?: string | null;
-  }>;
+  online?: Array<{ mcUsername: string }>;
+  events?: LiveEvent[];
   recentCalls?: ApiCall[];
   latestCall?: ApiCall | null;
   dueNowCount?: number;
-  nextDueAt?: string | null;
-  statusChecksEnabled?: boolean;
-  error?: string;
 };
 
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "—";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rem = Math.round(seconds % 60);
+  const safe = Math.max(0, Math.round(seconds));
+  if (safe < 60) return `${safe}s`;
+  const minutes = Math.floor(safe / 60);
+  const rem = safe % 60;
   if (minutes < 60) return rem ? `${minutes}m ${rem}s` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return mins ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
-function formatAge(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const ms = Date.now() - new Date(iso).getTime();
+function formatAge(iso: string | null | undefined, nowMs: number): string {
+  if (!iso) return "no calls yet";
+  const ms = nowMs - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return "just now";
   const seconds = Math.round(ms / 1000);
-  if (seconds < 5) return "just now";
+  if (seconds < 3) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   return `${Math.floor(seconds / 60)}m ago`;
 }
 
 function eventLabel(kind: string): string {
-  if (kind === "came_online") return "online";
-  if (kind === "went_offline") return "offline";
+  if (kind === "came_online") return "came online";
+  if (kind === "went_offline") return "went offline";
   if (kind === "inventory_changed") return "inventory changed";
   return kind;
 }
 
 export function LiveStatusBar() {
   const [status, setStatus] = useState<LiveStatusPayload | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [localReset, setLocalReset] = useState<number | null>(null);
+  const inFlight = useRef(false);
+  const lastCallId = useRef<string | null>(null);
+  const resetAnchor = useRef<{ at: number; seconds: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      if (inFlight.current) return;
+      inFlight.current = true;
       try {
-        const response = await fetch("/api/live-status");
+        const response = await fetch("/api/live-status", { cache: "no-store" });
         const payload = (await response.json()) as LiveStatusPayload;
-        if (!cancelled && response.ok) setStatus(payload);
+        if (!cancelled && response.ok) {
+          const callId = payload.latestCall?.id ?? null;
+          if (callId && callId !== lastCallId.current) {
+            lastCallId.current = callId;
+            setFlashId(callId);
+          }
+          setStatus(payload);
+        }
       } catch {
         // keep last good snapshot
+      } finally {
+        inFlight.current = false;
       }
     }
 
     void load();
-    const id = window.setInterval(() => void load(), 2_000);
+    const pollId = window.setInterval(() => void load(), 1_000);
+    const tickId = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearInterval(pollId);
+      window.clearInterval(tickId);
     };
   }, []);
 
+  useEffect(() => {
+    if (!flashId) return;
+    const id = window.setTimeout(() => setFlashId(null), 850);
+    return () => window.clearTimeout(id);
+  }, [flashId]);
+
+  useEffect(() => {
+    if (status?.secondsUntilReset == null) {
+      resetAnchor.current = null;
+      setLocalReset(null);
+      return;
+    }
+    resetAnchor.current = { at: Date.now(), seconds: status.secondsUntilReset };
+    setLocalReset(status.secondsUntilReset);
+  }, [status?.secondsUntilReset, status?.latestCall?.id]);
+
+  useEffect(() => {
+    if (!resetAnchor.current) return;
+    const elapsed = Math.floor((nowMs - resetAnchor.current.at) / 1000);
+    setLocalReset(Math.max(0, resetAnchor.current.seconds - elapsed));
+  }, [nowMs]);
+
   const snapshot = status?.snapshot ?? null;
   const used = status?.used ?? null;
+  const remaining = snapshot?.remaining ?? null;
+  const limit = snapshot?.limit ?? null;
   const pct =
     snapshot && snapshot.limit > 0 && used != null
       ? Math.min(100, Math.round((used / snapshot.limit) * 100))
       : 0;
   const latestEvent = status?.events?.[0] ?? null;
   const latestCall = status?.latestCall ?? null;
-  const onlineNames = (status?.online ?? [])
-    .slice(0, 4)
-    .map((row) => row.mcUsername)
-    .join(", ");
-  const recentCallLine = (status?.recentCalls ?? [])
-    .slice(0, 5)
-    .map((call) => {
-      const who = call.mcUsername ?? "key";
-      return `${who}/${call.endpoint}${call.ok ? "" : "!"}`;
-    })
-    .join(" · ");
+  const online = status?.online ?? [];
+  const recentCalls = status?.recentCalls ?? [];
+  const fillTone = pct >= 90 ? "hot" : pct >= 70 ? "warm" : "cool";
 
   return (
     <aside className="live-status" aria-live="polite">
-      <div className="live-status-main">
-        <div className="live-status-title">
-          <span className="live-dot" aria-hidden="true" />
-          Live Hypixel
-        </div>
-        <div className="live-status-quota">
-          <strong>
-            {used ?? "—"}/{snapshot?.limit ?? "—"}
-          </strong>{" "}
-          <span className="muted">used</span>
-          <span className="muted"> · </span>
-          <span className="muted">resets {formatDuration(status?.secondsUntilReset)}</span>
-          {status?.stale ? (
-            <span className="chip" title="Quota window already reset — numbers update on next Hypixel response">
-              window reset — awaiting sample
+      <div className="live-status-grid">
+        <section className="live-quota-panel">
+          <header className="live-status-head">
+            <span className="live-dot" aria-hidden="true" />
+            <div className="live-status-titles">
+              <div className="live-kicker">Live Hypixel</div>
+              <div className="live-subhead">
+                {status?.stale
+                  ? "Window reset — waiting for next sample"
+                  : localReset != null
+                    ? `Resets in ${formatDuration(localReset)}`
+                    : "Waiting for quota sample"}
+              </div>
+            </div>
+            <Link href="/settings" className="live-settings-link">
+              Settings
+            </Link>
+          </header>
+
+          <div className="live-quota-readout">
+            <div className="live-quota-numbers">
+              <span className="live-quota-used">{used ?? "—"}</span>
+              <span className="live-quota-sep">/</span>
+              <span className="live-quota-limit">{limit ?? "—"}</span>
+              <span className="live-quota-label">used</span>
+            </div>
+            <div className="live-quota-remaining">
+              <strong>{remaining ?? "—"}</strong> left
+            </div>
+          </div>
+
+          <div
+            className={`live-status-bar is-${fillTone}`}
+            aria-hidden="true"
+            title={snapshot ? `${used}/${limit} requests used this window` : "No quota sample"}
+          >
+            <div className="live-status-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </section>
+
+        <section className="live-stats-panel">
+          <div className="live-stat">
+            <span className="live-stat-label">Last call</span>
+            <span
+              className={`live-stat-value${flashId && latestCall?.id === flashId ? " is-flash" : ""}`}
+            >
+              {latestCall ? (
+                <>
+                  <span className="live-mono">{latestCall.mcUsername ?? "probe"}</span>
+                  <span className="live-dim">/{latestCall.endpoint}</span>
+                  {!latestCall.ok ? <span className="live-fail"> failed</span> : null}
+                </>
+              ) : (
+                <span className="live-dim">—</span>
+              )}
             </span>
-          ) : null}
-        </div>
-        <div
-          className="live-status-bar"
-          aria-hidden="true"
-          title={snapshot ? `${used}/${snapshot.limit} requests used this window` : "No quota sample"}
-        >
-          <div className="live-status-bar-fill" style={{ width: `${pct}%` }} />
-        </div>
+            <span className="live-stat-note">{formatAge(latestCall?.at ?? null, nowMs)}</span>
+          </div>
+
+          <div className="live-stat">
+            <span className="live-stat-label">Due now</span>
+            <span className="live-stat-value">{status?.dueNowCount ?? 0}</span>
+            <span className="live-stat-note">
+              every {formatDuration(status?.currentIntervalSeconds)}
+            </span>
+          </div>
+
+          <div className="live-stat">
+            <span className="live-stat-label">Online</span>
+            <span className="live-stat-value">{status?.onlineCount ?? 0}</span>
+            <span className="live-stat-note live-online-names">
+              {online.length > 0
+                ? `${online
+                    .slice(0, 3)
+                    .map((row) => row.mcUsername)
+                    .join(", ")}${online.length > 3 ? "…" : ""}`
+                : "none seen"}
+            </span>
+          </div>
+
+          <div className="live-stat">
+            <span className="live-stat-label">Signal</span>
+            <span className="live-stat-value">
+              {latestEvent ? (
+                <span className="live-mono">{latestEvent.mcUsername}</span>
+              ) : (
+                <span className="live-dim">quiet</span>
+              )}
+            </span>
+            <span className="live-stat-note">
+              {latestEvent
+                ? `${eventLabel(latestEvent.kind)}${
+                    latestEvent.detail ? ` · ${latestEvent.detail}` : ""
+                  }`
+                : "no new events"}
+            </span>
+          </div>
+        </section>
       </div>
 
-      <div className="live-status-meta">
-        <span className="chip" title="Most recent Hypixel HTTP call from the worker">
-          last call{" "}
-          <strong>
-            {latestCall
-              ? `${latestCall.mcUsername ?? "probe"} · /${latestCall.endpoint}`
-              : "—"}
-          </strong>
-          {latestCall ? ` · ${formatAge(latestCall.at)}` : ""}
-          {latestCall && !latestCall.ok ? " · failed" : ""}
-        </span>
-        <span className="chip">
-          due now <strong>{status?.dueNowCount ?? 0}</strong>
-        </span>
-        <span className="chip">
-          online <strong>{status?.onlineCount ?? 0}</strong>
-          {onlineNames ? ` · ${onlineNames}` : ""}
-          {(status?.onlineCount ?? 0) > 4 ? "…" : ""}
-        </span>
-        <span className="chip">
-          refresh every{" "}
-          <strong>{formatDuration(status?.currentIntervalSeconds)}</strong>
-        </span>
-        {latestEvent ? (
-          <span className="chip">
-            {latestEvent.mcUsername}: <strong>{eventLabel(latestEvent.kind)}</strong>
-            {latestEvent.detail ? ` · ${latestEvent.detail}` : ""}
-          </span>
-        ) : null}
-        <Link href="/settings" className="chip">
-          settings
-        </Link>
+      <div className="live-call-rail" aria-label="Recent Hypixel calls">
+        {recentCalls.length > 0 ? (
+          recentCalls.slice(0, 8).map((call) => (
+            <span
+              key={call.id}
+              className={`live-call-pill${call.ok ? "" : " is-fail"}${
+                flashId === call.id ? " is-flash" : ""
+              }`}
+            >
+              <span className="live-mono">{call.mcUsername ?? "probe"}</span>
+              <span className="live-dim">/{call.endpoint}</span>
+            </span>
+          ))
+        ) : (
+          <span className="live-call-empty">Calls appear here as the worker hits Hypixel.</span>
+        )}
       </div>
-
-      {recentCallLine ? (
-        <p className="live-status-calls muted">
-          Recent calls: {recentCallLine}
-        </p>
-      ) : (
-        <p className="live-status-calls muted">
-          No Hypixel calls logged yet — restart the worker on the latest branch, then wait for a scan.
-        </p>
-      )}
     </aside>
   );
 }
