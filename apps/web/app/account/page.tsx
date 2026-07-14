@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import type { AccountHistoryRequest, AccountHistoryResponse } from "@pitantir/shared/account-history";
+import { GraphErrorBoundary } from "../../src/components/GraphErrorBoundary";
 import { MysticItemCard } from "../../src/components/MysticItemCard";
 
 const OwnershipGraph = dynamic(
