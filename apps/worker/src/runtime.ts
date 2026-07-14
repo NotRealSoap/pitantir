@@ -65,8 +65,12 @@ function createInventorySource(db: Database): InventorySource {
       );
     }
     const accounts = new AccountsRepository(db);
+    const fetchOnlineStatus =
+      (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "1" ||
+      (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "true";
     return new HypixelPitInventorySource({
       apiKey,
+      fetchOnlineStatus,
       getPreviousWindowSeconds: async () => {
         const previous = await getHypixelRateLimitSnapshot(db);
         return previous?.windowSeconds ?? null;

@@ -288,6 +288,20 @@ export default function AccountsPage() {
               <div className="meta-row">
                 <span className="chip">{account.enabled ? "refresh on" : "refresh off"}</span>
                 <span className="chip">
+                  {account.lastHypixelOnline === true
+                    ? account.lastSessionGame
+                      ? `online · ${account.lastSessionGame}`
+                      : "online"
+                    : account.lastHypixelOnline === false
+                      ? "offline"
+                      : "presence ?"}
+                </span>
+                {account.lastInventoryChangedAt ? (
+                  <span className="chip">
+                    inventory changed <strong>{formatWhen(account.lastInventoryChangedAt)}</strong>
+                  </span>
+                ) : null}
+                <span className="chip">
                   every <strong>{Math.round(account.scanIntervalSeconds / 60)}m</strong>
                 </span>
                 <span className="chip">

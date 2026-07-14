@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Manrope, Sora, IBM_Plex_Mono } from "next/font/google";
 import { Nav } from "../src/components/Nav";
+import { LiveStatusBar } from "../src/components/LiveStatusBar";
 import "./globals.css";
 
 const sora = Sora({
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </a>
             <Nav />
           </header>
+          <LiveStatusBar />
           <main>{children}</main>
         </div>
       </body>

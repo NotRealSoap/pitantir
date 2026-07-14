@@ -12,6 +12,12 @@ export type PublicAccountDto = {
   nextScanAt: string | Date;
   lastSuccessScanAt: string | Date | null;
   lastFailureScanAt: string | Date | null;
+  lastHypixelOnline?: boolean | null;
+  lastHypixelOnlineAt?: string | Date | null;
+  lastPresenceSource?: string | null;
+  lastSessionGame?: string | null;
+  lastInventoryHash?: string | null;
+  lastInventoryChangedAt?: string | Date | null;
   notes: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;

@@ -14,6 +14,11 @@ import {
   parseHypixelRateLimitHeaders,
   type HypixelRateLimitSnapshot,
 } from "./hypixel-rate-limit.js";
+import {
+  presenceFromPlayerLoginLogout,
+  presenceFromStatusResponse,
+  type HypixelPresence,
+} from "./hypixel-presence.js";
 
 export interface HypixelPitInventorySourceOptions {
   apiKey: string;
@@ -34,6 +39,11 @@ export interface HypixelPitInventorySourceOptions {
   onRateLimitObserved?: (snapshot: HypixelRateLimitSnapshot) => Promise<void> | void;
   /** Previous window estimate used to refine snapshot.windowSeconds. */
   getPreviousWindowSeconds?: () => Promise<number | null> | number | null;
+  /**
+   * When true, also call /v2/status (extra API request) for a more accurate online
+   * check + current game. Prefer leaving false on large watch lists.
+   */
+  fetchOnlineStatus?: boolean;
 }
 
 interface HypixelPlayerResponse {
@@ -42,6 +52,9 @@ interface HypixelPlayerResponse {
   player?: null | {
     uuid?: string;
     displayname?: string;
+    lastLogin?: number;
+    lastLogout?: number;
+    settings?: { apiSession?: boolean } | null;
     stats?: {
       Pit?: {
         profile?: Record<string, unknown>;
@@ -136,9 +149,15 @@ export class HypixelPitInventorySource implements InventorySource {
         mystic_well_pants: Boolean(profile.mystic_well_pants),
       };
 
+      let presence: HypixelPresence = presenceFromPlayerLoginLogout(player);
+      if (this.options.fetchOnlineStatus) {
+        presence = await this.fetchStatusPresence(uuid, presence);
+      }
+
       return {
         ok: true,
         observedAt: new Date(),
+        presence,
         rawInventory: {
           source: "hypixel_pit",
           uuid,
@@ -231,6 +250,30 @@ export class HypixelPitInventorySource implements InventorySource {
       });
     }
     return body.player ?? null;
+  }
+
+  private async fetchStatusPresence(
+    uuid: string,
+    fallback: HypixelPresence,
+  ): Promise<HypixelPresence> {
+    try {
+      const undashed = uuid.replace(/-/g, "").toLowerCase();
+      const response = await this.fetchImpl(
+        `https://api.hypixel.net/v2/status?uuid=${encodeURIComponent(undashed)}`,
+        {
+          headers: {
+            "API-Key": this.options.apiKey,
+            Accept: "application/json",
+          },
+        },
+      );
+      await this.noteRateLimit(response.headers).catch(() => undefined);
+      if (!response.ok) return fallback;
+      const body = (await response.json()) as unknown;
+      return presenceFromStatusResponse(body, fallback);
+    } catch {
+      return fallback;
+    }
   }
 }
 

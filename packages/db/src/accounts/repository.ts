@@ -23,6 +23,12 @@ export interface Account {
   nextScanAt: Date;
   lastSuccessScanAt: Date | null;
   lastFailureScanAt: Date | null;
+  lastHypixelOnline: boolean | null;
+  lastHypixelOnlineAt: Date | null;
+  lastPresenceSource: string | null;
+  lastSessionGame: string | null;
+  lastInventoryHash: string | null;
+  lastInventoryChangedAt: Date | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -49,6 +55,12 @@ export interface UpdateAccountInput {
   priority?: number;
   scanIntervalSeconds?: number;
   notes?: string | null;
+  lastHypixelOnline?: boolean | null;
+  lastHypixelOnlineAt?: Date | null;
+  lastPresenceSource?: string | null;
+  lastSessionGame?: string | null;
+  lastInventoryHash?: string | null;
+  lastInventoryChangedAt?: Date | null;
 }
 
 function mapAccount(row: AccountRow): Account {
@@ -64,6 +76,12 @@ function mapAccount(row: AccountRow): Account {
     nextScanAt: row.nextScanAt,
     lastSuccessScanAt: row.lastSuccessScanAt,
     lastFailureScanAt: row.lastFailureScanAt,
+    lastHypixelOnline: row.lastHypixelOnline ?? null,
+    lastHypixelOnlineAt: row.lastHypixelOnlineAt ?? null,
+    lastPresenceSource: row.lastPresenceSource ?? null,
+    lastSessionGame: row.lastSessionGame ?? null,
+    lastInventoryHash: row.lastInventoryHash ?? null,
+    lastInventoryChangedAt: row.lastInventoryChangedAt ?? null,
     notes: row.notes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -266,7 +284,7 @@ export class AccountsRepository {
       throw new Error("Account not found");
     }
 
-    const updated = {
+    const updated: Record<string, unknown> = {
       mcUsername: input.mcUsername?.trim() ?? existing.mcUsername,
       mcUuid: existing.mcUuid,
       displayName: input.displayName === undefined ? existing.displayName : input.displayName,
@@ -286,7 +304,18 @@ export class AccountsRepository {
       }
     }
 
-    if (!/^[A-Za-z0-9_]{3,16}$/.test(updated.mcUsername)) {
+    if (input.lastHypixelOnline !== undefined) updated.lastHypixelOnline = input.lastHypixelOnline;
+    if (input.lastHypixelOnlineAt !== undefined) {
+      updated.lastHypixelOnlineAt = input.lastHypixelOnlineAt;
+    }
+    if (input.lastPresenceSource !== undefined) updated.lastPresenceSource = input.lastPresenceSource;
+    if (input.lastSessionGame !== undefined) updated.lastSessionGame = input.lastSessionGame;
+    if (input.lastInventoryHash !== undefined) updated.lastInventoryHash = input.lastInventoryHash;
+    if (input.lastInventoryChangedAt !== undefined) {
+      updated.lastInventoryChangedAt = input.lastInventoryChangedAt;
+    }
+
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(String(updated.mcUsername))) {
       throw new Error("Invalid Minecraft username");
     }
 

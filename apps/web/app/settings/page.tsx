@@ -395,6 +395,11 @@ export default function SettingsPage() {
             Quota updates automatically as the worker scans. Refresh quota spends one request to
             sample headers without scanning an account.
           </li>
+          <li>
+            Online status uses <code>lastLogin</code>/<code>lastLogout</code> from each inventory
+            scan (free). For Hypixel’s more accurate <code>/v2/status</code> (extra request per
+            scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
+          </li>
         </ul>
       </section>
     </>

@@ -43,6 +43,13 @@
       "when": 1783989600000,
       "tag": "0005_watchlist",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783999200000,
+      "tag": "0006_live_presence",
+      "breakpoints": true
     }
   ]
 }

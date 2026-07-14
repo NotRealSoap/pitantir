@@ -65,9 +65,85 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--pit-border);
+}
+
+.live-status {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--pit-border);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(120deg, rgba(78, 205, 196, 0.08), transparent 55%),
+    var(--pit-bg-elevated);
+}
+
+.live-status-main {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.live-status-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--pit-ok);
+  box-shadow: 0 0 0 4px rgba(125, 206, 160, 0.16);
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+.live-status-quota {
+  font-size: 0.92rem;
+}
+
+.live-status-bar {
+  height: 0.45rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.live-status-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--pit-aqua), var(--pit-gold));
+  transition: width 0.45s ease;
+}
+
+.live-status-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.live-status-meta a.chip:hover {
+  text-decoration: none;
+  border-color: var(--pit-aqua);
 }
 
 .brand {

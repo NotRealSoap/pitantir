@@ -239,6 +239,8 @@ describe("HypixelPitInventorySource", () => {
             player: {
               uuid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               displayname: "Demo",
+              lastLogin: Date.parse("2026-07-14T04:00:00.000Z"),
+              lastLogout: Date.parse("2026-07-14T03:00:00.000Z"),
               stats: {
                 Pit: {
                   profile: {
@@ -308,6 +310,7 @@ describe("HypixelPitInventorySource", () => {
         source: "scan",
       }),
     );
+    expect(result.ok && result.presence?.online).toBe(true);
   });
 
   it("maps unauthorized key failures", async () => {

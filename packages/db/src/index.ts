@@ -7,6 +7,7 @@ export * from "./search/local-item-search.js";
 export * from "./accounts/repository.js";
 export * from "./accounts/scan-control.js";
 export * from "./accounts/hypixel-usage.js";
+export * from "./accounts/live-events.js";
 export * from "./jobs/index.js";
 export * from "./scanning/index.js";
 export * from "./schema/index.js";

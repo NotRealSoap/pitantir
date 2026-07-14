@@ -35,6 +35,13 @@ export const accounts = pgTable(
     nextScanAt: timestamp("next_scan_at", { withTimezone: true }).notNull(),
     lastSuccessScanAt: timestamp("last_success_scan_at", { withTimezone: true }),
     lastFailureScanAt: timestamp("last_failure_scan_at", { withTimezone: true }),
+    /** Best-effort Hypixel online flag from the latest successful scan. */
+    lastHypixelOnline: boolean("last_hypixel_online"),
+    lastHypixelOnlineAt: timestamp("last_hypixel_online_at", { withTimezone: true }),
+    lastPresenceSource: text("last_presence_source"),
+    lastSessionGame: text("last_session_game"),
+    lastInventoryHash: text("last_inventory_hash"),
+    lastInventoryChangedAt: timestamp("last_inventory_changed_at", { withTimezone: true }),
     credentialsEncrypted: text("credentials_encrypted"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

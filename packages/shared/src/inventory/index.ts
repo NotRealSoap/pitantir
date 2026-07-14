@@ -6,4 +6,5 @@ export * from "./extract.js";
 export * from "./mock.js";
 export * from "./mojang.js";
 export * from "./hypixel-rate-limit.js";
+export * from "./hypixel-presence.js";
 

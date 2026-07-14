@@ -19,6 +19,20 @@ export interface InventoryFetchSuccess {
   observedAt: Date;
   /** Opaque raw payload persisted on success. */
   rawInventory: Record<string, unknown>;
+  /**
+   * Optional Hypixel presence signal (kept outside rawInventory so it does not
+   * affect inventory hash / change detection).
+   */
+  presence?: {
+    online: boolean | null;
+    source: "login_logout" | "status" | "unknown";
+    lastLoginAt: string | null;
+    lastLogoutAt: string | null;
+    gameType: string | null;
+    mode: string | null;
+    map: string | null;
+    sessionHidden: boolean;
+  };
 }
 
 export interface InventoryFetchFailure {
