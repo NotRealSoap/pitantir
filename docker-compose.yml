@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pitantir-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: pitantir
+      POSTGRES_PASSWORD: pitantir
+      POSTGRES_DB: pitantir
+    volumes:
+      - pitantir_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pitantir -d pitantir"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pitantir_pg_data:
