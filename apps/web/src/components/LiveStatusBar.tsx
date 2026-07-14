@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { describeLiveSignal } from "@pitantir/shared";
+import { describeLiveSignal } from "@pitantir/shared/live-signal-copy";
 
 type ApiCall = {
   id: string;

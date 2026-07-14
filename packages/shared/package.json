@@ -27,6 +27,10 @@
     "./account-history": {
       "types": "./src/account-history/index.ts",
       "default": "./src/account-history/index.ts"
+    },
+    "./live-signal-copy": {
+      "types": "./src/live-signal-copy.ts",
+      "default": "./src/live-signal-copy.ts"
     }
   },
   "scripts": {
