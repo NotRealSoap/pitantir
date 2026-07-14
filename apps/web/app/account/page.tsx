@@ -296,8 +296,8 @@ export default function AccountPage() {
             <section style={{ marginTop: "1.5rem" }}>
               <h2 className="section-title">Timeline</h2>
               <ul className="mystic-list">
-                {result.timeline.map((event) => (
-                  <li key={event.eventId} className="event-card">
+                {result.timeline.map((event, index) => (
+                  <li key={`${event.eventId}:${index}`} className="event-card">
                     <strong>{event.label}</strong>
                     <span className="muted">{event.eventTime}</span>
                     <span>
@@ -326,8 +326,8 @@ export default function AccountPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.items.map((item) => (
-                    <tr key={item.key}>
+                  {result.items.map((item, index) => (
+                    <tr key={`row-${item.key}-${item.providerItemKey}-${index}`}>
                       <td>{item.title ?? item.key}</td>
                       <td>
                         <code>{item.nonce ?? "—"}</code>
@@ -344,10 +344,10 @@ export default function AccountPage() {
             </div>
 
             <ul className="mystic-list" style={{ marginTop: "1rem" }}>
-              {result.items.map((item) => {
+              {result.items.map((item, index) => {
                 const open = Boolean(expanded[item.key]);
                 return (
-                  <li key={`card-${item.key}`}>
+                  <li key={`card-${item.key}-${item.providerItemKey}-${index}`}>
                     <MysticItemCard
                       title={item.title}
                       nonce={item.nonce}
@@ -392,8 +392,10 @@ export default function AccountPage() {
                           <p className="muted">No PitPanda owners timeline for this item.</p>
                         ) : (
                           <ol>
-                            {item.pitpandaOwners.map((owner) => (
-                              <li key={`${owner.uuid}-${owner.seenAt}`}>
+                            {item.pitpandaOwners.map((owner, ownerIndex) => (
+                              <li
+                                key={`${owner.uuid}-${owner.seenAt}-${owner.pitpandaEventId ?? ownerIndex}`}
+                              >
                                 {owner.username ?? owner.uuid.slice(0, 8)} · {owner.seenAt}
                               </li>
                             ))}
@@ -406,8 +408,11 @@ export default function AccountPage() {
                           <p className="muted">No local ownership periods.</p>
                         ) : (
                           <ul className="mystic-list">
-                            {item.ownershipPeriods.map((period) => (
-                              <li key={period.periodId} className="event-card">
+                            {item.ownershipPeriods.map((period, periodIndex) => (
+                              <li
+                                key={`${period.periodId}-${periodIndex}`}
+                                className="event-card"
+                              >
                                 {period.accountUsername ?? period.accountUuid ?? "unknown"} ·{" "}
                                 {period.startedAt}
                                 {period.endedAt ? ` → ${period.endedAt}` : " → open"} ·{" "}

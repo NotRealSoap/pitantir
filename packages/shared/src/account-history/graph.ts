@@ -231,13 +231,19 @@ export function buildItemTimeline(
     );
   }
 
-  const fromLocal = selected.flatMap((item) => item.ownershipEvents);
+  const fromLocal = selected.flatMap((item) =>
+    item.ownershipEvents.map((event) => ({
+      ...event,
+      // Scope by item so the same DB event id never collides across rows in the UI list.
+      eventId: `${item.key}:${event.eventId}`,
+    })),
+  );
   const fromPitpanda = selected.flatMap((item) => {
     const owners = item.pitpandaOwners;
     return owners.map((owner, index) => {
       const prev = index > 0 ? owners[index - 1] : null;
       return {
-        eventId: `pp:${item.key}:${owner.uuid}:${owner.pitpandaEventId ?? owner.seenAt}`,
+        eventId: `pp:${item.key}:${owner.uuid}:${owner.pitpandaEventId ?? owner.seenAt}:${index}`,
         eventType: index === 0 ? "first_seen" : "owner_change",
         label: index === 0 ? "First seen (PitPanda)" : "Owner change (PitPanda)",
         eventTime: owner.seenAt,
@@ -250,5 +256,17 @@ export function buildItemTimeline(
     });
   });
 
-  return [...fromLocal, ...fromPitpanda].sort((a, b) => a.eventTime.localeCompare(b.eventTime));
+  const merged = [...fromLocal, ...fromPitpanda].sort((a, b) =>
+    a.eventTime.localeCompare(b.eventTime),
+  );
+
+  // Deduplicate by eventId (duplicate occurrences across items or owners timelines).
+  const seen = new Set<string>();
+  const deduped: typeof merged = [];
+  for (const event of merged) {
+    if (seen.has(event.eventId)) continue;
+    seen.add(event.eventId);
+    deduped.push(event);
+  }
+  return deduped;
 }

@@ -40,19 +40,35 @@ export function OwnershipGraph({ nodes, links, height = 420 }: OwnershipGraphPro
     return () => observer.disconnect();
   }, []);
 
-  const data = useMemo(
-    () => ({
-      nodes: nodes.map((node) => ({ ...node, name: node.label })),
-      links: links.map((link) => ({
+  const data = useMemo(() => {
+    const seenNodes = new Set<string>();
+    const uniqueNodes = nodes
+      .filter((node) => {
+        if (seenNodes.has(node.id)) return false;
+        seenNodes.add(node.id);
+        return true;
+      })
+      .map((node) => ({ ...node, name: node.label }));
+
+    const nodeIds = new Set(uniqueNodes.map((node) => node.id));
+    const seenLinks = new Set<string>();
+    const uniqueLinks = links
+      .filter((link) => {
+        if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) return false;
+        if (seenLinks.has(link.id)) return false;
+        seenLinks.add(link.id);
+        return true;
+      })
+      .map((link) => ({
         id: link.id,
         source: link.source,
         target: link.target,
         label: link.label,
         certainty: link.certainty,
-      })),
-    }),
-    [nodes, links],
-  );
+      }));
+
+    return { nodes: uniqueNodes, links: uniqueLinks };
+  }, [nodes, links]);
 
   if (nodes.length === 0) {
     return <p className="muted">No graph nodes for the current filters.</p>;

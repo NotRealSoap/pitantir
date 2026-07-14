@@ -133,6 +133,35 @@ describe("buildOwnershipGraph", () => {
 });
 
 describe("buildItemTimeline", () => {
+  it("dedupes colliding event ids across items", () => {
+    const sharedEvent = {
+      eventId: "fabcdc52-c0e0-42ec-89e9-ef0735b8ebc3",
+      eventType: "import_presence",
+      label: "Import presence",
+      eventTime: "2024-01-01T00:00:00.000Z",
+      certainty: "pitpanda",
+      fromAccountId: null,
+      fromAccountUsername: null,
+      toAccountId: null,
+      toAccountUsername: "Alice",
+    } as const;
+    const a = sampleItem({
+      key: "same-uuid-key",
+      ownershipEvents: [sharedEvent],
+      pitpandaOwners: [],
+    });
+    const b = sampleItem({
+      key: "same-uuid-key",
+      providerItemKey: "pp:other",
+      canonicalItemId: "canon-dup",
+      ownershipEvents: [sharedEvent],
+      pitpandaOwners: [],
+    });
+    const timeline = buildItemTimeline([a, b]);
+    const ids = timeline.map((event) => event.eventId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("merges local and PitPanda events chronologically", () => {
     const timeline = buildItemTimeline([sampleItem()]);
     expect(timeline.length).toBeGreaterThanOrEqual(3);
