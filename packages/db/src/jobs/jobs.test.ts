@@ -174,7 +174,9 @@ describe("T13/T14 job claim/lease + scheduler", () => {
     expect(jobsForEnabled?.payload).toMatchObject({ accountId: enabled.id });
 
     const reloaded = await accounts.get(enabled.id);
-    expect(reloaded!.nextScanAt.getTime()).toBeGreaterThan(enabled.nextScanAt.getTime());
+    // Single due account: next slot is asOf + interval (no burst stagger).
+    expect(reloaded!.nextScanAt.getTime()).toBeGreaterThan(Date.now() - 5_000);
+    expect(reloaded!.nextScanAt.getTime()).toBeGreaterThan(enabled.nextScanAt.getTime() - 1);
 
     const second = await scheduler.tick();
     expect(second.considered).toBe(0);

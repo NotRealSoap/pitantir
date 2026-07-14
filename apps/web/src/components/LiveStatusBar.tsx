@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+type ApiCall = {
+  id: string;
+  at: string;
+  endpoint: string;
+  mcUsername?: string | null;
+  ok: boolean;
+  statusCode?: number | null;
+  detail?: string | null;
+};
+
 type LiveStatusPayload = {
   used?: number | null;
   snapshot?: {
@@ -24,6 +34,10 @@ type LiveStatusPayload = {
     at: string;
     detail?: string | null;
   }>;
+  recentCalls?: ApiCall[];
+  latestCall?: ApiCall | null;
+  dueNowCount?: number;
+  nextDueAt?: string | null;
   statusChecksEnabled?: boolean;
   error?: string;
 };
@@ -37,6 +51,16 @@ function formatDuration(seconds: number | null | undefined): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return mins ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function formatAge(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  return `${Math.floor(seconds / 60)}m ago`;
 }
 
 function eventLabel(kind: string): string {
@@ -63,7 +87,7 @@ export function LiveStatusBar() {
     }
 
     void load();
-    const id = window.setInterval(() => void load(), 5_000);
+    const id = window.setInterval(() => void load(), 2_000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -77,10 +101,18 @@ export function LiveStatusBar() {
       ? Math.min(100, Math.round((used / snapshot.limit) * 100))
       : 0;
   const latestEvent = status?.events?.[0] ?? null;
+  const latestCall = status?.latestCall ?? null;
   const onlineNames = (status?.online ?? [])
     .slice(0, 4)
     .map((row) => row.mcUsername)
     .join(", ");
+  const recentCallLine = (status?.recentCalls ?? [])
+    .slice(0, 5)
+    .map((call) => {
+      const who = call.mcUsername ?? "key";
+      return `${who}/${call.endpoint}${call.ok ? "" : "!"}`;
+    })
+    .join(" · ");
 
   return (
     <aside className="live-status" aria-live="polite">
@@ -96,7 +128,11 @@ export function LiveStatusBar() {
           <span className="muted">used</span>
           <span className="muted"> · </span>
           <span className="muted">resets {formatDuration(status?.secondsUntilReset)}</span>
-          {status?.stale ? <span className="chip">stale</span> : null}
+          {status?.stale ? (
+            <span className="chip" title="Quota window already reset — numbers update on next Hypixel response">
+              window reset — awaiting sample
+            </span>
+          ) : null}
         </div>
         <div
           className="live-status-bar"
@@ -108,6 +144,19 @@ export function LiveStatusBar() {
       </div>
 
       <div className="live-status-meta">
+        <span className="chip" title="Most recent Hypixel HTTP call from the worker">
+          last call{" "}
+          <strong>
+            {latestCall
+              ? `${latestCall.mcUsername ?? "probe"} · /${latestCall.endpoint}`
+              : "—"}
+          </strong>
+          {latestCall ? ` · ${formatAge(latestCall.at)}` : ""}
+          {latestCall && !latestCall.ok ? " · failed" : ""}
+        </span>
+        <span className="chip">
+          due now <strong>{status?.dueNowCount ?? 0}</strong>
+        </span>
         <span className="chip">
           online <strong>{status?.onlineCount ?? 0}</strong>
           {onlineNames ? ` · ${onlineNames}` : ""}
@@ -122,13 +171,21 @@ export function LiveStatusBar() {
             {latestEvent.mcUsername}: <strong>{eventLabel(latestEvent.kind)}</strong>
             {latestEvent.detail ? ` · ${latestEvent.detail}` : ""}
           </span>
-        ) : (
-          <span className="chip muted">waiting for scans…</span>
-        )}
+        ) : null}
         <Link href="/settings" className="chip">
           settings
         </Link>
       </div>
+
+      {recentCallLine ? (
+        <p className="live-status-calls muted">
+          Recent calls: {recentCallLine}
+        </p>
+      ) : (
+        <p className="live-status-calls muted">
+          No Hypixel calls logged yet — restart the worker on the latest branch, then wait for a scan.
+        </p>
+      )}
     </aside>
   );
 }

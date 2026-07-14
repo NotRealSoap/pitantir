@@ -44,6 +44,15 @@ export interface HypixelPitInventorySourceOptions {
    * check + current game. Prefer leaving false on large watch lists.
    */
   fetchOnlineStatus?: boolean;
+  /** Fired for every Hypixel HTTP call so the UI can show a real-time call feed. */
+  onApiCall?: (call: {
+    endpoint: string;
+    accountId?: string | null;
+    mcUsername?: string | null;
+    ok: boolean;
+    statusCode: number;
+    detail?: string | null;
+  }) => Promise<void> | void;
 }
 
 interface HypixelPlayerResponse {
@@ -81,7 +90,7 @@ export class HypixelPitInventorySource implements InventorySource {
   async fetchInventory(account: InventoryAccountRef): Promise<InventoryFetchResult> {
     try {
       const identity = await this.resolveIdentity(account);
-      const player = await this.fetchPlayer(identity.uuid);
+      const player = await this.fetchPlayer(identity.uuid, account);
       if (!player) {
         return {
           ok: false,
@@ -151,7 +160,7 @@ export class HypixelPitInventorySource implements InventorySource {
 
       let presence: HypixelPresence = presenceFromPlayerLoginLogout(player);
       if (this.options.fetchOnlineStatus) {
-        presence = await this.fetchStatusPresence(uuid, presence);
+        presence = await this.fetchStatusPresence(uuid, presence, account);
       }
 
       return {
@@ -217,7 +226,28 @@ export class HypixelPitInventorySource implements InventorySource {
     await this.options.onRateLimitObserved(snapshot);
   }
 
-  private async fetchPlayer(uuid: string): Promise<HypixelPlayerResponse["player"]> {
+  private async noteApiCall(call: {
+    endpoint: string;
+    account?: InventoryAccountRef | null;
+    ok: boolean;
+    statusCode: number;
+    detail?: string | null;
+  }): Promise<void> {
+    if (!this.options.onApiCall) return;
+    await this.options.onApiCall({
+      endpoint: call.endpoint,
+      accountId: call.account?.id ?? null,
+      mcUsername: call.account?.mcUsername ?? null,
+      ok: call.ok,
+      statusCode: call.statusCode,
+      detail: call.detail ?? null,
+    });
+  }
+
+  private async fetchPlayer(
+    uuid: string,
+    account?: InventoryAccountRef,
+  ): Promise<HypixelPlayerResponse["player"]> {
     const undashed = uuid.replace(/-/g, "").toLowerCase();
     const response = await this.fetchImpl(
       `https://api.hypixel.net/v2/player?uuid=${encodeURIComponent(undashed)}`,
@@ -232,12 +262,32 @@ export class HypixelPitInventorySource implements InventorySource {
     await this.noteRateLimit(response.headers).catch(() => undefined);
 
     if (response.status === 403) {
+      await this.noteApiCall({
+        endpoint: "player",
+        account,
+        ok: false,
+        statusCode: 403,
+        detail: "unauthorized",
+      }).catch(() => undefined);
       throw Object.assign(new Error("Hypixel API key rejected"), { code: "upstream_unauthorized" });
     }
     if (response.status === 429) {
+      await this.noteApiCall({
+        endpoint: "player",
+        account,
+        ok: false,
+        statusCode: 429,
+        detail: "rate limited",
+      }).catch(() => undefined);
       throw Object.assign(new Error("Hypixel rate limited"), { code: "upstream_rate_limited" });
     }
     if (!response.ok) {
+      await this.noteApiCall({
+        endpoint: "player",
+        account,
+        ok: false,
+        statusCode: response.status,
+      }).catch(() => undefined);
       throw Object.assign(new Error(`Hypixel HTTP ${response.status}`), {
         code: "upstream_unavailable",
       });
@@ -245,16 +295,31 @@ export class HypixelPitInventorySource implements InventorySource {
 
     const body = (await response.json()) as HypixelPlayerResponse;
     if (body.success === false) {
+      await this.noteApiCall({
+        endpoint: "player",
+        account,
+        ok: false,
+        statusCode: response.status,
+        detail: body.cause ?? "request failed",
+      }).catch(() => undefined);
       throw Object.assign(new Error(body.cause ?? "Hypixel request failed"), {
         code: "upstream_unavailable",
       });
     }
+    await this.noteApiCall({
+      endpoint: "player",
+      account,
+      ok: true,
+      statusCode: response.status,
+      detail: body.player ? "ok" : "no player",
+    }).catch(() => undefined);
     return body.player ?? null;
   }
 
   private async fetchStatusPresence(
     uuid: string,
     fallback: HypixelPresence,
+    account?: InventoryAccountRef,
   ): Promise<HypixelPresence> {
     try {
       const undashed = uuid.replace(/-/g, "").toLowerCase();
@@ -268,6 +333,12 @@ export class HypixelPitInventorySource implements InventorySource {
         },
       );
       await this.noteRateLimit(response.headers).catch(() => undefined);
+      await this.noteApiCall({
+        endpoint: "status",
+        account,
+        ok: response.ok,
+        statusCode: response.status,
+      }).catch(() => undefined);
       if (!response.ok) return fallback;
       const body = (await response.json()) as unknown;
       return presenceFromStatusResponse(body, fallback);

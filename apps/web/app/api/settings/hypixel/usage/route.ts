@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  appendHypixelApiCall,
   getHypixelRateLimitSnapshot,
   setHypixelRateLimitSnapshot,
 } from "@pitantir/db";
+import { randomUUID } from "node:crypto";
 import {
   getAccountsRepository,
   getDatabase,
@@ -115,9 +117,29 @@ export async function POST(request: Request) {
         previousWindowSeconds: previous?.windowSeconds ?? null,
       });
       await setHypixelRateLimitSnapshot(db, snapshot);
+      await appendHypixelApiCall(db, {
+        id: randomUUID(),
+        at: new Date().toISOString(),
+        endpoint: "punishmentstats",
+        accountId: null,
+        mcUsername: null,
+        ok: true,
+        statusCode: 200,
+        detail: "quota probe",
+      }).catch(() => undefined);
       return NextResponse.json({
         ok: true,
         message: "Quota refreshed from Hypixel RateLimit headers.",
+        ...(await usagePayload()),
+      });
+    }
+
+    if (action === "rebalance_schedule") {
+      const updated = await repo.rebalanceWatchlistSchedule();
+      return NextResponse.json({
+        ok: true,
+        message: `Staggered next-scan times across the interval for ${updated} watch-list account(s).`,
+        updated,
         ...(await usagePayload()),
       });
     }
@@ -161,7 +183,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Unknown action. Use "probe", "apply_recommended_interval", or "set_interval".' },
+      {
+        error:
+          'Unknown action. Use "probe", "rebalance_schedule", "apply_recommended_interval", or "set_interval".',
+      },
       { status: 400 },
     );
   } catch (error) {

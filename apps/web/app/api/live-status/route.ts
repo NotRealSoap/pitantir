@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getHypixelApiCalls,
   getHypixelLiveEvents,
   getHypixelRateLimitSnapshot,
 } from "@pitantir/db";
@@ -12,8 +13,8 @@ import { isHypixelConfigured } from "../../../src/server/hypixel-key-store";
 import { buildHypixelUsageView } from "../../../src/server/hypixel-usage";
 
 /**
- * Live operator feed: Hypixel quota + currently-online watch accounts + recent change events.
- * Polled by the site-wide status strip (no Hypixel calls — reads last scan/probe data).
+ * Live operator feed: Hypixel quota, recent API calls, online accounts, change events.
+ * Polled by the site-wide status strip (reads last scan/probe data — no Hypixel calls).
  */
 export async function GET() {
   if (!isUsingPostgres()) {
@@ -29,10 +30,11 @@ export async function GET() {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
 
-  const [snapshot, watchlist, events] = await Promise.all([
+  const [snapshot, watchlist, events, recentCalls] = await Promise.all([
     getHypixelRateLimitSnapshot(db),
     repo.listWatchlist(),
     getHypixelLiveEvents(db),
+    getHypixelApiCalls(db),
   ]);
 
   const usage = buildHypixelUsageView({
@@ -40,6 +42,16 @@ export async function GET() {
     snapshot,
     watchlist,
   });
+
+  const now = Date.now();
+  const dueNow = watchlist.filter(
+    (row) => row.enabled && row.nextScanAt.getTime() <= now,
+  ).length;
+  const nextDue = watchlist
+    .filter((row) => row.enabled)
+    .map((row) => row.nextScanAt.getTime())
+    .sort((a, b) => a - b)
+    .slice(0, 1)[0];
 
   const online = watchlist
     .filter((row) => row.lastHypixelOnline === true)
@@ -67,6 +79,7 @@ export async function GET() {
     }));
 
   const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);
+  const latestCall = recentCalls[0] ?? null;
 
   return NextResponse.json({
     ...usage,
@@ -75,6 +88,10 @@ export async function GET() {
     recentlyChanged,
     events: noteworthy,
     allEvents: events.slice(0, 30),
+    recentCalls: recentCalls.slice(0, 12),
+    latestCall,
+    dueNowCount: dueNow,
+    nextDueAt: nextDue ? new Date(nextDue).toISOString() : null,
     statusChecksEnabled:
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "1" ||
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "true",

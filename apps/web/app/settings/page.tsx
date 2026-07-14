@@ -280,6 +280,14 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
             >
               Apply recommended interval
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction({ action: "rebalance_schedule" })}
+              title="Spread next-scan times so accounts are not all due together"
+            >
+              Stagger schedule
+            </button>
           </div>
 
           <form

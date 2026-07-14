@@ -3,6 +3,7 @@ import type { Database } from "../client.js";
 import { accounts, type AccountRow } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
 import { normalizeUuid } from "@pitantir/shared";
+import { staggeredNextScanAts } from "./scan-stagger.js";
 
 function normalizeOptionalUuid(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
@@ -370,8 +371,8 @@ export class AccountsRepository {
   }
 
   /**
-   * Set scanIntervalSeconds for every watch-listed account (enabled or paused).
-   * Returns how many rows were updated.
+   * Set scanIntervalSeconds for every watch-listed account and stagger nextScanAt
+   * across the window so the worker does not burst-scan the whole roster.
    */
   async setWatchlistScanInterval(scanIntervalSeconds: number): Promise<number> {
     const seconds = Math.floor(scanIntervalSeconds);
@@ -379,11 +380,46 @@ export class AccountsRepository {
       throw new Error("scanIntervalSeconds must be between 30 and 86400");
     }
     const timestamp = now();
-    const updated = await this.db
-      .update(accounts)
-      .set({ scanIntervalSeconds: seconds, updatedAt: timestamp })
-      .where(and(isNull(accounts.deletedAt), eq(accounts.watchlisted, true)))
-      .returning({ id: accounts.id });
-    return updated.length;
+    const watchlist = await this.listWatchlist();
+    const nextAts = staggeredNextScanAts({
+      count: watchlist.length,
+      intervalSeconds: seconds,
+      from: timestamp,
+      mode: "rebalance",
+    });
+
+    for (let i = 0; i < watchlist.length; i += 1) {
+      const account = watchlist[i]!;
+      await this.db
+        .update(accounts)
+        .set({
+          scanIntervalSeconds: seconds,
+          nextScanAt: nextAts[i]!,
+          updatedAt: timestamp,
+        })
+        .where(eq(accounts.id, account.id));
+    }
+    return watchlist.length;
+  }
+
+  /** Re-spread nextScanAt for the current watch list without changing interval. */
+  async rebalanceWatchlistSchedule(asOf: Date = now()): Promise<number> {
+    const watchlist = await this.listWatchlist();
+    if (watchlist.length === 0) return 0;
+    const interval =
+      Math.min(...watchlist.map((row) => row.scanIntervalSeconds)) || 3600;
+    const nextAts = staggeredNextScanAts({
+      count: watchlist.length,
+      intervalSeconds: interval,
+      from: asOf,
+      mode: "rebalance",
+    });
+    for (let i = 0; i < watchlist.length; i += 1) {
+      await this.db
+        .update(accounts)
+        .set({ nextScanAt: nextAts[i]!, updatedAt: asOf })
+        .where(eq(accounts.id, watchlist[i]!.id));
+    }
+    return watchlist.length;
   }
 }

@@ -14,8 +14,10 @@ import {
   seedAdminSettings,
   getHypixelRateLimitSnapshot,
   setHypixelRateLimitSnapshot,
+  appendHypixelApiCall,
   type Database,
 } from "@pitantir/db";
+import { randomUUID } from "node:crypto";
 import {
   MockInventorySource,
   type InventorySource,
@@ -82,6 +84,27 @@ function createInventorySource(db: Database): InventorySource {
           console.warn(
             JSON.stringify({
               msg: "failed to persist hypixel rate limit",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      },
+      onApiCall: async (call) => {
+        try {
+          await appendHypixelApiCall(db, {
+            id: randomUUID(),
+            at: new Date().toISOString(),
+            endpoint: call.endpoint,
+            accountId: call.accountId ?? null,
+            mcUsername: call.mcUsername ?? null,
+            ok: call.ok,
+            statusCode: call.statusCode,
+            detail: call.detail ?? null,
+          });
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "failed to persist hypixel api call",
               error: error instanceof Error ? error.message : String(error),
             }),
           );

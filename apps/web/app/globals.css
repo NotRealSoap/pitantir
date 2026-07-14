@@ -146,6 +146,13 @@ code {
   border-color: var(--pit-aqua);
 }
 
+.live-status-calls {
+  margin: 0;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;

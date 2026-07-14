@@ -3,6 +3,7 @@ import type { Database } from "../client.js";
 import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
+import { staggeredNextScanAts } from "../accounts/scan-stagger.js";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
 
@@ -43,7 +44,21 @@ export class ScanScheduler {
     let enqueued = 0;
     let skippedDuplicate = 0;
 
-    for (const account of due) {
+    // When many accounts are due together, spread their *next* slots so the
+    // cluster does not reform at asOf + interval for everyone.
+    const burstNext =
+      due.length > 1
+        ? staggeredNextScanAts({
+            count: due.length,
+            // Use the max interval in the due set so slower accounts still spread.
+            intervalSeconds: Math.max(...due.map((row) => row.scanIntervalSeconds)),
+            from: asOf,
+            mode: "after_burst",
+          })
+        : null;
+
+    for (let i = 0; i < due.length; i += 1) {
+      const account = due[i]!;
       const slot = account.nextScanAt.toISOString();
       const idempotencyKey = `scan_account:${account.id}:${slot}`;
       const result = await this.jobs.enqueue({
@@ -63,8 +78,9 @@ export class ScanScheduler {
         skippedDuplicate += 1;
       }
 
-      const base = account.nextScanAt.getTime() > asOf.getTime() ? account.nextScanAt : asOf;
-      const nextScanAt = new Date(base.getTime() + account.scanIntervalSeconds * 1000);
+      const nextScanAt =
+        burstNext?.[i] ??
+        new Date(asOf.getTime() + account.scanIntervalSeconds * 1000);
       await this.db
         .update(accounts)
         .set({ nextScanAt, updatedAt: asOf })
