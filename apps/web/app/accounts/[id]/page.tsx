@@ -184,7 +184,7 @@ export default function AccountDetailPage() {
       ) : (
         <ul className="mystic-list">
           {heldItems.map((item) => (
-            <li key={item.itemId}>
+            <li key={item.periodId}>
               <MysticItemCard
                 title={item.displayName ?? item.primaryNonce ?? item.itemId.slice(0, 8)}
                 nonce={item.primaryNonce}

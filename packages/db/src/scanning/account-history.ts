@@ -8,6 +8,8 @@ import { ScansRepository, type PublicScanSummary } from "./scans-repository.js";
 
 export interface HeldItemSummary {
   itemId: string;
+  /** Open presence period id — unique even if multiple periods exist for one item. */
+  periodId: string;
   displayName: string | null;
   primaryNonce: string | null;
   category: CanonicalItem["category"];
@@ -15,6 +17,7 @@ export interface HeldItemSummary {
   strictFingerprint: string | null;
   presenceStartedAt: Date;
   certainty: string;
+  startReason: string;
 }
 
 export interface ObservedItemSummary {
@@ -51,6 +54,33 @@ function asNumberRecord(value: unknown): Record<string, number> | null {
     if (typeof raw === "number" && Number.isFinite(raw)) out[key] = raw;
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Prefer confirmed scan presence over uncertain import duplicates for the same item. */
+function heldPeriodRank(certainty: string, startReason: string): number {
+  if (certainty === "confirmed") return 300;
+  if (certainty === "uncertain" && startReason !== "import") return 200;
+  if (certainty === "uncertain") return 100;
+  return 0;
+}
+
+function preferHeldItem(a: HeldItemSummary, b: HeldItemSummary): HeldItemSummary {
+  const rankDiff = heldPeriodRank(b.certainty, b.startReason) - heldPeriodRank(a.certainty, a.startReason);
+  if (rankDiff !== 0) return rankDiff > 0 ? b : a;
+  // Same tier: keep the earliest open presence (when we first believed it was held here).
+  return a.presenceStartedAt.getTime() <= b.presenceStartedAt.getTime() ? a : b;
+}
+
+/** Collapse duplicate open periods for the same canonical item (e.g. scan + PitPanda import). */
+export function dedupeHeldItemsByItemId(items: HeldItemSummary[]): HeldItemSummary[] {
+  const heldByItemId = new Map<string, HeldItemSummary>();
+  for (const item of items) {
+    const existing = heldByItemId.get(item.itemId);
+    heldByItemId.set(item.itemId, existing ? preferHeldItem(existing, item) : item);
+  }
+  return [...heldByItemId.values()].sort(
+    (a, b) => b.presenceStartedAt.getTime() - a.presenceStartedAt.getTime(),
+  );
 }
 
 function summarizeSlot(
@@ -105,13 +135,14 @@ export class AccountHistoryService {
     const failures = summaries.filter((scan) => scan.status === "failure");
 
     const openPeriods = await this.identityStore.listOpenPresenceOnAccount(accountId);
-    const heldItems: HeldItemSummary[] = [];
+    const heldCandidates: HeldItemSummary[] = [];
     for (const period of openPeriods) {
       if (period.isUnknownGap || !period.itemId) continue;
       const item = await this.identityStore.getCanonicalItem(period.itemId);
       if (!item || item.status !== "active") continue;
-      heldItems.push({
+      heldCandidates.push({
         itemId: item.id,
+        periodId: period.id,
         displayName: item.displayName,
         primaryNonce: item.primaryNonce,
         category: item.category,
@@ -119,10 +150,11 @@ export class AccountHistoryService {
         strictFingerprint: item.strictFingerprint,
         presenceStartedAt: period.startedAt,
         certainty: period.certainty,
+        startReason: period.startReason,
       });
     }
 
-    heldItems.sort((a, b) => b.presenceStartedAt.getTime() - a.presenceStartedAt.getTime());
+    const heldItems = dedupeHeldItemsByItemId(heldCandidates);
 
     const latestSuccess = allScans.find((scan) => scan.status === "success");
     let latestObservedItems: ObservedItemSummary[] = [];
