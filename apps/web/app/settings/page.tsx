@@ -339,6 +339,7 @@ type DiscordPlayerRuleState = {
   notifyEveryOnlineScan: boolean;
   notifyItemGainedLost: boolean;
   notifyInventoryUpdated: boolean;
+  notifyPitpalStatusChanges: boolean;
 };
 
 type DiscordWebhookPayload = {
@@ -346,11 +347,13 @@ type DiscordWebhookPayload = {
   presenceWebhookUrlMasked?: string | null;
   inventoryWebhookUrlMasked?: string | null;
   itemMovesWebhookUrlMasked?: string | null;
+  pitpalStatusWebhookUrlMasked?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyEveryOnlineScan?: boolean;
   notifyItemGainedLost?: boolean;
   notifyInventoryUpdated?: boolean;
+  notifyPitpalStatusChanges?: boolean;
   onlineDashboardEnabled?: boolean;
   onlineDashboardConfigured?: boolean;
   playerRules?: DiscordPlayerRuleState[];
@@ -366,6 +369,7 @@ const DEFAULT_PLAYER_FLAGS = {
   notifyEveryOnlineScan: true,
   notifyItemGainedLost: true,
   notifyInventoryUpdated: false,
+  notifyPitpalStatusChanges: true,
 };
 
 function buildPlayerRows(
@@ -387,6 +391,8 @@ function buildPlayerRows(
         notifyEveryOnlineScan: rule?.notifyEveryOnlineScan ?? defaults.notifyEveryOnlineScan,
         notifyItemGainedLost: rule?.notifyItemGainedLost ?? defaults.notifyItemGainedLost,
         notifyInventoryUpdated: rule?.notifyInventoryUpdated ?? defaults.notifyInventoryUpdated,
+        notifyPitpalStatusChanges:
+          rule?.notifyPitpalStatusChanges ?? defaults.notifyPitpalStatusChanges,
       };
     });
 }
@@ -397,7 +403,8 @@ function flagsEqual(a: DiscordPlayerRuleState, defaults: typeof DEFAULT_PLAYER_F
     a.notifyWentOffline === defaults.notifyWentOffline &&
     a.notifyEveryOnlineScan === defaults.notifyEveryOnlineScan &&
     a.notifyItemGainedLost === defaults.notifyItemGainedLost &&
-    a.notifyInventoryUpdated === defaults.notifyInventoryUpdated
+    a.notifyInventoryUpdated === defaults.notifyInventoryUpdated &&
+    a.notifyPitpalStatusChanges === defaults.notifyPitpalStatusChanges
   );
 }
 
@@ -406,11 +413,13 @@ function DiscordWebhookPanel() {
   const [presenceWebhookUrl, setPresenceWebhookUrl] = useState("");
   const [inventoryWebhookUrl, setInventoryWebhookUrl] = useState("");
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
+  const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
   const [notifyItemGainedLost, setNotifyItemGainedLost] = useState(true);
   const [notifyInventoryUpdated, setNotifyInventoryUpdated] = useState(false);
+  const [notifyPitpalStatusChanges, setNotifyPitpalStatusChanges] = useState(true);
   const [onlineDashboardEnabled, setOnlineDashboardEnabled] = useState(true);
   const [playerRows, setPlayerRows] = useState<DiscordPlayerRuleState[]>([]);
   const [busy, setBusy] = useState(false);
@@ -428,12 +437,15 @@ function DiscordWebhookPanel() {
         payload.notifyItemGainedLost ?? DEFAULT_PLAYER_FLAGS.notifyItemGainedLost,
       notifyInventoryUpdated:
         payload.notifyInventoryUpdated ?? DEFAULT_PLAYER_FLAGS.notifyInventoryUpdated,
+      notifyPitpalStatusChanges:
+        payload.notifyPitpalStatusChanges ?? DEFAULT_PLAYER_FLAGS.notifyPitpalStatusChanges,
     };
     setNotifyCameOnline(defaults.notifyCameOnline);
     setNotifyWentOffline(defaults.notifyWentOffline);
     setNotifyEveryOnlineScan(defaults.notifyEveryOnlineScan);
     setNotifyItemGainedLost(defaults.notifyItemGainedLost);
     setNotifyInventoryUpdated(defaults.notifyInventoryUpdated);
+    setNotifyPitpalStatusChanges(defaults.notifyPitpalStatusChanges);
     setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
     setPlayerRows(
       buildPlayerRows(payload.watchlist ?? [], payload.playerRules ?? [], defaults),
@@ -479,6 +491,7 @@ function DiscordWebhookPanel() {
         setPresenceWebhookUrl("");
         setInventoryWebhookUrl("");
         setItemMovesWebhookUrl("");
+        setPitpalStatusWebhookUrl("");
       }
     } catch {
       setError("Request failed.");
@@ -503,6 +516,7 @@ function DiscordWebhookPanel() {
     notifyEveryOnlineScan,
     notifyItemGainedLost,
     notifyInventoryUpdated,
+    notifyPitpalStatusChanges,
   };
 
   return (
@@ -511,10 +525,10 @@ function DiscordWebhookPanel() {
         Discord webhooks
       </h2>
       <p className="muted">
-        Use <strong>three dedicated channels</strong> (or reuse one URL in multiple slots). Presence
-        keeps the online roster as the latest message. Item moves are gained/lost mystics; inventory
-        updates are same-nonce lives/enchant/slot changes. Per-player rows override the defaults —
-        e.g. whytf online + additions/subtractions only.
+        Use <strong>dedicated channels</strong> (or reuse URLs). Presence keeps the online roster as
+        the latest message (delete/repost). PitPal status changes are <em>append-only</em> and never
+        deleted. Item moves = gained/lost; inventory updates = same-nonce lives/enchant/slot changes.
+        Per-player rows override defaults — e.g. whytf online + additions only.
       </p>
       <p>
         Status:{" "}
@@ -539,11 +553,13 @@ function DiscordWebhookPanel() {
             presenceWebhookUrl: presenceWebhookUrl.trim() || undefined,
             inventoryWebhookUrl: inventoryWebhookUrl.trim() || undefined,
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
+            pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
             notifyCameOnline,
             notifyWentOffline,
             notifyEveryOnlineScan,
             notifyItemGainedLost,
             notifyInventoryUpdated,
+            notifyPitpalStatusChanges,
             onlineDashboardEnabled,
             playerRules,
           });
@@ -588,6 +604,20 @@ function DiscordWebhookPanel() {
               status?.itemMovesWebhookUrlMasked
                 ? `Saved: ${status.itemMovesWebhookUrlMasked}`
                 : "Optional — falls back to presence"
+            }
+          />
+        </label>
+        <label>
+          PitPal status-change webhook (SPAWN/DOWN/OTHER · lobby hops · append-only)
+          <input
+            type="password"
+            autoComplete="off"
+            value={pitpalStatusWebhookUrl}
+            onChange={(event) => setPitpalStatusWebhookUrl(event.target.value)}
+            placeholder={
+              status?.pitpalStatusWebhookUrlMasked
+                ? `Saved: ${status.pitpalStatusWebhookUrlMasked}`
+                : "Dedicated channel — messages are never deleted"
             }
           />
         </label>
@@ -639,6 +669,14 @@ function DiscordWebhookPanel() {
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
             type="checkbox"
+            checked={notifyPitpalStatusChanges}
+            onChange={(event) => setNotifyPitpalStatusChanges(event.target.checked)}
+          />
+          PitPal lobby status changes (SPAWN/DOWN/OTHER)
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
             checked={onlineDashboardEnabled}
             onChange={(event) => setOnlineDashboardEnabled(event.target.checked)}
           />
@@ -664,6 +702,7 @@ function DiscordWebhookPanel() {
                   <th>Offline</th>
                   <th>+/− items</th>
                   <th>Inv update</th>
+                  <th>PitPal</th>
                   <th></th>
                 </tr>
               </thead>
@@ -721,6 +760,20 @@ function DiscordWebhookPanel() {
                         />
                       </td>
                       <td>
+                        <input
+                          type="checkbox"
+                          checked={row.notifyPitpalStatusChanges}
+                          onChange={(event) =>
+                            updatePlayer(
+                              row.accountId,
+                              "notifyPitpalStatusChanges",
+                              event.target.checked,
+                            )
+                          }
+                          aria-label={`${row.mcUsername} PitPal status`}
+                        />
+                      </td>
+                      <td>
                         {custom ? (
                           <button
                             type="button"
@@ -775,6 +828,13 @@ function DiscordWebhookPanel() {
             onClick={() => void run({ action: "test", channel: "inventory" })}
           >
             Test inventory
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured}
+            onClick={() => void run({ action: "test", channel: "pitpalStatus" })}
+          >
+            Test PitPal status
           </button>
           <button
             type="button"
@@ -992,9 +1052,10 @@ export default function SettingsPage() {
             stay as the latest message.
           </li>
           <li>
-            PitPal lobby bridge: install the Tampermonkey script, keep{" "}
-            <code>https://pitpal.rocks/admin/lobbies</code> open while logged in as admin. Pitantir
-            then learns lobby codes (M23A…) and SPAWN/DOWN/OTHER for watchlist players.
+            PitPal lobby bridge is the presence source of truth while Tampermonkey is syncing. Status
+            changes (SPAWN/DOWN/OTHER, lobby hops) go to the dedicated PitPal webhook and are never
+            deleted. If a watchlist player looks online via Hypixel but is missing from PitPal, we
+            queue a Hypixel index scan to reconcile (PitPanda key remains for item search).
           </li>
         </ul>
       </section>

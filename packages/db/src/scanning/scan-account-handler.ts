@@ -13,6 +13,7 @@ import {
   type HypixelLiveEvent,
 } from "../accounts/live-events.js";
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
+import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
@@ -159,21 +160,35 @@ export class ScanAccountHandler {
       Boolean(success.rawInventoryHash) &&
       previousHash != null &&
       previousHash !== success.rawInventoryHash;
-    // Only emit transitions once we have a prior observation (avoid noise on first scan).
-    const cameOnline = presence?.online === true && previousOnline === false;
-    const wentOffline = presence?.online === false && previousOnline === true;
 
-    const sessionGame =
-      presence?.gameType || presence?.mode
+    const pitpalAuthoritative = await isPitpalPresenceAuthoritative(this.db).catch(() => false);
+    const keepPitpalPresence =
+      pitpalAuthoritative &&
+      account.lastPresenceSource === "pitpal_lobbies" &&
+      Boolean(account.lastPitpalLobby || account.lastPitpalLocation);
+
+    // Only emit Hypixel online/offline transitions when PitPal is not the source of truth.
+    const cameOnline =
+      !keepPitpalPresence && presence?.online === true && previousOnline === false;
+    const wentOffline =
+      !keepPitpalPresence && presence?.online === false && previousOnline === true;
+
+    const sessionGame = keepPitpalPresence
+      ? account.lastSessionGame
+      : presence?.gameType || presence?.mode
         ? [presence.gameType, presence.mode].filter(Boolean).join("/")
         : null;
 
     try {
       account = await this.accounts.update(account.id, {
-        lastHypixelOnline: presence?.online ?? null,
-        lastHypixelOnlineAt: presence ? fetched.observedAt : account.lastHypixelOnlineAt,
-        lastPresenceSource: presence?.source ?? null,
-        lastSessionGame: sessionGame,
+        ...(keepPitpalPresence
+          ? {}
+          : {
+              lastHypixelOnline: presence?.online ?? null,
+              lastHypixelOnlineAt: presence ? fetched.observedAt : account.lastHypixelOnlineAt,
+              lastPresenceSource: presence?.source ?? null,
+              lastSessionGame: sessionGame,
+            }),
         lastInventoryHash: success.rawInventoryHash,
         lastInventoryChangedAt: inventoryChanged
           ? fetched.observedAt

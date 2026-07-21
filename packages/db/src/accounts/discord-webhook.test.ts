@@ -51,6 +51,8 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.notifyItemGainedLost).toBe(true);
     expect(settings.notifyInventoryUpdated).toBe(false);
     expect(settings.notifyEveryOnlineScan).toBe(true);
+    expect(settings.notifyPitpalStatusChanges).toBe(true);
+    expect(settings.pitpalStatusWebhookUrl).toBeNull();
   });
 });
 
@@ -59,6 +61,7 @@ describe("channel routing + player rules", () => {
     presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
     inventoryWebhookUrl: "https://discord.com/api/webhooks/2/abcdefghijklmnopqrstuv",
     itemMovesWebhookUrl: "https://discord.com/api/webhooks/3/abcdefghijklmnopqrstuv",
+    pitpalStatusWebhookUrl: "https://discord.com/api/webhooks/4/abcdefghijklmnopqrstuv",
     notifyItemGainedLost: true,
     notifyInventoryUpdated: true,
     notifyEveryOnlineScan: true,
@@ -71,6 +74,7 @@ describe("channel routing + player rules", () => {
         notifyEveryOnlineScan: true,
         notifyItemGainedLost: true,
         notifyInventoryUpdated: false,
+        notifyPitpalStatusChanges: true,
       },
     ],
   });
@@ -79,6 +83,7 @@ describe("channel routing + player rules", () => {
     expect(webhookUrlForEvent(base, "online_indexed")).toContain("/webhooks/1/");
     expect(webhookUrlForEvent(base, "inventory_updated")).toContain("/webhooks/2/");
     expect(webhookUrlForEvent(base, "item_moved")).toContain("/webhooks/3/");
+    expect(webhookUrlForEvent(base, "pitpal_location")).toContain("/webhooks/4/");
   });
 
   it("resolves per-player overrides", () => {

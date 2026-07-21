@@ -20,6 +20,8 @@ export type DiscordPlayerNotifyFlags = {
   notifyItemGainedLost: boolean;
   /** Same mystic updated (lives/enchants/slot) without gain/loss. */
   notifyInventoryUpdated: boolean;
+  /** PitPal lobby SPAWN/DOWN/OTHER/lobby transitions (append-only channel). */
+  notifyPitpalStatusChanges: boolean;
 };
 
 export type DiscordPlayerRule = DiscordPlayerNotifyFlags & {
@@ -34,6 +36,11 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
   inventoryWebhookUrl: string | null;
   /** Item additions/subtractions (gained/lost). */
   itemMovesWebhookUrl: string | null;
+  /**
+   * PitPal lobby status changes (SPAWN/DOWN/OTHER, lobby hops).
+   * Messages are append-only — never deleted by the dashboard refresher.
+   */
+  pitpalStatusWebhookUrl: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
   onlineDashboardRosterKey: string | null;
@@ -66,12 +73,14 @@ const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
   notifyEveryOnlineScan: true,
   notifyItemGainedLost: true,
   notifyInventoryUpdated: false,
+  notifyPitpalStatusChanges: true,
 };
 
 const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   presenceWebhookUrl: null,
   inventoryWebhookUrl: null,
   itemMovesWebhookUrl: null,
+  pitpalStatusWebhookUrl: null,
   ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
@@ -120,6 +129,10 @@ function normalizePlayerRule(value: unknown): DiscordPlayerRule | null {
       row.notifyInventoryUpdated,
       DEFAULT_FLAGS.notifyInventoryUpdated,
     ),
+    notifyPitpalStatusChanges: readBool(
+      row.notifyPitpalStatusChanges,
+      DEFAULT_FLAGS.notifyPitpalStatusChanges,
+    ),
   };
 }
 
@@ -132,6 +145,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
   const presenceWebhookUrl = readUrl(row.presenceWebhookUrl) ?? legacy;
   const inventoryWebhookUrl = readUrl(row.inventoryWebhookUrl);
   const itemMovesWebhookUrl = readUrl(row.itemMovesWebhookUrl);
+  const pitpalStatusWebhookUrl = readUrl(row.pitpalStatusWebhookUrl);
 
   // Migrate old single inventory toggle into the two new flags when present.
   const legacyInventory =
@@ -145,6 +159,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     presenceWebhookUrl,
     inventoryWebhookUrl,
     itemMovesWebhookUrl,
+    pitpalStatusWebhookUrl,
     notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
     notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
     notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
@@ -155,6 +170,10 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     notifyInventoryUpdated: readBool(
       row.notifyInventoryUpdated,
       legacyInventory ?? DEFAULT_FLAGS.notifyInventoryUpdated,
+    ),
+    notifyPitpalStatusChanges: readBool(
+      row.notifyPitpalStatusChanges,
+      DEFAULT_FLAGS.notifyPitpalStatusChanges,
     ),
     onlineDashboardEnabled: readBool(row.onlineDashboardEnabled, true),
     onlineDashboardMessageId:
@@ -192,11 +211,13 @@ export async function setDiscordWebhookSettings(
     presenceWebhookUrl: settings.presenceWebhookUrl?.trim() || null,
     inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
+    pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
     notifyItemGainedLost: Boolean(settings.notifyItemGainedLost),
     notifyInventoryUpdated: Boolean(settings.notifyInventoryUpdated),
+    notifyPitpalStatusChanges: Boolean(settings.notifyPitpalStatusChanges),
     onlineDashboardEnabled: Boolean(settings.onlineDashboardEnabled),
     onlineDashboardMessageId: settings.onlineDashboardMessageId?.trim() || null,
     onlineDashboardRosterKey: settings.onlineDashboardRosterKey ?? null,
@@ -207,6 +228,7 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.presenceWebhookUrl, "Presence webhook");
   assertOptionalWebhook(next.inventoryWebhookUrl, "Inventory webhook");
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
+  assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
   if (!next.presenceWebhookUrl) {
     next.onlineDashboardMessageId = null;
     next.onlineDashboardRosterKey = null;
@@ -236,31 +258,24 @@ export function resolvePlayerFlags(
   settings: DiscordWebhookSettings,
   accountId?: string | null,
 ): DiscordPlayerNotifyFlags {
-  if (!accountId) {
-    return {
-      notifyCameOnline: settings.notifyCameOnline,
-      notifyWentOffline: settings.notifyWentOffline,
-      notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
-      notifyItemGainedLost: settings.notifyItemGainedLost,
-      notifyInventoryUpdated: settings.notifyInventoryUpdated,
-    };
-  }
+  const defaults: DiscordPlayerNotifyFlags = {
+    notifyCameOnline: settings.notifyCameOnline,
+    notifyWentOffline: settings.notifyWentOffline,
+    notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
+    notifyItemGainedLost: settings.notifyItemGainedLost,
+    notifyInventoryUpdated: settings.notifyInventoryUpdated,
+    notifyPitpalStatusChanges: settings.notifyPitpalStatusChanges,
+  };
+  if (!accountId) return defaults;
   const rule = settings.playerRules.find((row) => row.accountId === accountId);
-  if (!rule) {
-    return {
-      notifyCameOnline: settings.notifyCameOnline,
-      notifyWentOffline: settings.notifyWentOffline,
-      notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
-      notifyItemGainedLost: settings.notifyItemGainedLost,
-      notifyInventoryUpdated: settings.notifyInventoryUpdated,
-    };
-  }
+  if (!rule) return defaults;
   return {
     notifyCameOnline: rule.notifyCameOnline,
     notifyWentOffline: rule.notifyWentOffline,
     notifyEveryOnlineScan: rule.notifyEveryOnlineScan,
     notifyItemGainedLost: rule.notifyItemGainedLost,
     notifyInventoryUpdated: rule.notifyInventoryUpdated,
+    notifyPitpalStatusChanges: rule.notifyPitpalStatusChanges,
   };
 }
 
@@ -269,6 +284,15 @@ export function webhookUrlForEvent(
   kind: string,
 ): string | null {
   const presence = settings.presenceWebhookUrl;
+  if (
+    kind === "pitpal_entered" ||
+    kind === "pitpal_left" ||
+    kind === "pitpal_location" ||
+    kind === "pitpal_lobby" ||
+    kind === "pitpal_mismatch"
+  ) {
+    return settings.pitpalStatusWebhookUrl || presence;
+  }
   if (kind === "came_online" || kind === "went_offline" || kind === "online_indexed") {
     return presence;
   }
@@ -285,7 +309,8 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
   return Boolean(
     settings.presenceWebhookUrl ||
       settings.inventoryWebhookUrl ||
-      settings.itemMovesWebhookUrl,
+      settings.itemMovesWebhookUrl ||
+      settings.pitpalStatusWebhookUrl,
   );
 }
 
@@ -302,6 +327,15 @@ function shouldNotify(
   if (kind === "inventory_updated") return flags.notifyInventoryUpdated;
   if (kind === "inventory_changed") {
     return flags.notifyItemGainedLost || flags.notifyInventoryUpdated;
+  }
+  if (
+    kind === "pitpal_entered" ||
+    kind === "pitpal_left" ||
+    kind === "pitpal_location" ||
+    kind === "pitpal_lobby" ||
+    kind === "pitpal_mismatch"
+  ) {
+    return flags.notifyPitpalStatusChanges;
   }
   return false;
 }
@@ -359,9 +393,17 @@ function embedColor(kind: string): number {
   switch (kind) {
     case "came_online":
     case "online_indexed":
+    case "pitpal_entered":
       return 0x57f287;
     case "went_offline":
+    case "pitpal_left":
       return 0x99aab5;
+    case "pitpal_location":
+      return 0x5865f2;
+    case "pitpal_lobby":
+      return 0xeb459e;
+    case "pitpal_mismatch":
+      return 0xfaa61a;
     case "item_moved":
       return 0xeb459e;
     case "inventory_updated":
@@ -381,19 +423,37 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
       ? event.detail
         ? `${event.mcUsername} still online · ${event.detail}`
         : `${event.mcUsername} still online`
-      : event.kind === "item_moved" || event.kind === "inventory_updated"
-        ? describeLiveSignal({
-            kind: "inventory_changed",
-            mcUsername: event.mcUsername,
-            detail: event.detail,
-            changes: event.changes,
-          })
-        : describeLiveSignal({
-            kind: event.kind,
-            mcUsername: event.mcUsername,
-            detail: event.detail,
-            changes: event.changes,
-          });
+      : event.kind === "pitpal_entered"
+        ? event.detail
+          ? `${event.mcUsername} entered Pit · ${event.detail}`
+          : `${event.mcUsername} entered Pit`
+        : event.kind === "pitpal_left"
+          ? `${event.mcUsername} left Pit lobbies`
+          : event.kind === "pitpal_location"
+            ? event.detail
+              ? `${event.mcUsername} ${event.detail}`
+              : `${event.mcUsername} status changed`
+            : event.kind === "pitpal_lobby"
+              ? event.detail
+                ? `${event.mcUsername} lobby · ${event.detail}`
+                : `${event.mcUsername} changed lobby`
+              : event.kind === "pitpal_mismatch"
+                ? event.detail
+                  ? `${event.mcUsername} presence mismatch · ${event.detail}`
+                  : `${event.mcUsername} presence mismatch`
+                : event.kind === "item_moved" || event.kind === "inventory_updated"
+                  ? describeLiveSignal({
+                      kind: "inventory_changed",
+                      mcUsername: event.mcUsername,
+                      detail: event.detail,
+                      changes: event.changes,
+                    })
+                  : describeLiveSignal({
+                      kind: event.kind,
+                      mcUsername: event.mcUsername,
+                      detail: event.detail,
+                      changes: event.changes,
+                    });
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     { name: "Player", value: event.mcUsername || "Unknown", inline: true },
@@ -671,5 +731,31 @@ export async function notifyDiscordForLiveEvents(
     return { postedCount };
   } catch {
     return { postedCount: 0 };
+  }
+}
+
+/**
+ * Append-only PitPal status messages (SPAWN/DOWN/OTHER / lobby hops).
+ * Never deletes prior messages — uses the dedicated pitpal status channel.
+ */
+export async function notifyPitpalStatusEvents(
+  db: Database,
+  events: DiscordNotifyEvent[],
+): Promise<number> {
+  try {
+    const settings = await getDiscordWebhookSettings(db);
+    if (!settings.pitpalStatusWebhookUrl && !settings.presenceWebhookUrl) return 0;
+    let posted = 0;
+    for (const event of events) {
+      const flags = resolvePlayerFlags(settings, event.accountId);
+      if (!shouldNotify(flags, event.kind)) continue;
+      const url = webhookUrlForEvent(settings, event.kind);
+      if (!url) continue;
+      const result = await postDiscordWebhook(url, event);
+      if (result.ok) posted += 1;
+    }
+    return posted;
+  } catch {
+    return 0;
   }
 }

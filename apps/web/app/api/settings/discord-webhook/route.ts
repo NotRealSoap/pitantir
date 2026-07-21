@@ -31,16 +31,19 @@ function publicView(settings: DiscordWebhookSettings) {
     configured: Boolean(
       settings.presenceWebhookUrl ||
         settings.inventoryWebhookUrl ||
-        settings.itemMovesWebhookUrl,
+        settings.itemMovesWebhookUrl ||
+        settings.pitpalStatusWebhookUrl,
     ),
     presenceWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceWebhookUrl),
     inventoryWebhookUrlMasked: maskDiscordWebhookUrl(settings.inventoryWebhookUrl),
     itemMovesWebhookUrlMasked: maskDiscordWebhookUrl(settings.itemMovesWebhookUrl),
+    pitpalStatusWebhookUrlMasked: maskDiscordWebhookUrl(settings.pitpalStatusWebhookUrl),
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
     notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
     notifyItemGainedLost: settings.notifyItemGainedLost,
     notifyInventoryUpdated: settings.notifyInventoryUpdated,
+    notifyPitpalStatusChanges: settings.notifyPitpalStatusChanges,
     onlineDashboardEnabled: settings.onlineDashboardEnabled,
     onlineDashboardConfigured: Boolean(settings.onlineDashboardMessageId),
     playerRules: settings.playerRules,
@@ -83,6 +86,7 @@ function parsePlayerRules(value: unknown): DiscordPlayerRule[] {
       notifyEveryOnlineScan: Boolean(rule.notifyEveryOnlineScan),
       notifyItemGainedLost: Boolean(rule.notifyItemGainedLost),
       notifyInventoryUpdated: Boolean(rule.notifyInventoryUpdated),
+      notifyPitpalStatusChanges: Boolean(rule.notifyPitpalStatusChanges),
     });
   }
   return out;
@@ -162,7 +166,9 @@ export async function POST(request: Request) {
         ? current.inventoryWebhookUrl || current.presenceWebhookUrl
         : channel === "itemMoves"
           ? current.itemMovesWebhookUrl || current.presenceWebhookUrl
-          : current.presenceWebhookUrl;
+          : channel === "pitpalStatus"
+            ? current.pitpalStatusWebhookUrl || current.presenceWebhookUrl
+            : current.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
         { ok: false, error: "Save a webhook URL for that channel first." },
@@ -174,7 +180,9 @@ export async function POST(request: Request) {
         ? "inventory_updated"
         : channel === "itemMoves"
           ? "item_moved"
-          : "came_online";
+          : channel === "pitpalStatus"
+            ? "pitpal_location"
+            : "came_online";
     const result = await postDiscordWebhook(url, {
       kind,
       mcUsername: "Pitantir",
@@ -235,6 +243,7 @@ export async function POST(request: Request) {
       current.presenceWebhookUrl,
       current.inventoryWebhookUrl,
       current.itemMovesWebhookUrl,
+      current.pitpalStatusWebhookUrl,
     ]) {
       if (url && current.onlineDashboardMessageId && url === current.presenceWebhookUrl) {
         try {
@@ -252,6 +261,7 @@ export async function POST(request: Request) {
       presenceWebhookUrl: null,
       inventoryWebhookUrl: null,
       itemMovesWebhookUrl: null,
+      pitpalStatusWebhookUrl: null,
       onlineDashboardMessageId: null,
       onlineDashboardRosterKey: null,
       playerRules: [],
@@ -266,15 +276,20 @@ export async function POST(request: Request) {
   const presence = parseOptionalUrl(input.presenceWebhookUrl, "Presence webhook");
   const inventory = parseOptionalUrl(input.inventoryWebhookUrl, "Inventory webhook");
   const itemMoves = parseOptionalUrl(input.itemMovesWebhookUrl, "Item moves webhook");
+  const pitpalStatus = parseOptionalUrl(input.pitpalStatusWebhookUrl, "PitPal status webhook");
   if (!presence.ok) return NextResponse.json({ ok: false, error: presence.error }, { status: 400 });
   if (!inventory.ok) return NextResponse.json({ ok: false, error: inventory.error }, { status: 400 });
   if (!itemMoves.ok) return NextResponse.json({ ok: false, error: itemMoves.error }, { status: 400 });
+  if (!pitpalStatus.ok) return NextResponse.json({ ok: false, error: pitpalStatus.error }, { status: 400 });
 
   try {
     const next = await setDiscordWebhookSettings(db, {
       presenceWebhookUrl: presence.provided ? presence.url : current.presenceWebhookUrl,
       inventoryWebhookUrl: inventory.provided ? inventory.url : current.inventoryWebhookUrl,
       itemMovesWebhookUrl: itemMoves.provided ? itemMoves.url : current.itemMovesWebhookUrl,
+      pitpalStatusWebhookUrl: pitpalStatus.provided
+        ? pitpalStatus.url
+        : current.pitpalStatusWebhookUrl,
       notifyCameOnline:
         typeof input.notifyCameOnline === "boolean"
           ? input.notifyCameOnline
@@ -295,6 +310,10 @@ export async function POST(request: Request) {
         typeof input.notifyInventoryUpdated === "boolean"
           ? input.notifyInventoryUpdated
           : current.notifyInventoryUpdated,
+      notifyPitpalStatusChanges:
+        typeof input.notifyPitpalStatusChanges === "boolean"
+          ? input.notifyPitpalStatusChanges
+          : current.notifyPitpalStatusChanges,
       onlineDashboardEnabled:
         typeof input.onlineDashboardEnabled === "boolean"
           ? input.onlineDashboardEnabled
