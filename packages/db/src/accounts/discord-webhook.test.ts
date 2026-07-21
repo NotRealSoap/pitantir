@@ -20,6 +20,14 @@ describe("isDiscordWebhookUrl", () => {
     ).toBe(true);
   });
 
+  it("accepts tokens with dots", () => {
+    expect(
+      isDiscordWebhookUrl(
+        "https://discord.com/api/webhooks/1529239917258080296/abc.def-ghi_jkl",
+      ),
+    ).toBe(true);
+  });
+
   it("rejects non-discord URLs", () => {
     expect(isDiscordWebhookUrl("https://example.com/hooks/1")).toBe(false);
   });

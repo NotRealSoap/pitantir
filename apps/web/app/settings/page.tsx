@@ -487,7 +487,7 @@ function DiscordWebhookPanel() {
       }
       applyPayload(payload);
       setMessage(payload.message ?? "Saved.");
-      if (body.action === "save") {
+      if (body.action === "save" || body.action === "test") {
         setPresenceWebhookUrl("");
         setInventoryWebhookUrl("");
         setItemMovesWebhookUrl("");
@@ -527,14 +527,24 @@ function DiscordWebhookPanel() {
       <p className="muted">
         Use <strong>dedicated channels</strong>. Presence = Hypixel confirmatory online/offline +
         roster (edited in place). PitPal status = every lobbies change (append-only, never deleted).
-        Item moves = gained/lost; inventory updates = same-nonce lives/enchant/slot changes.
-        Per-player rows override defaults.
+        Leave a URL field blank to keep the saved value. Clearing requires Clear all (or paste a new
+        URL to replace).
       </p>
       <p>
         Status:{" "}
         <span className="chip">
           {status == null ? "Checking…" : status.configured ? "configured" : "not configured"}
         </span>
+        {status?.presenceWebhookUrlMasked ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            presence saved
+          </span>
+        ) : null}
+        {status?.pitpalStatusWebhookUrlMasked ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            pitpal saved
+          </span>
+        ) : null}
         {status?.onlineDashboardConfigured ? (
           <span className="chip" style={{ marginLeft: "0.35rem" }}>
             dashboard live
@@ -568,8 +578,9 @@ function DiscordWebhookPanel() {
         <label>
           Presence webhook (online/offline · Hypixel confirmation · roster dashboard)
           <input
-            type="password"
+            type="url"
             autoComplete="off"
+            spellCheck={false}
             value={presenceWebhookUrl}
             onChange={(event) => setPresenceWebhookUrl(event.target.value)}
             placeholder={
@@ -582,8 +593,9 @@ function DiscordWebhookPanel() {
         <label>
           Inventory updates webhook (lives / enchants / slot)
           <input
-            type="password"
+            type="url"
             autoComplete="off"
+            spellCheck={false}
             value={inventoryWebhookUrl}
             onChange={(event) => setInventoryWebhookUrl(event.target.value)}
             placeholder={
@@ -596,8 +608,9 @@ function DiscordWebhookPanel() {
         <label>
           Item additions / subtractions webhook
           <input
-            type="password"
+            type="url"
             autoComplete="off"
+            spellCheck={false}
             value={itemMovesWebhookUrl}
             onChange={(event) => setItemMovesWebhookUrl(event.target.value)}
             placeholder={
@@ -610,14 +623,15 @@ function DiscordWebhookPanel() {
         <label>
           PitPal status webhook (all pitpal.rocks/admin/lobbies changes · append-only)
           <input
-            type="password"
+            type="url"
             autoComplete="off"
+            spellCheck={false}
             value={pitpalStatusWebhookUrl}
             onChange={(event) => setPitpalStatusWebhookUrl(event.target.value)}
             placeholder={
               status?.pitpalStatusWebhookUrlMasked
                 ? `Saved: ${status.pitpalStatusWebhookUrlMasked}`
-                : "Required for lobby enter/leave/SPAWN/DOWN — never falls back to presence"
+                : "https://discord.com/api/webhooks/… (required for PitPal)"
             }
           />
         </label>
@@ -810,29 +824,56 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
-            disabled={busy || !status?.configured}
-            onClick={() => void run({ action: "test", channel: "presence" })}
+            disabled={busy || (!status?.configured && !presenceWebhookUrl.trim())}
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "presence",
+                webhookUrl: presenceWebhookUrl.trim() || undefined,
+              })
+            }
           >
             Test presence
           </button>
           <button
             type="button"
-            disabled={busy || !status?.configured}
-            onClick={() => void run({ action: "test", channel: "itemMoves" })}
+            disabled={busy || (!status?.configured && !itemMovesWebhookUrl.trim())}
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "itemMoves",
+                webhookUrl: itemMovesWebhookUrl.trim() || undefined,
+              })
+            }
           >
             Test item moves
           </button>
           <button
             type="button"
-            disabled={busy || !status?.configured}
-            onClick={() => void run({ action: "test", channel: "inventory" })}
+            disabled={busy || (!status?.configured && !inventoryWebhookUrl.trim())}
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "inventory",
+                webhookUrl: inventoryWebhookUrl.trim() || undefined,
+              })
+            }
           >
             Test inventory
           </button>
           <button
             type="button"
-            disabled={busy || !status?.configured}
-            onClick={() => void run({ action: "test", channel: "pitpalStatus" })}
+            disabled={
+              busy ||
+              (!status?.pitpalStatusWebhookUrlMasked && !pitpalStatusWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "pitpalStatus",
+                webhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
+              })
+            }
           >
             Test PitPal status
           </button>

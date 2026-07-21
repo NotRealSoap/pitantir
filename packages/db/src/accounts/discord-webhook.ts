@@ -89,7 +89,7 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
 };
 
 const DISCORD_WEBHOOK_RE =
-  /^https:\/\/((?:canary|ptb)\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+  /^https:\/\/((?:canary|ptb)\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w.-]+$/i;
 
 export function isDiscordWebhookUrl(value: string): boolean {
   return DISCORD_WEBHOOK_RE.test(value.trim());

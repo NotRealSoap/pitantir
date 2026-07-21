@@ -50,6 +50,13 @@ function publicView(settings: DiscordWebhookSettings) {
   };
 }
 
+function sanitizeDiscordWebhookInput(value: string): string {
+  return value
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, "");
+}
+
 function parseOptionalUrl(
   value: unknown,
   label: string,
@@ -60,7 +67,7 @@ function parseOptionalUrl(
   if (value === undefined) return { ok: true, provided: false };
   if (value === null || value === "") return { ok: true, provided: true, url: null };
   if (typeof value !== "string") return { ok: false, error: `${label} must be a string.` };
-  const trimmed = value.trim();
+  const trimmed = sanitizeDiscordWebhookInput(value);
   if (!trimmed) return { ok: true, provided: true, url: null };
   if (!isDiscordWebhookUrl(trimmed)) {
     return {
@@ -169,17 +176,37 @@ export async function POST(request: Request) {
   if (action === "test") {
     const channel =
       typeof input.channel === "string" ? input.channel : "presence";
+    // Prefer a URL typed in the settings form (also persists it) so paste+test works.
+    const draft = parseOptionalUrl(input.webhookUrl, "Webhook");
+    if (!draft.ok) {
+      return NextResponse.json({ ok: false, error: draft.error }, { status: 400 });
+    }
+    let settings = current;
+    if (draft.provided && draft.url) {
+      const patch: DiscordWebhookSettings = { ...current };
+      if (channel === "inventory") patch.inventoryWebhookUrl = draft.url;
+      else if (channel === "itemMoves") patch.itemMovesWebhookUrl = draft.url;
+      else if (channel === "pitpalStatus") patch.pitpalStatusWebhookUrl = draft.url;
+      else patch.presenceWebhookUrl = draft.url;
+      settings = await setDiscordWebhookSettings(db, patch);
+    }
     const url =
       channel === "inventory"
-        ? current.inventoryWebhookUrl || current.presenceWebhookUrl
+        ? settings.inventoryWebhookUrl || settings.presenceWebhookUrl
         : channel === "itemMoves"
-          ? current.itemMovesWebhookUrl || current.presenceWebhookUrl
+          ? settings.itemMovesWebhookUrl || settings.presenceWebhookUrl
           : channel === "pitpalStatus"
-            ? current.pitpalStatusWebhookUrl
-            : current.presenceWebhookUrl;
+            ? settings.pitpalStatusWebhookUrl
+            : settings.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
-        { ok: false, error: "Save a webhook URL for that channel first." },
+        {
+          ok: false,
+          error:
+            channel === "pitpalStatus"
+              ? "Paste the PitPal status webhook URL above, then click Test (or Save)."
+              : "Save a webhook URL for that channel first.",
+        },
         { status: 400 },
       );
     }
