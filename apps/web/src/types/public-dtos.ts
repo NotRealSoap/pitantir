@@ -18,6 +18,11 @@ export type PublicAccountDto = {
   lastSessionGame?: string | null;
   lastInventoryHash?: string | null;
   lastInventoryChangedAt?: string | Date | null;
+  lastPitpalLobby?: string | null;
+  lastPitpalLocation?: string | null;
+  lastPitpalArmorType?: string | null;
+  lastPitpalKillstreak?: number | null;
+  lastPitpalSeenAt?: string | Date | null;
   notes: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;

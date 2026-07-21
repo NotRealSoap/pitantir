@@ -54,6 +54,10 @@ export type OnlineRosterEntry = {
   mcUsername: string;
   sessionGame?: string | null;
   seenAt?: string | Date | null;
+  lobby?: string | null;
+  location?: string | null;
+  armorType?: string | null;
+  killStreak?: number | null;
 };
 
 const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
@@ -426,7 +430,10 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
 
 export function rosterKeyFor(entries: OnlineRosterEntry[]): string {
   return entries
-    .map((entry) => `${entry.mcUsername}\t${entry.sessionGame ?? ""}`)
+    .map(
+      (entry) =>
+        `${entry.mcUsername}\t${entry.lobby ?? ""}\t${entry.location ?? ""}\t${entry.sessionGame ?? ""}`,
+    )
     .sort((a, b) => a.localeCompare(b))
     .join("\n");
 }
@@ -442,8 +449,15 @@ export function buildOnlineDashboardPayload(
     sorted.length === 0
       ? ["_Nobody on the watchlist is online._"]
       : sorted.map((entry) => {
-          const game = entry.sessionGame ? ` — \`${entry.sessionGame}\`` : "";
-          return `• **${entry.mcUsername}**${game}`;
+          const bits = [
+            entry.lobby,
+            entry.location,
+            entry.armorType,
+            entry.killStreak && entry.killStreak > 0 ? `${entry.killStreak} ks` : null,
+            !entry.lobby && entry.sessionGame ? entry.sessionGame : null,
+          ].filter(Boolean);
+          const suffix = bits.length ? ` — ${bits.map((bit) => `\`${bit}\``).join(" · ")}` : "";
+          return `• **${entry.mcUsername}**${suffix}`;
         });
   const body = lines.join("\n");
   return {
@@ -454,7 +468,7 @@ export function buildOnlineDashboardPayload(
         description: body.slice(0, 4096),
         color: 0x57f287,
         timestamp: updatedAt,
-        footer: { text: "Pitantir online dashboard · kept as latest message" },
+        footer: { text: "Pitantir online dashboard · PitPal lobby when available" },
       },
     ],
   };
@@ -566,6 +580,10 @@ export async function refreshDiscordOnlineDashboard(
       mcUsername: row.mcUsername,
       sessionGame: row.lastSessionGame,
       seenAt: row.lastHypixelOnlineAt,
+      lobby: row.lastPitpalLobby,
+      location: row.lastPitpalLocation,
+      armorType: row.lastPitpalArmorType,
+      killStreak: row.lastPitpalKillstreak,
     }));
   const nextKey = rosterKeyFor(online);
   if (

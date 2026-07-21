@@ -30,6 +30,11 @@ export interface Account {
   lastSessionGame: string | null;
   lastInventoryHash: string | null;
   lastInventoryChangedAt: Date | null;
+  lastPitpalLobby: string | null;
+  lastPitpalLocation: string | null;
+  lastPitpalArmorType: string | null;
+  lastPitpalKillstreak: number | null;
+  lastPitpalSeenAt: Date | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -62,6 +67,11 @@ export interface UpdateAccountInput {
   lastSessionGame?: string | null;
   lastInventoryHash?: string | null;
   lastInventoryChangedAt?: Date | null;
+  lastPitpalLobby?: string | null;
+  lastPitpalLocation?: string | null;
+  lastPitpalArmorType?: string | null;
+  lastPitpalKillstreak?: number | null;
+  lastPitpalSeenAt?: Date | null;
 }
 
 function mapAccount(row: AccountRow): Account {
@@ -83,6 +93,11 @@ function mapAccount(row: AccountRow): Account {
     lastSessionGame: row.lastSessionGame ?? null,
     lastInventoryHash: row.lastInventoryHash ?? null,
     lastInventoryChangedAt: row.lastInventoryChangedAt ?? null,
+    lastPitpalLobby: row.lastPitpalLobby ?? null,
+    lastPitpalLocation: row.lastPitpalLocation ?? null,
+    lastPitpalArmorType: row.lastPitpalArmorType ?? null,
+    lastPitpalKillstreak: row.lastPitpalKillstreak ?? null,
+    lastPitpalSeenAt: row.lastPitpalSeenAt ?? null,
     notes: row.notes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -315,6 +330,17 @@ export class AccountsRepository {
     if (input.lastInventoryChangedAt !== undefined) {
       updated.lastInventoryChangedAt = input.lastInventoryChangedAt;
     }
+    if (input.lastPitpalLobby !== undefined) updated.lastPitpalLobby = input.lastPitpalLobby;
+    if (input.lastPitpalLocation !== undefined) {
+      updated.lastPitpalLocation = input.lastPitpalLocation;
+    }
+    if (input.lastPitpalArmorType !== undefined) {
+      updated.lastPitpalArmorType = input.lastPitpalArmorType;
+    }
+    if (input.lastPitpalKillstreak !== undefined) {
+      updated.lastPitpalKillstreak = input.lastPitpalKillstreak;
+    }
+    if (input.lastPitpalSeenAt !== undefined) updated.lastPitpalSeenAt = input.lastPitpalSeenAt;
 
     if (!/^[A-Za-z0-9_]{3,16}$/.test(String(updated.mcUsername))) {
       throw new Error("Invalid Minecraft username");

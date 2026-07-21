@@ -61,6 +61,10 @@ export async function GET() {
       sessionGame: row.lastSessionGame,
       seenAt: row.lastHypixelOnlineAt,
       source: row.lastPresenceSource,
+      lobby: row.lastPitpalLobby,
+      location: row.lastPitpalLocation,
+      armorType: row.lastPitpalArmorType,
+      killStreak: row.lastPitpalKillstreak,
     }));
 
   const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);

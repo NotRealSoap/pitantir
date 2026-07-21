@@ -33,7 +33,12 @@ type LiveStatusPayload = {
   stale?: boolean;
   currentIntervalSeconds?: number | null;
   onlineCount?: number;
-  online?: Array<{ mcUsername: string }>;
+  online?: Array<{
+    mcUsername: string;
+    sessionGame?: string | null;
+    lobby?: string | null;
+    location?: string | null;
+  }>;
   events?: LiveEvent[];
   recentCalls?: ApiCall[];
   latestCall?: ApiCall | null;
@@ -233,7 +238,10 @@ export function LiveStatusBar() {
               {online.length > 0
                 ? `${online
                     .slice(0, 3)
-                    .map((row) => row.mcUsername)
+                    .map((row) => {
+                      const where = [row.lobby, row.location].filter(Boolean).join(" ");
+                      return where ? `${row.mcUsername} (${where})` : row.mcUsername;
+                    })
                     .join(", ")}${online.length > 3 ? "…" : ""}`
                 : "none seen"}
             </span>

@@ -289,9 +289,17 @@ export default function AccountsPage() {
                 <span className="chip">{account.enabled ? "refresh on" : "refresh off"}</span>
                 <span className="chip">
                   {account.lastHypixelOnline === true
-                    ? account.lastSessionGame
-                      ? `online · ${account.lastSessionGame}`
-                      : "online"
+                    ? account.lastPitpalLobby || account.lastPitpalLocation
+                      ? `online · ${[
+                          account.lastPitpalLobby,
+                          account.lastPitpalLocation,
+                          account.lastPitpalArmorType,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}`
+                      : account.lastSessionGame
+                        ? `online · ${account.lastSessionGame}`
+                        : "online"
                     : account.lastHypixelOnline === false
                       ? "offline"
                       : "presence ?"}

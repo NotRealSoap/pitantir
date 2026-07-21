@@ -803,6 +803,107 @@ function DiscordWebhookPanel() {
   );
 }
 
+function PitPalBridgePanel() {
+  const [snapshot, setSnapshot] = useState<{
+    observedAt?: string | null;
+    playerCount?: number;
+    lobbyCount?: number;
+    source?: string | null;
+    error?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const response = await fetch("/api/pitpal/lobbies", { cache: "no-store" });
+        const payload = (await response.json()) as {
+          observedAt?: string | null;
+          playerCount?: number;
+          lobbyCount?: number;
+          source?: string | null;
+          players?: unknown[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!response.ok) {
+          setSnapshot({ error: payload.error ?? "Unavailable" });
+          return;
+        }
+        setSnapshot({
+          observedAt: payload.observedAt,
+          playerCount: payload.playerCount ?? payload.players?.length ?? 0,
+          lobbyCount: payload.lobbyCount,
+          source: payload.source,
+        });
+      } catch {
+        if (!cancelled) setSnapshot({ error: "Unavailable" });
+      }
+    }
+    void load();
+    const id = window.setInterval(() => void load(), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  return (
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "52rem" }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        PitPal lobby bridge
+      </h2>
+      <p className="muted">
+        A Tampermonkey script (while you&apos;re logged into PitPal admin) reads{" "}
+        <code>/api/proxy/pitmod/players</code> and posts lobby + SPAWN/DOWN/OTHER into Pitantir. No
+        admin password is shared with the worker.
+      </p>
+      <p>
+        Status:{" "}
+        <span className="chip">
+          {snapshot == null
+            ? "Checking…"
+            : snapshot.error
+              ? snapshot.error
+              : snapshot.observedAt
+                ? "receiving"
+                : "waiting for first ingest"}
+        </span>
+      </p>
+      {snapshot?.observedAt ? (
+        <p className="muted" style={{ fontSize: "0.9rem" }}>
+          Last ingest: {new Date(snapshot.observedAt).toLocaleString()} ·{" "}
+          <strong>{snapshot.playerCount ?? 0}</strong> players ·{" "}
+          <strong>{snapshot.lobbyCount ?? "—"}</strong> lobbies
+          {snapshot.source ? (
+            <>
+              {" "}
+              · <code>{snapshot.source}</code>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+      <ol className="muted" style={{ paddingLeft: "1.2rem" }}>
+        <li>
+          Install Tampermonkey, then add script from repo:{" "}
+          <code>scripts/pitpal-lobbies.user.js</code>
+        </li>
+        <li>
+          Keep Pitantir web running on <code>http://127.0.0.1:3000</code> (change the script URL if
+          needed).
+        </li>
+        <li>
+          Open <code>https://pitpal.rocks/admin/lobbies</code> while logged in as admin. A small
+          badge at the bottom-right confirms sync.
+        </li>
+        <li>
+          Run <code>npx pnpm@10.11.0 db:migrate</code> once for PitPal columns, then restart web.
+        </li>
+      </ol>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const [pitpandaConfigured, setPitpandaConfigured] = useState<boolean | null>(null);
   const [hypixelConfigured, setHypixelConfigured] = useState<boolean | null>(null);
@@ -863,6 +964,8 @@ export default function SettingsPage() {
 
       <DiscordWebhookPanel />
 
+      <PitPalBridgePanel />
+
       <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
         <h2 className="section-title" style={{ marginTop: 0 }}>
           Notes
@@ -887,6 +990,11 @@ export default function SettingsPage() {
             overrides on Settings. Example: whytf = online scans + additions/subtractions only, no
             inventory field updates. Presence channel should be dedicated so the online roster can
             stay as the latest message.
+          </li>
+          <li>
+            PitPal lobby bridge: install the Tampermonkey script, keep{" "}
+            <code>https://pitpal.rocks/admin/lobbies</code> open while logged in as admin. Pitantir
+            then learns lobby codes (M23A…) and SPAWN/DOWN/OTHER for watchlist players.
           </li>
         </ul>
       </section>

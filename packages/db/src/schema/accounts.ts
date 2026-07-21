@@ -42,6 +42,12 @@ export const accounts = pgTable(
     lastSessionGame: text("last_session_game"),
     lastInventoryHash: text("last_inventory_hash"),
     lastInventoryChangedAt: timestamp("last_inventory_changed_at", { withTimezone: true }),
+    /** PitPal lobby monitor (Tampermonkey ingest). */
+    lastPitpalLobby: text("last_pitpal_lobby"),
+    lastPitpalLocation: text("last_pitpal_location"),
+    lastPitpalArmorType: text("last_pitpal_armor_type"),
+    lastPitpalKillstreak: integer("last_pitpal_killstreak"),
+    lastPitpalSeenAt: timestamp("last_pitpal_seen_at", { withTimezone: true }),
     credentialsEncrypted: text("credentials_encrypted"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
