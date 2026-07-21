@@ -90,7 +90,8 @@ export function effectiveScanPriority(
   return base;
 }
 
-/** Pull nextScanAt forward when an account becomes a hotspot. */
-export function hotNextScanAt(from: Date = new Date()): Date {
-  return new Date(from.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000);
+/** Soonest we should re-check a hotspot (with light jitter to avoid re-clustering). */
+export function hotNextScanAt(from: Date = new Date(), salt = 0): Date {
+  const jitterMs = Math.abs(salt % 60_000);
+  return new Date(from.getTime() + jitterMs);
 }

@@ -15,6 +15,7 @@ import {
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
 import {
   hotNextScanAt,
+  PRESENCE_HOT_INTERVAL_SECONDS,
   PRESENCE_HOT_PRIORITY,
   resolveEffectivePresence,
 } from "../accounts/presence.js";
@@ -214,11 +215,17 @@ export class ScanAccountHandler {
 
     // Hotspot: keep online accounts on a short cadence.
     if (nextEffective.online) {
-      const hotAt = hotNextScanAt(fetched.observedAt);
+      const hotAt = hotNextScanAt(
+        fetched.observedAt,
+        account.id.split("").reduce((n, c) => n + c.charCodeAt(0), 0),
+      );
       try {
         await this.accounts.update(account.id, {
           priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY),
-          ...(account.nextScanAt.getTime() > hotAt.getTime() ? { nextScanAt: hotAt } : {}),
+          ...(account.nextScanAt.getTime() >
+          fetched.observedAt.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000
+            ? { nextScanAt: hotAt }
+            : {}),
         });
       } catch {
         // schedule bump is best-effort

@@ -9,7 +9,7 @@ import {
   type DiscordNotifyEvent,
 } from "./discord-webhook.js";
 import { JobsRepository } from "../jobs/repository.js";
-import { hotNextScanAt, PRESENCE_HOT_PRIORITY } from "./presence.js";
+import { hotNextScanAt, PRESENCE_HOT_INTERVAL_SECONDS, PRESENCE_HOT_PRIORITY } from "./presence.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
 
@@ -318,9 +318,11 @@ export async function ingestPitpalLobbies(
       const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
       const casingPatch =
         hit.name && hit.name !== account.mcUsername ? { mcUsername: hit.name } : {};
-      const hotAt = hotNextScanAt(observedDate);
+      const hotAt = hotNextScanAt(observedDate, account.id.split("").reduce((n, c) => n + c.charCodeAt(0), 0));
       const nextScanAt =
-        account.nextScanAt.getTime() > hotAt.getTime() ? hotAt : undefined;
+        account.nextScanAt.getTime() > observedDate.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000
+          ? hotAt
+          : undefined;
       await repo.update(account.id, {
         ...casingPatch,
         lastPitpalLobby: hit.lobbyName,

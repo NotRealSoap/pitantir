@@ -3,7 +3,6 @@ import type { Database } from "../client.js";
 import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
-import { staggeredNextScanAts } from "../accounts/scan-stagger.js";
 import {
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
@@ -14,10 +13,17 @@ import { now } from "../identity/store.js";
 export interface ScheduleTickResult {
   considered: number;
   enqueued: number;
+  deferred: number;
   skippedDuplicate: number;
   skippedDisabled: number;
   paused: boolean;
 }
+
+/**
+ * How many due accounts to enqueue per worker loop iteration.
+ * Keeping this small turns “everyone due → giant burst → long silence” into a steady drip.
+ */
+export const MAX_SCAN_ENQUEUES_PER_TICK = 1;
 
 /**
  * Enqueue `scan_account` jobs for watchlisted+enabled accounts whose `next_scan_at` is due.
@@ -38,6 +44,7 @@ export class ScanScheduler {
       return {
         considered: 0,
         enqueued: 0,
+        deferred: 0,
         skippedDuplicate: 0,
         skippedDisabled: 0,
         paused: true,
@@ -45,26 +52,19 @@ export class ScanScheduler {
     }
 
     const due = await this.accounts.listEnabledForScan(asOf);
+    // Prefer hotspots first, then earliest nextScanAt.
+    const ordered = [...due].sort((a, b) => {
+      const pri = effectiveScanPriority(a) - effectiveScanPriority(b);
+      if (pri !== 0) return pri;
+      return a.nextScanAt.getTime() - b.nextScanAt.getTime();
+    });
+    const batch = ordered.slice(0, MAX_SCAN_ENQUEUES_PER_TICK);
+    const deferred = Math.max(0, ordered.length - batch.length);
+
     let enqueued = 0;
     let skippedDuplicate = 0;
 
-    // When many accounts are due together, spread their *next* slots so the
-    // cluster does not reform at asOf + interval for everyone.
-    const burstNext =
-      due.length > 1
-        ? staggeredNextScanAts({
-            count: due.length,
-            // Use the max *effective* interval in the due set so slower accounts still spread.
-            intervalSeconds: Math.max(
-              ...due.map((row) => effectiveScanIntervalSeconds(row)),
-            ),
-            from: asOf,
-            mode: "after_burst",
-          })
-        : null;
-
-    for (let i = 0; i < due.length; i += 1) {
-      const account = due[i]!;
+    for (const account of batch) {
       const slot = account.nextScanAt.toISOString();
       const idempotencyKey = `scan_account:${account.id}:${slot}`;
       const result = await this.jobs.enqueue({
@@ -84,9 +84,10 @@ export class ScanScheduler {
         skippedDuplicate += 1;
       }
 
-      const nextScanAt =
-        burstNext?.[i] ??
-        new Date(asOf.getTime() + effectiveScanIntervalSeconds(account) * 1000);
+      // Each account uses its own effective interval (hot vs cool) — never the max of the due set.
+      const nextScanAt = new Date(
+        asOf.getTime() + effectiveScanIntervalSeconds(account) * 1000,
+      );
       await this.db
         .update(accounts)
         .set({ nextScanAt, updatedAt: asOf })
@@ -96,6 +97,7 @@ export class ScanScheduler {
     return {
       considered: due.length,
       enqueued,
+      deferred,
       skippedDuplicate,
       skippedDisabled: 0,
       paused: false,
