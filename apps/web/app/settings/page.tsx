@@ -1145,14 +1145,15 @@ export default function SettingsPage() {
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
           </li>
           <li>
-            Discord: online dashboard = roster-only channel. Online/offline alerts = Hypixel
-            came-online / went-offline / still-online index pings. PitPal status = every
-            pitpal.rocks/admin/lobbies change. Inventory and item +/− stay on their own webhooks.
+            Discord: online dashboard = roster-only channel (includes PitPal-visible API Off).
+            Online/offline alerts = Hypixel came-online / went-offline / still-online index pings.
+            PitPal status = every pitpal.rocks/admin/lobbies change. Inventory and item +/− stay on
+            their own webhooks.
           </li>
           <li>
-            PitPal Tampermonkey bridge feeds lobby status into the PitPal webhook only. Enter/leave
-            also queues a Hypixel scan; that confirmation updates the alerts channel and roster.
-            PitPal never marks someone online/offline by itself.
+            Presence: PitPal lobbies is soft-online + username casing SoT. If Hypixel says offline
+            while PitPal still lists them, the roster shows <code>API Off</code> and they stay Hot
+            for scanning. PitPanda nonce lastseen is only a weak secondary hint.
           </li>
         </ul>
       </section>

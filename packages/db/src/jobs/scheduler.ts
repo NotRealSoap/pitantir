@@ -4,6 +4,10 @@ import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
 import { staggeredNextScanAts } from "../accounts/scan-stagger.js";
+import {
+  effectiveScanIntervalSeconds,
+  effectiveScanPriority,
+} from "../accounts/presence.js";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
 
@@ -50,8 +54,10 @@ export class ScanScheduler {
       due.length > 1
         ? staggeredNextScanAts({
             count: due.length,
-            // Use the max interval in the due set so slower accounts still spread.
-            intervalSeconds: Math.max(...due.map((row) => row.scanIntervalSeconds)),
+            // Use the max *effective* interval in the due set so slower accounts still spread.
+            intervalSeconds: Math.max(
+              ...due.map((row) => effectiveScanIntervalSeconds(row)),
+            ),
             from: asOf,
             mode: "after_burst",
           })
@@ -67,7 +73,7 @@ export class ScanScheduler {
           accountId: account.id,
           triggeredBy: "schedule",
         },
-        priority: account.priority,
+        priority: effectiveScanPriority(account),
         runAt: asOf,
         idempotencyKey,
       });
@@ -80,7 +86,7 @@ export class ScanScheduler {
 
       const nextScanAt =
         burstNext?.[i] ??
-        new Date(asOf.getTime() + account.scanIntervalSeconds * 1000);
+        new Date(asOf.getTime() + effectiveScanIntervalSeconds(account) * 1000);
       await this.db
         .update(accounts)
         .set({ nextScanAt, updatedAt: asOf })

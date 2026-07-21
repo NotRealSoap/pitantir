@@ -9,6 +9,7 @@ import {
 } from "@pitantir/shared/live-signal-copy";
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
+import { resolveEffectivePresence } from "./presence.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
 /**
@@ -78,6 +79,8 @@ export type OnlineRosterEntry = {
   location?: string | null;
   armorType?: string | null;
   killStreak?: number | null;
+  /** PitPal-listed but Hypixel reports offline/unknown. */
+  apiOff?: boolean;
 };
 
 const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
@@ -625,7 +628,7 @@ export function rosterKeyFor(entries: OnlineRosterEntry[]): string {
   return entries
     .map(
       (entry) =>
-        `${entry.mcUsername}\t${entry.lobby ?? ""}\t${entry.location ?? ""}\t${entry.sessionGame ?? ""}`,
+        `${entry.mcUsername}\t${entry.lobby ?? ""}\t${entry.location ?? ""}\t${entry.sessionGame ?? ""}\t${entry.apiOff ? "apiOff" : ""}`,
     )
     .sort((a, b) => a.localeCompare(b))
     .join("\n");
@@ -648,6 +651,7 @@ export function buildOnlineDashboardPayload(
             entry.armorType,
             entry.killStreak && entry.killStreak > 0 ? `${entry.killStreak} ks` : null,
             !entry.lobby && entry.sessionGame ? entry.sessionGame : null,
+            entry.apiOff ? "API Off" : null,
           ].filter(Boolean);
           const suffix = bits.length ? ` — ${bits.map((bit) => `\`${bit}\``).join(" · ")}` : "";
           return `• **${entry.mcUsername}**${suffix}`;
@@ -780,16 +784,21 @@ export async function refreshDiscordOnlineDashboard(
 
   const repo = new AccountsRepository(db);
   const online = (await repo.listWatchlist())
-    .filter((row) => row.lastHypixelOnline === true)
-    .map((row) => ({
-      mcUsername: row.mcUsername,
-      sessionGame: row.lastSessionGame,
-      seenAt: row.lastHypixelOnlineAt,
-      lobby: row.lastPitpalLobby,
-      location: row.lastPitpalLocation,
-      armorType: row.lastPitpalArmorType,
-      killStreak: row.lastPitpalKillstreak,
-    }));
+    .map((row) => {
+      const presence = resolveEffectivePresence(row);
+      if (!presence.online) return null;
+      return {
+        mcUsername: row.mcUsername,
+        sessionGame: row.lastSessionGame,
+        seenAt: row.lastPitpalSeenAt ?? row.lastHypixelOnlineAt,
+        lobby: row.lastPitpalLobby,
+        location: row.lastPitpalLocation,
+        armorType: row.lastPitpalArmorType,
+        killStreak: row.lastPitpalKillstreak,
+        apiOff: presence.apiOff,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
   const nextKey = rosterKeyFor(online);
   if (
     !options?.force &&

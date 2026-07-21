@@ -3,6 +3,7 @@ import {
   getHypixelApiCalls,
   getHypixelLiveEvents,
   getHypixelRateLimitSnapshot,
+  resolveEffectivePresence,
 } from "@pitantir/db";
 import {
   getAccountsRepository,
@@ -54,18 +55,23 @@ export async function GET() {
     .slice(0, 1)[0];
 
   const online = watchlist
-    .filter((row) => row.lastHypixelOnline === true)
-    .map((row) => ({
-      id: row.id,
-      mcUsername: row.mcUsername,
-      sessionGame: row.lastSessionGame,
-      seenAt: row.lastHypixelOnlineAt,
-      source: row.lastPresenceSource,
-      lobby: row.lastPitpalLobby,
-      location: row.lastPitpalLocation,
-      armorType: row.lastPitpalArmorType,
-      killStreak: row.lastPitpalKillstreak,
-    }));
+    .map((row) => {
+      const presence = resolveEffectivePresence(row);
+      if (!presence.online) return null;
+      return {
+        id: row.id,
+        mcUsername: row.mcUsername,
+        sessionGame: row.lastSessionGame,
+        seenAt: row.lastPitpalSeenAt ?? row.lastHypixelOnlineAt,
+        source: presence.apiOff ? "pitpal_api_off" : row.lastPresenceSource,
+        lobby: row.lastPitpalLobby,
+        location: row.lastPitpalLocation,
+        armorType: row.lastPitpalArmorType,
+        killStreak: row.lastPitpalKillstreak,
+        apiOff: presence.apiOff,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
   const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);
   const latestCall = recentCalls[0] ?? null;

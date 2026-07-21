@@ -38,6 +38,7 @@ type LiveStatusPayload = {
     sessionGame?: string | null;
     lobby?: string | null;
     location?: string | null;
+    apiOff?: boolean;
   }>;
   events?: LiveEvent[];
   recentCalls?: ApiCall[];
@@ -239,7 +240,13 @@ export function LiveStatusBar() {
                 ? `${online
                     .slice(0, 3)
                     .map((row) => {
-                      const where = [row.lobby, row.location].filter(Boolean).join(" ");
+                      const where = [
+                        row.lobby,
+                        row.location,
+                        row.apiOff ? "API Off" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
                       return where ? `${row.mcUsername} (${where})` : row.mcUsername;
                     })
                     .join(", ")}${online.length > 3 ? "…" : ""}`

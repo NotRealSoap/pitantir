@@ -227,4 +227,20 @@ describe("online dashboard", () => {
     expect(payload.content).toContain("Online now (2)");
     expect(rosterKeyFor(entries)).toBe(rosterKeyFor([...entries].reverse()));
   });
+
+  it("marks API Off accounts on the roster", () => {
+    const payload = buildOnlineDashboardPayload(
+      [
+        {
+          mcUsername: "NEYREGLA",
+          lobby: "M23A",
+          location: "SPAWN",
+          apiOff: true,
+        },
+      ],
+      "2026-07-21T12:00:00.000Z",
+    );
+    expect(payload.content).toContain("NEYREGLA");
+    expect(payload.content).toContain("API Off");
+  });
 });

@@ -13,6 +13,12 @@ import {
   type HypixelLiveEvent,
 } from "../accounts/live-events.js";
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
+import {
+  hotNextScanAt,
+  PRESENCE_HOT_PRIORITY,
+  resolveEffectivePresence,
+} from "../accounts/presence.js";
+import { probePitpandaNoncePresence } from "../accounts/pitpanda-presence.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
@@ -152,17 +158,13 @@ export class ScanAccountHandler {
       rawInventory: fetched.rawInventory,
     });
 
-    const previousOnline = account.lastHypixelOnline;
+    const previousEffective = resolveEffectivePresence(account);
     const previousHash = account.lastInventoryHash;
     const presence = fetched.presence;
     const inventoryChanged =
       Boolean(success.rawInventoryHash) &&
       previousHash != null &&
       previousHash !== success.rawInventoryHash;
-
-    // Presence channel = Hypixel confirmation only. PitPal never suppresses these updates.
-    const cameOnline = presence?.online === true && previousOnline === false;
-    const wentOffline = presence?.online === false && previousOnline === true;
 
     const hypixelSession =
       presence?.gameType || presence?.mode
@@ -174,6 +176,21 @@ export class ScanAccountHandler {
         ? [account.lastPitpalLobby, account.lastPitpalLocation].filter(Boolean).join(" · ") ||
           hypixelSession
         : hypixelSession;
+
+    // Optional weak PitPanda nonce hint when Hypixel looks offline.
+    let pitpandaHintDetail: string | null = null;
+    if (presence?.online !== true) {
+      const apiKey = process.env.PITPANDA_API_KEY?.trim();
+      const nonce = extractBookSlots(fetched.rawInventory)
+        .map((slot) => resolveMysticIds(slot.rawItem).nonce)
+        .find((value): value is string => Boolean(value));
+      if (apiKey && nonce) {
+        const hint = await probePitpandaNoncePresence({ apiKey, nonce }).catch(() => null);
+        if (hint?.ok && hint.hintOnline) {
+          pitpandaHintDetail = `PitPanda lastseen fresh · ${hint.lastSeenAt}`;
+        }
+      }
+    }
 
     try {
       account = await this.accounts.update(account.id, {
@@ -190,6 +207,24 @@ export class ScanAccountHandler {
       // Presence metadata is best-effort; scan already succeeded.
     }
 
+    const nextEffective = resolveEffectivePresence(account);
+    // Don't flap Discord offline while PitPal still lists them (API Off).
+    const cameOnline = nextEffective.online && !previousEffective.online;
+    const wentOffline = !nextEffective.online && previousEffective.online;
+
+    // Hotspot: keep online accounts on a short cadence.
+    if (nextEffective.online) {
+      const hotAt = hotNextScanAt(fetched.observedAt);
+      try {
+        await this.accounts.update(account.id, {
+          priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY),
+          ...(account.nextScanAt.getTime() > hotAt.getTime() ? { nextScanAt: hotAt } : {}),
+        });
+      } catch {
+        // schedule bump is best-effort
+      }
+    }
+
     const liveEvents: HypixelLiveEvent[] = [];
     const at = fetched.observedAt.toISOString();
     if (cameOnline) {
@@ -199,7 +234,9 @@ export class ScanAccountHandler {
         accountId: account.id,
         mcUsername: account.mcUsername,
         at,
-        detail: sessionGame,
+        detail: nextEffective.apiOff
+          ? [sessionGame, "API Off"].filter(Boolean).join(" · ")
+          : sessionGame,
       });
     } else if (wentOffline) {
       liveEvents.push({
@@ -248,21 +285,27 @@ export class ScanAccountHandler {
       accountId: account.id,
       mcUsername: account.mcUsername,
       at,
-      detail:
-        presence?.online === true
+      detail: nextEffective.apiOff
+        ? [sessionGame, "API Off", pitpandaHintDetail].filter(Boolean).join(" · ") || "API Off"
+        : presence?.online === true
           ? sessionGame
             ? `online · ${sessionGame}`
             : "online"
           : presence?.online === false
-            ? "offline"
-            : "presence unknown",
+            ? pitpandaHintDetail
+              ? `offline · ${pitpandaHintDetail}`
+              : "offline"
+            : pitpandaHintDetail ?? "presence unknown",
     });
     await appendHypixelLiveEvents(this.db, liveEvents).catch(() => undefined);
     await notifyDiscordForLiveEvents(this.db, liveEvents, {
       accountId: account.id,
-      presenceOnline: presence?.online ?? null,
+      // Dashboard / still-online pings follow effective presence (incl. API Off).
+      presenceOnline: nextEffective.online,
       mcUsername: account.mcUsername,
-      sessionGame,
+      sessionGame: nextEffective.apiOff
+        ? [sessionGame, "API Off"].filter(Boolean).join(" · ")
+        : sessionGame,
       at,
     }).catch(() => undefined);
 
@@ -283,7 +326,7 @@ export class ScanAccountHandler {
       observedItemUuids,
       inventoryChanged,
       cameOnline,
-      presenceOnline: presence?.online ?? null,
+      presenceOnline: nextEffective.online,
     };
   }
 

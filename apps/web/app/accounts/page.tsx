@@ -288,21 +288,29 @@ export default function AccountsPage() {
               <div className="meta-row">
                 <span className="chip">{account.enabled ? "refresh on" : "refresh off"}</span>
                 <span className="chip">
-                  {account.lastHypixelOnline === true
-                    ? account.lastPitpalLobby || account.lastPitpalLocation
-                      ? `online · ${[
-                          account.lastPitpalLobby,
-                          account.lastPitpalLocation,
-                          account.lastPitpalArmorType,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}`
-                      : account.lastSessionGame
-                        ? `online · ${account.lastSessionGame}`
-                        : "online"
-                    : account.lastHypixelOnline === false
-                      ? "offline"
-                      : "presence ?"}
+                  {(() => {
+                    const pitpalFresh =
+                      Boolean(account.lastPitpalLobby || account.lastPitpalLocation) &&
+                      account.lastPitpalSeenAt &&
+                      Date.now() - new Date(account.lastPitpalSeenAt).getTime() <= 90_000;
+                    const online = Boolean(pitpalFresh) || account.lastHypixelOnline === true;
+                    const apiOff = Boolean(pitpalFresh) && account.lastHypixelOnline !== true;
+                    if (!online) {
+                      return account.lastHypixelOnline === false ? "offline" : "presence ?";
+                    }
+                    const where = [
+                      account.lastPitpalLobby,
+                      account.lastPitpalLocation,
+                      account.lastPitpalArmorType,
+                      !account.lastPitpalLobby && account.lastSessionGame
+                        ? account.lastSessionGame
+                        : null,
+                      apiOff ? "API Off" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return where ? `online · ${where}` : "online";
+                  })()}
                 </span>
                 {account.lastInventoryChangedAt ? (
                   <span className="chip">

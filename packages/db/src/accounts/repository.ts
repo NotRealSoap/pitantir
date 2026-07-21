@@ -60,6 +60,7 @@ export interface UpdateAccountInput {
   watchlisted?: boolean;
   priority?: number;
   scanIntervalSeconds?: number;
+  nextScanAt?: Date;
   notes?: string | null;
   lastHypixelOnline?: boolean | null;
   lastHypixelOnlineAt?: Date | null;
@@ -311,6 +312,8 @@ export class AccountsRepository {
       notes: input.notes === undefined ? existing.notes : input.notes,
       updatedAt: now(),
     };
+
+    if (input.nextScanAt !== undefined) updated.nextScanAt = input.nextScanAt;
 
     if (input.mcUuid !== undefined) {
       try {

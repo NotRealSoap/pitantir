@@ -3,8 +3,13 @@ import type { Database } from "../client.js";
 import { adminSettings } from "../schema/accounts.js";
 import { now } from "../identity/store.js";
 import { AccountsRepository, type Account } from "./repository.js";
-import { notifyPitpalStatusEvents, type DiscordNotifyEvent } from "./discord-webhook.js";
+import {
+  notifyPitpalStatusEvents,
+  refreshDiscordOnlineDashboard,
+  type DiscordNotifyEvent,
+} from "./discord-webhook.js";
 import { JobsRepository } from "../jobs/repository.js";
+import { hotNextScanAt, PRESENCE_HOT_PRIORITY } from "./presence.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
 
@@ -224,10 +229,10 @@ export type IngestPitpalLobbiesResult = {
 /**
  * Store a PitPal lobby-monitor snapshot and emit PitPal status Discord events.
  *
- * Channel split:
- * - PitPal status webhook: every lobbies-related change (enter/leave/SPAWN/DOWN/lobby).
- * - Presence (online/offline) webhook: Hypixel confirmatory scans only — queued on enter/leave
- *   and mismatch; never marked online/offline from PitPal alone.
+ * - PitPal status webhook: lobby enter/leave/SPAWN/DOWN changes (append-only).
+ * - Username casing: PitPal lobby spelling is source of truth while listed.
+ * - Soft online: listed accounts stay on the roster even if Hypixel says offline (API Off).
+ * - Hot schedule: pull nextScanAt forward for lobby-active accounts.
  */
 export async function ingestPitpalLobbies(
   db: Database,
@@ -310,14 +315,22 @@ export async function ingestPitpalLobbies(
         at: observedAt,
       });
       statusEvents.push(...events);
+      const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
+      const casingPatch =
+        hit.name && hit.name !== account.mcUsername ? { mcUsername: hit.name } : {};
+      const hotAt = hotNextScanAt(observedDate);
+      const nextScanAt =
+        account.nextScanAt.getTime() > hotAt.getTime() ? hotAt : undefined;
       await repo.update(account.id, {
+        ...casingPatch,
         lastPitpalLobby: hit.lobbyName,
         lastPitpalLocation: hit.location,
         lastPitpalArmorType: hit.armorType ?? null,
         lastPitpalKillstreak: hit.killStreak ?? null,
         lastPitpalSeenAt: observedDate,
-        // Enrich dashboard detail once Hypixel has confirmed online — do not flip presence here.
-        lastSessionGame: [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null,
+        lastSessionGame: sessionLabel,
+        priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY),
+        ...(nextScanAt ? { nextScanAt } : {}),
       });
       if (events.some((event) => event.kind === "pitpal_entered")) {
         if (await enqueueHypixelPresenceConfirm(jobs, account.id, "entered", observedAt)) {
@@ -372,6 +385,8 @@ export async function ingestPitpalLobbies(
   }
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
+  // Soft-online roster (incl. API Off) lives on the presence dashboard.
+  await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
 
   return {
     playerCount: byName.size,
