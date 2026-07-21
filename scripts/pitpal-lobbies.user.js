@@ -122,7 +122,12 @@
       lastOkAt = Date.now();
       lastError = "";
       setBadge(
-        `Pitantir OK · ${result.playerCount} players · ${result.lobbyCount} lobbies · watch ${result.watchlistMatched}`,
+        `Pitantir OK · ${result.playerCount} players · ${result.lobbyCount} lobbies · watch ${result.watchlistMatched}` +
+          (result.statusEventsPosted
+            ? ` · ${result.statusEventsPosted} status msg`
+            : result.statusEventsGenerated
+              ? ` · ${result.statusEventsGenerated} status (not posted)`
+              : ""),
         true,
       );
     } catch (error) {

@@ -81,12 +81,20 @@ function parsePlayerRules(value: unknown): DiscordPlayerRule[] {
     out.push({
       accountId: rule.accountId,
       mcUsername: rule.mcUsername,
-      notifyCameOnline: Boolean(rule.notifyCameOnline),
-      notifyWentOffline: Boolean(rule.notifyWentOffline),
-      notifyEveryOnlineScan: Boolean(rule.notifyEveryOnlineScan),
-      notifyItemGainedLost: Boolean(rule.notifyItemGainedLost),
-      notifyInventoryUpdated: Boolean(rule.notifyInventoryUpdated),
-      notifyPitpalStatusChanges: Boolean(rule.notifyPitpalStatusChanges),
+      notifyCameOnline:
+        typeof rule.notifyCameOnline === "boolean" ? rule.notifyCameOnline : true,
+      notifyWentOffline:
+        typeof rule.notifyWentOffline === "boolean" ? rule.notifyWentOffline : false,
+      notifyEveryOnlineScan:
+        typeof rule.notifyEveryOnlineScan === "boolean" ? rule.notifyEveryOnlineScan : true,
+      notifyItemGainedLost:
+        typeof rule.notifyItemGainedLost === "boolean" ? rule.notifyItemGainedLost : true,
+      notifyInventoryUpdated:
+        typeof rule.notifyInventoryUpdated === "boolean" ? rule.notifyInventoryUpdated : false,
+      notifyPitpalStatusChanges:
+        typeof rule.notifyPitpalStatusChanges === "boolean"
+          ? rule.notifyPitpalStatusChanges
+          : true,
     });
   }
   return out;

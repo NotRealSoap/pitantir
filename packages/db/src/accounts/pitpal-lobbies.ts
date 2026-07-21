@@ -135,11 +135,12 @@ async function savePitpalLobbySnapshot(
   });
 }
 
-function statusKey(player: {
+function statusFingerprint(player: {
+  lobby?: string | null;
   lobbyName?: string | null;
   location?: string | null;
 }): string {
-  return `${player.lobbyName ?? ""}|${player.location ?? ""}`;
+  return `${player.lobbyName ?? player.lobby ?? ""}|${player.location ?? ""}`;
 }
 
 function buildStatusEvents(input: {
@@ -205,6 +206,7 @@ export type IngestPitpalLobbiesResult = {
   lobbyCount: number;
   watchlistMatched: number;
   watchlistCleared: number;
+  statusEventsGenerated: number;
   statusEventsPosted: number;
   mismatchesQueued: number;
   observedAt: string;
@@ -252,6 +254,11 @@ export async function ingestPitpalLobbies(
       .filter((name): name is string => Boolean(name)),
   );
 
+  const previousSnapshot = await getPitpalLobbySnapshot(db);
+  const previousByName = new Map(
+    previousSnapshot.players.map((row) => [row.name.toLowerCase(), row]),
+  );
+
   const snapshot: PitpalLobbySnapshot = {
     observedAt,
     source: input.source?.trim() || "pitpal_tampermonkey",
@@ -270,26 +277,28 @@ export async function ingestPitpalLobbies(
   const statusEvents: DiscordNotifyEvent[] = [];
 
   for (const account of watchlist) {
-    const hit = byName.get(account.mcUsername.toLowerCase());
-    const previous = {
-      lobby: account.lastPitpalLobby,
-      location: account.lastPitpalLocation,
-    };
-    const hadPitpal = Boolean(previous.lobby || previous.location || account.lastPitpalSeenAt);
+    const key = account.mcUsername.toLowerCase();
+    const hit = byName.get(key) ?? null;
+    const prevPlayer = previousByName.get(key) ?? null;
+    const previousFromAccount =
+      account.lastPitpalLobby || account.lastPitpalLocation
+        ? { lobby: account.lastPitpalLobby, location: account.lastPitpalLocation }
+        : null;
+    const previous = prevPlayer
+      ? { lobby: prevPlayer.lobbyName, location: prevPlayer.location }
+      : previousFromAccount;
 
     if (hit) {
       matched += 1;
       const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
-      if (statusKey(previous) !== statusKey({ lobbyName: hit.lobbyName, location: hit.location })) {
-        statusEvents.push(
-          ...buildStatusEvents({
-            account,
-            previous: hadPitpal ? previous : null,
-            next: hit,
-            at: observedAt,
-          }),
-        );
-      }
+      statusEvents.push(
+        ...buildStatusEvents({
+          account,
+          previous,
+          next: hit,
+          at: observedAt,
+        }),
+      );
       await repo.update(account.id, {
         lastPitpalLobby: hit.lobbyName,
         lastPitpalLocation: hit.location,
@@ -304,7 +313,7 @@ export async function ingestPitpalLobbies(
       continue;
     }
 
-    if (hadPitpal) {
+    if (previous) {
       cleared += 1;
       statusEvents.push(
         ...buildStatusEvents({
@@ -329,11 +338,11 @@ export async function ingestPitpalLobbies(
     }
 
     // Incongruence: Hypixel/watch thinks online, but fresh PitPal does not list them.
-    // Queue a Hypixel inventory index scan to verify (PitPanda key is for items; Hypixel
-    // scans are the player-index path in this app).
+    // Only notify/queue when this is a new mismatch episode (not already pitpal-absent).
     if (
       account.lastHypixelOnline === true &&
-      account.lastPresenceSource !== "pitpal_lobbies"
+      account.lastPresenceSource !== "pitpal_lobbies" &&
+      !previousByName.has(key)
     ) {
       statusEvents.push({
         kind: "pitpal_mismatch",
@@ -347,7 +356,7 @@ export async function ingestPitpalLobbies(
           type: "scan_account",
           payload: { accountId: account.id, triggeredBy: "manual" },
           priority: 20,
-          idempotencyKey: `pitpal_mismatch_scan:${account.id}:${observedAt.slice(0, 16)}`,
+          idempotencyKey: `pitpal_mismatch_scan:${account.id}:${observedAt.slice(0, 13)}`,
         });
         mismatchesQueued += 1;
       } catch {
@@ -357,6 +366,7 @@ export async function ingestPitpalLobbies(
   }
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
+  // Edit presence dashboard in place with latest PitPal lobby/status lines.
   await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
 
   return {
@@ -364,6 +374,7 @@ export async function ingestPitpalLobbies(
     lobbyCount: lobbies.size,
     watchlistMatched: matched,
     watchlistCleared: cleared,
+    statusEventsGenerated: statusEvents.length,
     statusEventsPosted,
     mismatchesQueued,
     observedAt,

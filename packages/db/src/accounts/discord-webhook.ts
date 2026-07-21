@@ -151,9 +151,22 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
   const legacyInventory =
     typeof row.notifyInventoryChanged === "boolean" ? row.notifyInventoryChanged : null;
 
-  const playerRules = Array.isArray(row.playerRules)
+  let playerRules = Array.isArray(row.playerRules)
     ? row.playerRules.map(normalizePlayerRule).filter((rule): rule is DiscordPlayerRule => Boolean(rule))
     : [];
+
+  const notifyPitpalStatusChanges = readBool(
+    row.notifyPitpalStatusChanges,
+    DEFAULT_FLAGS.notifyPitpalStatusChanges,
+  );
+  // Older saves used Boolean(undefined) → false on every custom rule; repair that.
+  if (
+    notifyPitpalStatusChanges &&
+    playerRules.length > 0 &&
+    playerRules.every((rule) => rule.notifyPitpalStatusChanges === false)
+  ) {
+    playerRules = playerRules.map((rule) => ({ ...rule, notifyPitpalStatusChanges: true }));
+  }
 
   return {
     presenceWebhookUrl,
@@ -171,10 +184,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
       row.notifyInventoryUpdated,
       legacyInventory ?? DEFAULT_FLAGS.notifyInventoryUpdated,
     ),
-    notifyPitpalStatusChanges: readBool(
-      row.notifyPitpalStatusChanges,
-      DEFAULT_FLAGS.notifyPitpalStatusChanges,
-    ),
+    notifyPitpalStatusChanges,
     onlineDashboardEnabled: readBool(row.onlineDashboardEnabled, true),
     onlineDashboardMessageId:
       typeof row.onlineDashboardMessageId === "string" && row.onlineDashboardMessageId.trim()
@@ -528,7 +538,7 @@ export function buildOnlineDashboardPayload(
         description: body.slice(0, 4096),
         color: 0x57f287,
         timestamp: updatedAt,
-        footer: { text: "Pitantir online dashboard · PitPal lobby when available" },
+        footer: { text: "Pitantir online dashboard · edited in place" },
       },
     ],
   };
@@ -591,13 +601,17 @@ export async function postDiscordWebhook(
   }
 }
 
-async function deleteDiscordWebhookMessage(
+async function editDiscordWebhookMessage(
   webhookUrl: string,
   messageId: string,
-): Promise<void> {
-  await discordFetch(`${webhookUrl}/messages/${messageId}`, { method: "DELETE" }).catch(
-    () => undefined,
-  );
+  payload: { content: string; embeds: Array<Record<string, unknown>> },
+): Promise<boolean> {
+  const result = await discordFetch(`${webhookUrl}/messages/${messageId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return result.ok;
 }
 
 async function postRawDiscordWebhook(
@@ -625,6 +639,10 @@ async function postRawDiscordWebhook(
   return { ok: true, status: result.status, messageId };
 }
 
+/**
+ * Update the presence-channel online roster in place (PATCH).
+ * Only creates a new message when none exists or edit fails — never deletes.
+ */
 export async function refreshDiscordOnlineDashboard(
   db: Database,
   options?: { force?: boolean },
@@ -654,11 +672,23 @@ export async function refreshDiscordOnlineDashboard(
     return;
   }
 
+  const payload = buildOnlineDashboardPayload(online, new Date().toISOString());
+
   if (settings.onlineDashboardMessageId) {
-    await deleteDiscordWebhookMessage(webhookUrl, settings.onlineDashboardMessageId);
+    const edited = await editDiscordWebhookMessage(
+      webhookUrl,
+      settings.onlineDashboardMessageId,
+      payload,
+    );
+    if (edited) {
+      await setDiscordWebhookSettings(db, {
+        ...settings,
+        onlineDashboardRosterKey: nextKey,
+      });
+      return;
+    }
   }
 
-  const payload = buildOnlineDashboardPayload(online, new Date().toISOString());
   const posted = await postRawDiscordWebhook(webhookUrl, payload);
   if (!posted.ok || !posted.messageId) return;
 
@@ -743,15 +773,21 @@ export async function notifyPitpalStatusEvents(
   events: DiscordNotifyEvent[],
 ): Promise<number> {
   try {
+    if (events.length === 0) return 0;
     const settings = await getDiscordWebhookSettings(db);
-    if (!settings.pitpalStatusWebhookUrl && !settings.presenceWebhookUrl) return 0;
+    if (!settings.notifyPitpalStatusChanges) return 0;
+    const url = settings.pitpalStatusWebhookUrl || settings.presenceWebhookUrl;
+    if (!url) return 0;
     let posted = 0;
     for (const event of events) {
-      const flags = resolvePlayerFlags(settings, event.accountId);
-      if (!shouldNotify(flags, event.kind)) continue;
-      const url = webhookUrlForEvent(settings, event.kind);
-      if (!url) continue;
-      const result = await postDiscordWebhook(url, event);
+      const rule = settings.playerRules.find((row) => row.accountId === event.accountId);
+      // Per-player override only when explicitly false; missing/legacy false repaired below.
+      if (rule && rule.notifyPitpalStatusChanges === false) continue;
+      const result = await postDiscordWebhook(url, {
+        ...event,
+        // Ensure kind is preserved for embed coloring/copy.
+        kind: event.kind,
+      });
       if (result.ok) posted += 1;
     }
     return posted;
