@@ -11,6 +11,11 @@ import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
+/**
+ * PitPal status webhook is stored in its own row so older worker/web code that
+ * rewrites the main `discord_webhook` JSON blob cannot wipe it.
+ */
+export const DISCORD_PITPAL_STATUS_WEBHOOK_KEY = "discord_pitpal_status_webhook_url";
 
 export type DiscordPlayerNotifyFlags = {
   notifyCameOnline: boolean;
@@ -204,7 +209,26 @@ export async function getDiscordWebhookSettings(
     .from(adminSettings)
     .where(eq(adminSettings.key, DISCORD_WEBHOOK_SETTINGS_KEY))
     .limit(1);
-  return normalizeDiscordWebhookSettings(rows[0]?.value);
+  const settings = normalizeDiscordWebhookSettings(rows[0]?.value);
+
+  const pitpalRows = await db
+    .select()
+    .from(adminSettings)
+    .where(eq(adminSettings.key, DISCORD_PITPAL_STATUS_WEBHOOK_KEY))
+    .limit(1);
+  const pitpalValue = pitpalRows[0]?.value;
+  const pitpalFromSide =
+    typeof pitpalValue === "string"
+      ? readUrl(pitpalValue)
+      : pitpalValue && typeof pitpalValue === "object" && !Array.isArray(pitpalValue)
+        ? readUrl((pitpalValue as Record<string, unknown>).url)
+        : null;
+
+  // Side-table wins when set — survives main-blob rewrites from older processes.
+  if (pitpalFromSide) {
+    settings.pitpalStatusWebhookUrl = pitpalFromSide;
+  }
+  return settings;
 }
 
 function assertOptionalWebhook(url: string | null, label: string): void {
@@ -213,10 +237,46 @@ function assertOptionalWebhook(url: string | null, label: string): void {
   }
 }
 
+async function upsertAdminSetting(db: Database, key: string, value: unknown): Promise<void> {
+  const existing = await db
+    .select()
+    .from(adminSettings)
+    .where(eq(adminSettings.key, key))
+    .limit(1);
+  if (existing[0]) {
+    await db
+      .update(adminSettings)
+      .set({ value, updatedAt: now() })
+      .where(eq(adminSettings.key, key));
+    return;
+  }
+  await db.insert(adminSettings).values({
+    key,
+    value,
+    updatedAt: now(),
+  });
+}
+
+async function deleteAdminSetting(db: Database, key: string): Promise<void> {
+  await db.delete(adminSettings).where(eq(adminSettings.key, key));
+}
+
 export async function setDiscordWebhookSettings(
   db: Database,
   settings: DiscordWebhookSettings,
 ): Promise<DiscordWebhookSettings> {
+  const existingRows = await db
+    .select()
+    .from(adminSettings)
+    .where(eq(adminSettings.key, DISCORD_WEBHOOK_SETTINGS_KEY))
+    .limit(1);
+  const existingRaw =
+    existingRows[0]?.value &&
+    typeof existingRows[0].value === "object" &&
+    !Array.isArray(existingRows[0].value)
+      ? (existingRows[0].value as Record<string, unknown>)
+      : {};
+
   const next: DiscordWebhookSettings = {
     presenceWebhookUrl: settings.presenceWebhookUrl?.trim() || null,
     inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
@@ -244,24 +304,70 @@ export async function setDiscordWebhookSettings(
     next.onlineDashboardRosterKey = null;
   }
 
-  const existing = await db
-    .select()
-    .from(adminSettings)
-    .where(eq(adminSettings.key, DISCORD_WEBHOOK_SETTINGS_KEY))
-    .limit(1);
-  if (existing[0]) {
-    await db
-      .update(adminSettings)
-      .set({ value: next, updatedAt: now() })
-      .where(eq(adminSettings.key, DISCORD_WEBHOOK_SETTINGS_KEY));
-  } else {
-    await db.insert(adminSettings).values({
-      key: DISCORD_WEBHOOK_SETTINGS_KEY,
-      value: next,
-      updatedAt: now(),
+  // Merge onto existing JSON so unknown/future keys are not dropped.
+  const mergedBlob: Record<string, unknown> = {
+    ...existingRaw,
+    ...next,
+  };
+  await upsertAdminSetting(db, DISCORD_WEBHOOK_SETTINGS_KEY, mergedBlob);
+
+  // Durable side storage — not affected when old code rewrites the main blob.
+  if (next.pitpalStatusWebhookUrl) {
+    await upsertAdminSetting(db, DISCORD_PITPAL_STATUS_WEBHOOK_KEY, {
+      url: next.pitpalStatusWebhookUrl,
     });
+  } else {
+    const clearingAllChannels =
+      !next.presenceWebhookUrl &&
+      !next.inventoryWebhookUrl &&
+      !next.itemMovesWebhookUrl;
+    if (clearingAllChannels) {
+      await deleteAdminSetting(db, DISCORD_PITPAL_STATUS_WEBHOOK_KEY);
+    } else {
+      // Preserve side-table URL when a partial rewrite omits PitPal (legacy workers).
+      const pitpalRows = await db
+        .select()
+        .from(adminSettings)
+        .where(eq(adminSettings.key, DISCORD_PITPAL_STATUS_WEBHOOK_KEY))
+        .limit(1);
+      const pitpalValue = pitpalRows[0]?.value;
+      const preserved =
+        typeof pitpalValue === "string"
+          ? readUrl(pitpalValue)
+          : pitpalValue && typeof pitpalValue === "object" && !Array.isArray(pitpalValue)
+            ? readUrl((pitpalValue as Record<string, unknown>).url)
+            : null;
+      if (preserved) {
+        next.pitpalStatusWebhookUrl = preserved;
+        mergedBlob.pitpalStatusWebhookUrl = preserved;
+        await upsertAdminSetting(db, DISCORD_WEBHOOK_SETTINGS_KEY, mergedBlob);
+      }
+    }
   }
+
   return next;
+}
+
+/** Patch only dashboard message metadata without risking channel URL loss. */
+export async function setDiscordOnlineDashboardMeta(
+  db: Database,
+  meta: {
+    onlineDashboardMessageId?: string | null;
+    onlineDashboardRosterKey?: string | null;
+  },
+): Promise<void> {
+  const current = await getDiscordWebhookSettings(db);
+  await setDiscordWebhookSettings(db, {
+    ...current,
+    onlineDashboardMessageId:
+      meta.onlineDashboardMessageId !== undefined
+        ? meta.onlineDashboardMessageId
+        : current.onlineDashboardMessageId,
+    onlineDashboardRosterKey:
+      meta.onlineDashboardRosterKey !== undefined
+        ? meta.onlineDashboardRosterKey
+        : current.onlineDashboardRosterKey,
+  });
 }
 
 export function resolvePlayerFlags(
@@ -686,8 +792,7 @@ export async function refreshDiscordOnlineDashboard(
       payload,
     );
     if (edited) {
-      await setDiscordWebhookSettings(db, {
-        ...settings,
+      await setDiscordOnlineDashboardMeta(db, {
         onlineDashboardRosterKey: nextKey,
       });
       return;
@@ -697,8 +802,7 @@ export async function refreshDiscordOnlineDashboard(
   const posted = await postRawDiscordWebhook(webhookUrl, payload);
   if (!posted.ok || !posted.messageId) return;
 
-  await setDiscordWebhookSettings(db, {
-    ...settings,
+  await setDiscordOnlineDashboardMeta(db, {
     onlineDashboardMessageId: posted.messageId,
     onlineDashboardRosterKey: nextKey,
   });

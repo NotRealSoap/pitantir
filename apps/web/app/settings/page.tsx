@@ -863,6 +863,19 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
+            className="primary"
+            disabled={busy || !pitpalStatusWebhookUrl.trim()}
+            onClick={() =>
+              void run({
+                action: "save",
+                pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim(),
+              })
+            }
+          >
+            Save PitPal webhook only
+          </button>
+          <button
+            type="button"
             disabled={
               busy ||
               (!status?.pitpalStatusWebhookUrlMasked && !pitpalStatusWebhookUrl.trim())

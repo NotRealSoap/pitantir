@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiscordWebhookPayload,
   buildOnlineDashboardPayload,
+  DISCORD_PITPAL_STATUS_WEBHOOK_KEY,
   expandDiscordNotifyEvents,
   isDiscordWebhookUrl,
   maskDiscordWebhookUrl,
@@ -30,6 +31,12 @@ describe("isDiscordWebhookUrl", () => {
 
   it("rejects non-discord URLs", () => {
     expect(isDiscordWebhookUrl("https://example.com/hooks/1")).toBe(false);
+  });
+});
+
+describe("pitpal side storage key", () => {
+  it("uses a dedicated admin_settings key", () => {
+    expect(DISCORD_PITPAL_STATUS_WEBHOOK_KEY).toBe("discord_pitpal_status_webhook_url");
   });
 });
 

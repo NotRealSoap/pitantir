@@ -247,7 +247,10 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({
       ok: true,
-      message: `Test sent to ${channel} channel.`,
+      message:
+        draft.provided && draft.url
+          ? `Saved ${channel} webhook and sent test.`
+          : `Test sent to ${channel} channel.`,
       ...(await withWatchlist(await getDiscordWebhookSettings(db))),
     });
   }
