@@ -591,7 +591,9 @@ export async function postDiscordWebhook(
       typeof (result.json as { id?: unknown }).id === "string"
         ? (result.json as { id: string }).id
         : undefined;
-    return { ok: true, status: result.status, messageId };
+    return messageId
+      ? { ok: true, status: result.status, messageId }
+      : { ok: true, status: result.status };
   } catch (error) {
     return {
       ok: false,
@@ -636,7 +638,9 @@ async function postRawDiscordWebhook(
     typeof (result.json as { id?: unknown }).id === "string"
       ? (result.json as { id: string }).id
       : undefined;
-  return { ok: true, status: result.status, messageId };
+  return messageId
+    ? { ok: true, status: result.status, messageId }
+    : { ok: true, status: result.status };
 }
 
 /**

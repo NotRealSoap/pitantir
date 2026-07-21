@@ -54,6 +54,52 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.notifyPitpalStatusChanges).toBe(true);
     expect(settings.pitpalStatusWebhookUrl).toBeNull();
   });
+
+  it("repairs legacy player rules that stored notifyPitpalStatusChanges as false", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      notifyPitpalStatusChanges: true,
+      playerRules: [
+        {
+          accountId: "a1",
+          mcUsername: "Alice",
+          notifyCameOnline: true,
+          notifyWentOffline: false,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: true,
+          notifyInventoryUpdated: false,
+          notifyPitpalStatusChanges: false,
+        },
+        {
+          accountId: "a2",
+          mcUsername: "Bob",
+          notifyCameOnline: true,
+          notifyWentOffline: false,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: true,
+          notifyInventoryUpdated: false,
+          notifyPitpalStatusChanges: false,
+        },
+      ],
+    });
+    expect(settings.playerRules.every((rule) => rule.notifyPitpalStatusChanges)).toBe(true);
+  });
+
+  it("defaults missing notifyPitpalStatusChanges on a rule to true", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      playerRules: [
+        {
+          accountId: "a1",
+          mcUsername: "Alice",
+          notifyCameOnline: true,
+          notifyWentOffline: false,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: true,
+          notifyInventoryUpdated: false,
+        },
+      ],
+    });
+    expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(true);
+  });
 });
 
 describe("channel routing + player rules", () => {
