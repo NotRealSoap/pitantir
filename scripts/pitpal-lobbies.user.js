@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Pitantir ← PitPal Lobby Monitor
+// @name         Pitantir ← PitPal Lobby + Furry Stashes
 // @namespace    pitantir
-// @version      1.0.0
-// @description  While logged into PitPal admin lobbies, push lobby/location data to local Pitantir.
+// @version      1.2.0
+// @description  Push PitPal lobby monitor + furry-stashes watchlist (140er = online-only) to local Pitantir.
 // @author       Pitantir
 // @match        https://pitpal.rocks/*
 // @match        https://www.pitpal.rocks/*
@@ -16,13 +16,21 @@
   "use strict";
 
   /** Change if your Next.js app is not on 3000. */
-  const PITANTIR_INGEST = "http://127.0.0.1:3000/api/pitpal/lobbies";
+  const PITANTIR_BASE = "http://127.0.0.1:3000";
+  const PITANTIR_LOBBIES = PITANTIR_BASE + "/api/pitpal/lobbies";
+  const PITANTIR_STASHES = PITANTIR_BASE + "/api/pitpal/furry-stashes";
   const PITPAL_PLAYERS = "/api/proxy/pitmod/players";
-  const POLL_MS = 15_000;
+  const PITPAL_STASHES = "/api/furry-stashes";
+  const LOBBY_POLL_MS = 15_000;
+  const STASH_POLL_MS = 60_000;
 
-  let inFlight = false;
-  let lastOkAt = 0;
+  let lobbyInFlight = false;
+  let stashInFlight = false;
+  let lastLobbyOkAt = 0;
+  let lastStashOkAt = 0;
   let lastError = "";
+  let lastLobbySummary = "lobbies: —";
+  let lastStashSummary = "stashes: —";
 
   function ensureBadge() {
     let el = document.getElementById("pitantir-pitpal-badge");
@@ -41,29 +49,31 @@
       "font:12px/1.35 ui-sans-serif,system-ui,sans-serif",
       "border:1px solid rgba(78,205,196,0.45)",
       "box-shadow:0 8px 24px rgba(0,0,0,0.35)",
-      "max-width:280px",
+      "max-width:320px",
+      "white-space:pre-line",
     ].join(";");
     el.textContent = "Pitantir: waiting…";
     document.documentElement.appendChild(el);
     return el;
   }
 
-  function setBadge(text, ok) {
+  function setBadge(ok) {
     const el = ensureBadge();
-    el.textContent = text;
+    el.textContent =
+      "Pitantir\n" + lastLobbySummary + "\n" + lastStashSummary + (lastError ? "\n" + lastError : "");
     el.style.borderColor = ok
       ? "rgba(125,206,160,0.7)"
       : "rgba(240,113,120,0.7)";
   }
 
-  function postToPitantir(payload) {
+  function postToPitantir(url, payload) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "POST",
-        url: PITANTIR_INGEST,
+        url,
         headers: { "Content-Type": "application/json" },
         data: JSON.stringify(payload),
-        timeout: 10000,
+        timeout: 15000,
         onload: (res) => {
           let body = null;
           try {
@@ -88,16 +98,22 @@
     });
   }
 
-  async function pollOnce() {
-    if (inFlight) return;
-    inFlight = true;
+  function is140erNotes(notes) {
+    if (!notes || typeof notes !== "string") return false;
+    return /140er/i.test(notes);
+  }
+
+  async function pollLobbies() {
+    if (lobbyInFlight) return;
+    lobbyInFlight = true;
     try {
       const response = await fetch(PITPAL_PLAYERS, {
         credentials: "include",
         headers: { Accept: "application/json" },
       });
       if (response.status === 401 || response.status === 403) {
-        setBadge("Pitantir: log into PitPal admin first", false);
+        lastLobbySummary = "lobbies: log into PitPal admin";
+        setBadge(false);
         return;
       }
       if (!response.ok) {
@@ -114,40 +130,87 @@
         isNicked: typeof row?.isNicked === "boolean" ? row.isNicked : null,
       }));
 
-      const result = await postToPitantir({
+      const result = await postToPitantir(PITANTIR_LOBBIES, {
         observedAt: new Date().toISOString(),
         source: "pitpal_tampermonkey",
         players,
       });
-      lastOkAt = Date.now();
+      lastLobbyOkAt = Date.now();
       lastError = "";
-      setBadge(
-        `Pitantir OK · ${result.playerCount} players · ${result.lobbyCount} lobbies · watch ${result.watchlistMatched}` +
-          (result.statusEventsPosted
-            ? ` · ${result.statusEventsPosted} status msg`
-            : result.statusEventsGenerated
-              ? ` · ${result.statusEventsGenerated} status (not posted)`
-              : "") +
-          (result.presenceConfirmsQueued
-            ? ` · ${result.presenceConfirmsQueued} Hypixel confirm`
-            : ""),
-        true,
-      );
+      lastLobbySummary =
+        `lobbies: ${result.playerCount}p / ${result.lobbyCount}L · watch ${result.watchlistMatched}` +
+        (result.statusEventsPosted ? ` · ${result.statusEventsPosted} status` : "") +
+        (result.presenceConfirmsQueued ? ` · ${result.presenceConfirmsQueued} confirm` : "");
+      setBadge(true);
     } catch (error) {
       lastError = error && error.message ? error.message : String(error);
-      setBadge(`Pitantir error: ${lastError}`, false);
+      lastLobbySummary = "lobbies: error";
+      setBadge(false);
     } finally {
-      inFlight = false;
+      lobbyInFlight = false;
+    }
+  }
+
+  async function pollFurryStashes() {
+    if (stashInFlight) return;
+    stashInFlight = true;
+    try {
+      const response = await fetch(PITPAL_STASHES, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (response.status === 401 || response.status === 403) {
+        lastStashSummary = "stashes: need furry-stashes access";
+        setBadge(false);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`PitPal furry-stashes HTTP ${response.status}`);
+      }
+      const json = await response.json();
+      const raw = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+      const entries = raw
+        .map((row) => {
+          const username = (row?.username ?? row?.mcUsername ?? row?.name ?? "").trim();
+          const notes = typeof row?.notes === "string" ? row.notes.trim() : "";
+          return {
+            username,
+            notes: notes || null,
+            is140er: is140erNotes(notes),
+          };
+        })
+        .filter((row) => /^[A-Za-z0-9_]{3,16}$/.test(row.username));
+
+      const result = await postToPitantir(PITANTIR_STASHES, {
+        observedAt: new Date().toISOString(),
+        source: "pitpal_furry_stashes",
+        entries,
+      });
+      lastStashOkAt = Date.now();
+      lastError = "";
+      lastStashSummary =
+        `stashes: ${result.entryCount} · +${result.created}/${result.promoted} · 140er ${result.marked140er}`;
+      setBadge(true);
+    } catch (error) {
+      lastError = error && error.message ? error.message : String(error);
+      lastStashSummary = "stashes: error";
+      setBadge(false);
+    } finally {
+      stashInFlight = false;
     }
   }
 
   function boot() {
     ensureBadge();
-    void pollOnce();
-    window.setInterval(() => void pollOnce(), POLL_MS);
-    // Also refresh when returning to the lobbies tab.
+    void pollLobbies();
+    void pollFurryStashes();
+    window.setInterval(() => void pollLobbies(), LOBBY_POLL_MS);
+    window.setInterval(() => void pollFurryStashes(), STASH_POLL_MS);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) void pollOnce();
+      if (!document.hidden) {
+        void pollLobbies();
+        void pollFurryStashes();
+      }
     });
   }
 

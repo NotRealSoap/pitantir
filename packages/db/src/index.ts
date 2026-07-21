@@ -12,6 +12,7 @@ export * from "./accounts/hypixel-api-calls.js";
 export * from "./accounts/scan-stagger.js";
 export * from "./accounts/discord-webhook.js";
 export * from "./accounts/pitpal-lobbies.js";
+export * from "./accounts/furry-stashes.js";
 export * from "./jobs/index.js";
 export * from "./scanning/index.js";
 export * from "./schema/index.js";
