@@ -337,6 +337,9 @@ type DiscordWebhookPayload = {
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyInventoryChanged?: boolean;
+  notifyEveryOnlineScan?: boolean;
+  onlineDashboardEnabled?: boolean;
+  onlineDashboardConfigured?: boolean;
   ok?: boolean;
   message?: string;
   error?: string;
@@ -348,6 +351,8 @@ function DiscordWebhookPanel() {
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyInventoryChanged, setNotifyInventoryChanged] = useState(true);
+  const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
+  const [onlineDashboardEnabled, setOnlineDashboardEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -364,6 +369,8 @@ function DiscordWebhookPanel() {
       setNotifyCameOnline(payload.notifyCameOnline ?? true);
       setNotifyWentOffline(payload.notifyWentOffline ?? false);
       setNotifyInventoryChanged(payload.notifyInventoryChanged ?? true);
+      setNotifyEveryOnlineScan(payload.notifyEveryOnlineScan ?? true);
+      setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
     } catch {
       setStatus(null);
     }
@@ -393,6 +400,8 @@ function DiscordWebhookPanel() {
       setNotifyCameOnline(payload.notifyCameOnline ?? notifyCameOnline);
       setNotifyWentOffline(payload.notifyWentOffline ?? notifyWentOffline);
       setNotifyInventoryChanged(payload.notifyInventoryChanged ?? notifyInventoryChanged);
+      setNotifyEveryOnlineScan(payload.notifyEveryOnlineScan ?? notifyEveryOnlineScan);
+      setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? onlineDashboardEnabled);
       if (body.action === "save" && typeof body.webhookUrl === "string" && body.webhookUrl) {
         setWebhookUrl("");
       }
@@ -409,14 +418,20 @@ function DiscordWebhookPanel() {
         Discord webhook
       </h2>
       <p className="muted">
-        Post a channel notification when a watched player comes online. Optionally also notify on
-        inventory moves or offline transitions. The worker sends these after each scan.
+        Use a <strong>dedicated Discord channel</strong> for Pitantir. The worker can ping on each
+        online scan and keep the <em>latest</em> channel message as a live “who’s online” roster
+        (it deletes/reposts that message after updates).
       </p>
       <p>
         Status:{" "}
         <span className="chip">
           {status == null ? "Checking…" : status.configured ? "configured" : "not configured"}
         </span>
+        {status?.onlineDashboardConfigured ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            dashboard live
+          </span>
+        ) : null}
       </p>
       {status?.webhookUrlMasked ? (
         <p className="muted" style={{ fontSize: "0.85rem" }}>
@@ -435,6 +450,8 @@ function DiscordWebhookPanel() {
             notifyCameOnline,
             notifyWentOffline,
             notifyInventoryChanged,
+            notifyEveryOnlineScan,
+            onlineDashboardEnabled,
           });
         }}
       >
@@ -456,10 +473,20 @@ function DiscordWebhookPanel() {
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
             type="checkbox"
+            checked={notifyEveryOnlineScan}
+            onChange={(event) => setNotifyEveryOnlineScan(event.target.checked)}
+          />
+          Notify every time an online player is scanned
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
             checked={notifyCameOnline}
             onChange={(event) => setNotifyCameOnline(event.target.checked)}
+            disabled={notifyEveryOnlineScan}
           />
-          Notify when a player comes online
+          Notify only when a player comes online
+          {notifyEveryOnlineScan ? " (covered by every-scan)" : ""}
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
@@ -477,6 +504,14 @@ function DiscordWebhookPanel() {
           />
           Notify when a player goes offline
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={onlineDashboardEnabled}
+            onChange={(event) => setOnlineDashboardEnabled(event.target.checked)}
+          />
+          Keep latest channel message as online roster dashboard
+        </label>
 
         <div className="row-actions">
           <button type="submit" className="primary" disabled={busy}>
@@ -488,6 +523,13 @@ function DiscordWebhookPanel() {
             onClick={() => void run({ action: "test" })}
           >
             Send test
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured || !onlineDashboardEnabled}
+            onClick={() => void run({ action: "refresh_dashboard" })}
+          >
+            Refresh dashboard
           </button>
           <button
             type="button"
@@ -589,8 +631,9 @@ export default function SettingsPage() {
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
           </li>
           <li>
-            Discord webhooks fire from the worker when a watched account comes online (and optionally
-            for inventory / offline). Create a webhook in Discord channel settings → Integrations.
+            Discord: use a dedicated channel. Enable “every online scan” for per-index pings, and
+            “online roster dashboard” so Pitantir keeps the latest message as the who’s-online list
+            (deletes/reposts after updates). Prefer no other bots posting in that channel.
           </li>
         </ul>
       </section>

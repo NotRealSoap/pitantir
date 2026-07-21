@@ -4,6 +4,7 @@ import {
   isDiscordWebhookUrl,
   maskDiscordWebhookUrl,
   postDiscordWebhook,
+  refreshDiscordOnlineDashboard,
   setDiscordWebhookSettings,
   type DiscordWebhookSettings,
 } from "@pitantir/db";
@@ -27,6 +28,9 @@ function publicView(settings: DiscordWebhookSettings) {
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
     notifyInventoryChanged: settings.notifyInventoryChanged,
+    notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
+    onlineDashboardEnabled: settings.onlineDashboardEnabled,
+    onlineDashboardConfigured: Boolean(settings.onlineDashboardMessageId),
   };
 }
 
@@ -99,17 +103,51 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
     return NextResponse.json({
       ok: true,
-      message: "Test notification sent.",
-      ...publicView(current),
+      message: "Test notification sent (and online dashboard refreshed).",
+      ...publicView(await getDiscordWebhookSettings(db)),
+    });
+  }
+
+  if (action === "refresh_dashboard") {
+    if (!current.webhookUrl) {
+      return NextResponse.json(
+        { ok: false, error: "Save a Discord webhook URL first." },
+        { status: 400 },
+      );
+    }
+    if (!current.onlineDashboardEnabled) {
+      return NextResponse.json(
+        { ok: false, error: "Enable the online dashboard first." },
+        { status: 400 },
+      );
+    }
+    await refreshDiscordOnlineDashboard(db, { force: true });
+    return NextResponse.json({
+      ok: true,
+      message: "Online dashboard message posted/updated.",
+      ...publicView(await getDiscordWebhookSettings(db)),
     });
   }
 
   if (action === "clear") {
+    if (current.webhookUrl && current.onlineDashboardMessageId) {
+      try {
+        await fetch(`${current.webhookUrl}/messages/${current.onlineDashboardMessageId}`, {
+          method: "DELETE",
+          signal: AbortSignal.timeout(8_000),
+        });
+      } catch {
+        // ignore
+      }
+    }
     const next = await setDiscordWebhookSettings(db, {
       ...current,
       webhookUrl: null,
+      onlineDashboardMessageId: null,
+      onlineDashboardRosterKey: null,
     });
     return NextResponse.json({
       ok: true,
@@ -151,13 +189,28 @@ export async function POST(request: Request) {
         typeof input.notifyInventoryChanged === "boolean"
           ? input.notifyInventoryChanged
           : current.notifyInventoryChanged,
+      notifyEveryOnlineScan:
+        typeof input.notifyEveryOnlineScan === "boolean"
+          ? input.notifyEveryOnlineScan
+          : current.notifyEveryOnlineScan,
+      onlineDashboardEnabled:
+        typeof input.onlineDashboardEnabled === "boolean"
+          ? input.onlineDashboardEnabled
+          : current.onlineDashboardEnabled,
+      onlineDashboardMessageId: current.onlineDashboardMessageId,
+      onlineDashboardRosterKey: current.onlineDashboardRosterKey,
     });
+
+    if (next.webhookUrl && next.onlineDashboardEnabled) {
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+    }
+
     return NextResponse.json({
       ok: true,
       message: webhookUrlRaw
-        ? "Discord webhook saved. Worker will notify on the next matching scan event."
+        ? "Discord webhook saved. Worker will notify on matching scans."
         : "Notification preferences saved.",
-      ...publicView(next),
+      ...publicView(await getDiscordWebhookSettings(db)),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save webhook.";

@@ -251,7 +251,12 @@ export class ScanAccountHandler {
             : "presence unknown",
     });
     await appendHypixelLiveEvents(this.db, liveEvents).catch(() => undefined);
-    await notifyDiscordForLiveEvents(this.db, liveEvents).catch(() => undefined);
+    await notifyDiscordForLiveEvents(this.db, liveEvents, {
+      presenceOnline: presence?.online ?? null,
+      mcUsername: account.mcUsername,
+      sessionGame,
+      at,
+    }).catch(() => undefined);
 
     const enqueued = await this.enqueueProcessScan(success.id);
     const slots = extractBookSlots(fetched.rawInventory);
