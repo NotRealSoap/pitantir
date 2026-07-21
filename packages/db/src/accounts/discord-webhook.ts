@@ -35,8 +35,16 @@ export type DiscordPlayerRule = DiscordPlayerNotifyFlags & {
 };
 
 export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
-  /** Online/offline alerts + online roster dashboard. */
+  /**
+   * Online roster dashboard only (edited in place). Keep this channel clean —
+   * put came-online / went-offline / still-online pings on presenceAlertsWebhookUrl.
+   */
   presenceWebhookUrl: string | null;
+  /**
+   * Hypixel confirmatory online/offline index messages
+   * (came_online / went_offline / online_indexed). Falls back to presenceWebhookUrl.
+   */
+  presenceAlertsWebhookUrl: string | null;
   /** Same-nonce inventory updates (lives/enchants/slot). */
   inventoryWebhookUrl: string | null;
   /** Item additions/subtractions (gained/lost). */
@@ -83,6 +91,7 @@ const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
 
 const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   presenceWebhookUrl: null,
+  presenceAlertsWebhookUrl: null,
   inventoryWebhookUrl: null,
   itemMovesWebhookUrl: null,
   pitpalStatusWebhookUrl: null,
@@ -148,6 +157,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
   const row = value as Record<string, unknown>;
   const legacy = readUrl(row.webhookUrl);
   const presenceWebhookUrl = readUrl(row.presenceWebhookUrl) ?? legacy;
+  const presenceAlertsWebhookUrl = readUrl(row.presenceAlertsWebhookUrl);
   const inventoryWebhookUrl = readUrl(row.inventoryWebhookUrl);
   const itemMovesWebhookUrl = readUrl(row.itemMovesWebhookUrl);
   const pitpalStatusWebhookUrl = readUrl(row.pitpalStatusWebhookUrl);
@@ -175,6 +185,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
 
   return {
     presenceWebhookUrl,
+    presenceAlertsWebhookUrl,
     inventoryWebhookUrl,
     itemMovesWebhookUrl,
     pitpalStatusWebhookUrl,
@@ -279,6 +290,7 @@ export async function setDiscordWebhookSettings(
 
   const next: DiscordWebhookSettings = {
     presenceWebhookUrl: settings.presenceWebhookUrl?.trim() || null,
+    presenceAlertsWebhookUrl: settings.presenceAlertsWebhookUrl?.trim() || null,
     inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
@@ -295,7 +307,8 @@ export async function setDiscordWebhookSettings(
       .map((rule) => normalizePlayerRule(rule))
       .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
   };
-  assertOptionalWebhook(next.presenceWebhookUrl, "Presence webhook");
+  assertOptionalWebhook(next.presenceWebhookUrl, "Online dashboard webhook");
+  assertOptionalWebhook(next.presenceAlertsWebhookUrl, "Online/offline alerts webhook");
   assertOptionalWebhook(next.inventoryWebhookUrl, "Inventory webhook");
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
@@ -319,6 +332,7 @@ export async function setDiscordWebhookSettings(
   } else {
     const clearingAllChannels =
       !next.presenceWebhookUrl &&
+      !next.presenceAlertsWebhookUrl &&
       !next.inventoryWebhookUrl &&
       !next.itemMovesWebhookUrl;
     if (clearingAllChannels) {
@@ -399,7 +413,8 @@ export function webhookUrlForEvent(
   settings: DiscordWebhookSettings,
   kind: string,
 ): string | null {
-  const presence = settings.presenceWebhookUrl;
+  const dashboard = settings.presenceWebhookUrl;
+  const alerts = settings.presenceAlertsWebhookUrl || dashboard;
   if (
     kind === "pitpal_entered" ||
     kind === "pitpal_left" ||
@@ -407,24 +422,25 @@ export function webhookUrlForEvent(
     kind === "pitpal_lobby" ||
     kind === "pitpal_mismatch"
   ) {
-    // PitPal lobbies traffic never shares the presence (online/offline) channel.
+    // PitPal lobbies traffic never shares the dashboard/alerts channels.
     return settings.pitpalStatusWebhookUrl;
   }
   if (kind === "came_online" || kind === "went_offline" || kind === "online_indexed") {
-    return presence;
+    return alerts;
   }
   if (kind === "item_moved") {
-    return settings.itemMovesWebhookUrl || presence;
+    return settings.itemMovesWebhookUrl || alerts || dashboard;
   }
   if (kind === "inventory_updated" || kind === "inventory_changed") {
-    return settings.inventoryWebhookUrl || presence;
+    return settings.inventoryWebhookUrl || alerts || dashboard;
   }
-  return presence;
+  return alerts || dashboard;
 }
 
 function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
   return Boolean(
     settings.presenceWebhookUrl ||
+      settings.presenceAlertsWebhookUrl ||
       settings.inventoryWebhookUrl ||
       settings.itemMovesWebhookUrl ||
       settings.pitpalStatusWebhookUrl,

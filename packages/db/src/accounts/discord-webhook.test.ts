@@ -120,6 +120,7 @@ describe("normalizeDiscordWebhookSettings", () => {
 describe("channel routing + player rules", () => {
   const base = normalizeDiscordWebhookSettings({
     presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
+    presenceAlertsWebhookUrl: "https://discord.com/api/webhooks/5/abcdefghijklmnopqrstuv",
     inventoryWebhookUrl: "https://discord.com/api/webhooks/2/abcdefghijklmnopqrstuv",
     itemMovesWebhookUrl: "https://discord.com/api/webhooks/3/abcdefghijklmnopqrstuv",
     pitpalStatusWebhookUrl: "https://discord.com/api/webhooks/4/abcdefghijklmnopqrstuv",
@@ -141,19 +142,29 @@ describe("channel routing + player rules", () => {
   });
 
   it("routes kinds to the right webhook", () => {
-    expect(webhookUrlForEvent(base, "online_indexed")).toContain("/webhooks/1/");
+    expect(webhookUrlForEvent(base, "online_indexed")).toContain("/webhooks/5/");
+    expect(webhookUrlForEvent(base, "came_online")).toContain("/webhooks/5/");
     expect(webhookUrlForEvent(base, "inventory_updated")).toContain("/webhooks/2/");
     expect(webhookUrlForEvent(base, "item_moved")).toContain("/webhooks/3/");
     expect(webhookUrlForEvent(base, "pitpal_location")).toContain("/webhooks/4/");
   });
 
+  it("falls online/offline alerts back to the dashboard webhook when unset", () => {
+    const withoutAlerts = normalizeDiscordWebhookSettings({
+      presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
+    });
+    expect(webhookUrlForEvent(withoutAlerts, "online_indexed")).toContain("/webhooks/1/");
+    expect(webhookUrlForEvent(withoutAlerts, "came_online")).toContain("/webhooks/1/");
+  });
+
   it("never falls PitPal events back to the presence webhook", () => {
     const withoutPitpal = normalizeDiscordWebhookSettings({
       presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
+      presenceAlertsWebhookUrl: "https://discord.com/api/webhooks/5/abcdefghijklmnopqrstuv",
     });
     expect(webhookUrlForEvent(withoutPitpal, "pitpal_entered")).toBeNull();
     expect(webhookUrlForEvent(withoutPitpal, "pitpal_left")).toBeNull();
-    expect(webhookUrlForEvent(withoutPitpal, "came_online")).toContain("/webhooks/1/");
+    expect(webhookUrlForEvent(withoutPitpal, "came_online")).toContain("/webhooks/5/");
   });
 
   it("resolves per-player overrides", () => {

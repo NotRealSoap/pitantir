@@ -345,6 +345,7 @@ type DiscordPlayerRuleState = {
 type DiscordWebhookPayload = {
   configured?: boolean;
   presenceWebhookUrlMasked?: string | null;
+  presenceAlertsWebhookUrlMasked?: string | null;
   inventoryWebhookUrlMasked?: string | null;
   itemMovesWebhookUrlMasked?: string | null;
   pitpalStatusWebhookUrlMasked?: string | null;
@@ -411,6 +412,7 @@ function flagsEqual(a: DiscordPlayerRuleState, defaults: typeof DEFAULT_PLAYER_F
 function DiscordWebhookPanel() {
   const [status, setStatus] = useState<DiscordWebhookPayload | null>(null);
   const [presenceWebhookUrl, setPresenceWebhookUrl] = useState("");
+  const [presenceAlertsWebhookUrl, setPresenceAlertsWebhookUrl] = useState("");
   const [inventoryWebhookUrl, setInventoryWebhookUrl] = useState("");
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
@@ -489,6 +491,7 @@ function DiscordWebhookPanel() {
       setMessage(payload.message ?? "Saved.");
       if (body.action === "save" || body.action === "test") {
         setPresenceWebhookUrl("");
+        setPresenceAlertsWebhookUrl("");
         setInventoryWebhookUrl("");
         setItemMovesWebhookUrl("");
         setPitpalStatusWebhookUrl("");
@@ -525,10 +528,9 @@ function DiscordWebhookPanel() {
         Discord webhooks
       </h2>
       <p className="muted">
-        Use <strong>dedicated channels</strong>. Presence = Hypixel confirmatory online/offline +
-        roster (edited in place). PitPal status = every lobbies change (append-only, never deleted).
-        Leave a URL field blank to keep the saved value. Clearing requires Clear all (or paste a new
-        URL to replace).
+        Use <strong>dedicated channels</strong>. Online dashboard = roster only (edited in place).
+        Online/offline alerts = Hypixel came-online / went-offline / still-online index pings. PitPal
+        status = lobbies changes (append-only). Leave a URL blank to keep the saved value.
       </p>
       <p>
         Status:{" "}
@@ -537,7 +539,12 @@ function DiscordWebhookPanel() {
         </span>
         {status?.presenceWebhookUrlMasked ? (
           <span className="chip" style={{ marginLeft: "0.35rem" }}>
-            presence saved
+            dashboard saved
+          </span>
+        ) : null}
+        {status?.presenceAlertsWebhookUrlMasked ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            alerts saved
           </span>
         ) : null}
         {status?.pitpalStatusWebhookUrlMasked ? (
@@ -561,6 +568,7 @@ function DiscordWebhookPanel() {
           void run({
             action: "save",
             presenceWebhookUrl: presenceWebhookUrl.trim() || undefined,
+            presenceAlertsWebhookUrl: presenceAlertsWebhookUrl.trim() || undefined,
             inventoryWebhookUrl: inventoryWebhookUrl.trim() || undefined,
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
@@ -576,7 +584,7 @@ function DiscordWebhookPanel() {
         }}
       >
         <label>
-          Presence webhook (online/offline · Hypixel confirmation · roster dashboard)
+          Online roster dashboard webhook (lone channel · edited in place)
           <input
             type="url"
             autoComplete="off"
@@ -591,6 +599,21 @@ function DiscordWebhookPanel() {
           />
         </label>
         <label>
+          Online/offline alerts webhook (came online · went offline · still-online index)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={presenceAlertsWebhookUrl}
+            onChange={(event) => setPresenceAlertsWebhookUrl(event.target.value)}
+            placeholder={
+              status?.presenceAlertsWebhookUrlMasked
+                ? `Saved: ${status.presenceAlertsWebhookUrlMasked}`
+                : "Optional — falls back to dashboard channel until set"
+            }
+          />
+        </label>
+        <label>
           Inventory updates webhook (lives / enchants / slot)
           <input
             type="url"
@@ -601,7 +624,7 @@ function DiscordWebhookPanel() {
             placeholder={
               status?.inventoryWebhookUrlMasked
                 ? `Saved: ${status.inventoryWebhookUrlMasked}`
-                : "Optional — falls back to presence"
+                : "Optional — falls back to alerts/dashboard"
             }
           />
         </label>
@@ -616,7 +639,7 @@ function DiscordWebhookPanel() {
             placeholder={
               status?.itemMovesWebhookUrlMasked
                 ? `Saved: ${status.itemMovesWebhookUrlMasked}`
-                : "Optional — falls back to presence"
+                : "Optional — falls back to alerts/dashboard"
             }
           />
         </label>
@@ -824,7 +847,26 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
-            disabled={busy || (!status?.configured && !presenceWebhookUrl.trim())}
+            disabled={
+              busy ||
+              (!status?.presenceAlertsWebhookUrlMasked &&
+                !status?.presenceWebhookUrlMasked &&
+                !presenceAlertsWebhookUrl.trim() &&
+                !presenceWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "presenceAlerts",
+                webhookUrl: presenceAlertsWebhookUrl.trim() || undefined,
+              })
+            }
+          >
+            Test online/offline alerts
+          </button>
+          <button
+            type="button"
+            disabled={busy || (!status?.presenceWebhookUrlMasked && !presenceWebhookUrl.trim())}
             onClick={() =>
               void run({
                 action: "test",
@@ -833,7 +875,7 @@ function DiscordWebhookPanel() {
               })
             }
           >
-            Test presence
+            Test dashboard channel
           </button>
           <button
             type="button"
@@ -1101,14 +1143,14 @@ export default function SettingsPage() {
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
           </li>
           <li>
-            Discord: presence = Hypixel confirmatory online/offline + roster dashboard. PitPal status
-            = every pitpal.rocks/admin/lobbies change (enter/leave/SPAWN/DOWN/lobby). Inventory and
-            item +/− stay on their own webhooks. Per-player overrides on Settings.
+            Discord: online dashboard = roster-only channel. Online/offline alerts = Hypixel
+            came-online / went-offline / still-online index pings. PitPal status = every
+            pitpal.rocks/admin/lobbies change. Inventory and item +/− stay on their own webhooks.
           </li>
           <li>
             PitPal Tampermonkey bridge feeds lobby status into the PitPal webhook only. Enter/leave
-            also queues a Hypixel scan; that confirmation updates the online/offline channel and
-            roster. PitPal never marks someone online/offline by itself.
+            also queues a Hypixel scan; that confirmation updates the alerts channel and roster.
+            PitPal never marks someone online/offline by itself.
           </li>
         </ul>
       </section>
