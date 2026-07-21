@@ -525,10 +525,10 @@ function DiscordWebhookPanel() {
         Discord webhooks
       </h2>
       <p className="muted">
-        Use <strong>dedicated channels</strong> (or reuse URLs). Presence keeps the online roster as
-        the latest message (delete/repost). PitPal status changes are <em>append-only</em> and never
-        deleted. Item moves = gained/lost; inventory updates = same-nonce lives/enchant/slot changes.
-        Per-player rows override defaults — e.g. whytf online + additions only.
+        Use <strong>dedicated channels</strong>. Presence = Hypixel confirmatory online/offline +
+        roster (edited in place). PitPal status = every lobbies change (append-only, never deleted).
+        Item moves = gained/lost; inventory updates = same-nonce lives/enchant/slot changes.
+        Per-player rows override defaults.
       </p>
       <p>
         Status:{" "}
@@ -566,7 +566,7 @@ function DiscordWebhookPanel() {
         }}
       >
         <label>
-          Presence channel webhook (online / offline / dashboard)
+          Presence webhook (online/offline · Hypixel confirmation · roster dashboard)
           <input
             type="password"
             autoComplete="off"
@@ -608,7 +608,7 @@ function DiscordWebhookPanel() {
           />
         </label>
         <label>
-          PitPal status-change webhook (SPAWN/DOWN/OTHER · lobby hops · append-only)
+          PitPal status webhook (all pitpal.rocks/admin/lobbies changes · append-only)
           <input
             type="password"
             autoComplete="off"
@@ -617,7 +617,7 @@ function DiscordWebhookPanel() {
             placeholder={
               status?.pitpalStatusWebhookUrlMasked
                 ? `Saved: ${status.pitpalStatusWebhookUrlMasked}`
-                : "Dedicated channel — messages are never deleted"
+                : "Required for lobby enter/leave/SPAWN/DOWN — never falls back to presence"
             }
           />
         </label>
@@ -915,8 +915,9 @@ function PitPalBridgePanel() {
       </h2>
       <p className="muted">
         A Tampermonkey script (while you&apos;re logged into PitPal admin) reads{" "}
-        <code>/api/proxy/pitmod/players</code> and posts lobby + SPAWN/DOWN/OTHER into Pitantir. No
-        admin password is shared with the worker.
+        <code>/api/proxy/pitmod/players</code> and posts lobby + SPAWN/DOWN/OTHER into Pitantir.
+        Those events go to the PitPal status webhook. Enter/leave also queues a Hypixel confirmatory
+        scan for the online/offline channel. No admin password is shared with the worker.
       </p>
       <p>
         Status:{" "}
@@ -1046,16 +1047,14 @@ export default function SettingsPage() {
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
           </li>
           <li>
-            Discord: three channel webhooks (presence / inventory updates / item +/−) plus per-player
-            overrides on Settings. Example: whytf = online scans + additions/subtractions only, no
-            inventory field updates. Presence channel should be dedicated so the online roster can
-            stay as the latest message.
+            Discord: presence = Hypixel confirmatory online/offline + roster dashboard. PitPal status
+            = every pitpal.rocks/admin/lobbies change (enter/leave/SPAWN/DOWN/lobby). Inventory and
+            item +/− stay on their own webhooks. Per-player overrides on Settings.
           </li>
           <li>
-            PitPal lobby bridge is the presence source of truth while Tampermonkey is syncing. Status
-            changes (SPAWN/DOWN/OTHER, lobby hops) go to the dedicated PitPal webhook and are never
-            deleted. If a watchlist player looks online via Hypixel but is missing from PitPal, we
-            queue a Hypixel index scan to reconcile (PitPanda key remains for item search).
+            PitPal Tampermonkey bridge feeds lobby status into the PitPal webhook only. Enter/leave
+            also queues a Hypixel scan; that confirmation updates the online/offline channel and
+            roster. PitPal never marks someone online/offline by itself.
           </li>
         </ul>
       </section>

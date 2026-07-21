@@ -3,16 +3,12 @@ import type { Database } from "../client.js";
 import { adminSettings } from "../schema/accounts.js";
 import { now } from "../identity/store.js";
 import { AccountsRepository, type Account } from "./repository.js";
-import {
-  notifyPitpalStatusEvents,
-  refreshDiscordOnlineDashboard,
-  type DiscordNotifyEvent,
-} from "./discord-webhook.js";
+import { notifyPitpalStatusEvents, type DiscordNotifyEvent } from "./discord-webhook.js";
 import { JobsRepository } from "../jobs/repository.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
 
-/** Treat PitPal as source of truth when the last ingest is newer than this. */
+/** PitPal feed is considered fresh within this window (UI / mismatch heuristics). */
 export const PITPAL_FRESH_MS = 90_000;
 
 export type PitpalLobbyLocation = "SPAWN" | "DOWN" | "OTHER" | "HUB" | string;
@@ -135,12 +131,25 @@ async function savePitpalLobbySnapshot(
   });
 }
 
-function statusFingerprint(player: {
-  lobby?: string | null;
-  lobbyName?: string | null;
-  location?: string | null;
-}): string {
-  return `${player.lobbyName ?? player.lobby ?? ""}|${player.location ?? ""}`;
+async function enqueueHypixelPresenceConfirm(
+  jobs: JobsRepository,
+  accountId: string,
+  reason: "entered" | "left" | "mismatch",
+  observedAt: string,
+): Promise<boolean> {
+  try {
+    // Enter/leave: hourly. Mismatch: daily (avoids spam for players online outside Pit).
+    const bucket = reason === "mismatch" ? observedAt.slice(0, 10) : observedAt.slice(0, 13);
+    const result = await jobs.enqueue({
+      type: "scan_account",
+      payload: { accountId, triggeredBy: "manual", reason: `pitpal_${reason}` },
+      priority: reason === "mismatch" ? 20 : 15,
+      idempotencyKey: `pitpal_confirm_${reason}:${accountId}:${bucket}`,
+    });
+    return result.created;
+  } catch {
+    return false;
+  }
 }
 
 function buildStatusEvents(input: {
@@ -208,13 +217,17 @@ export type IngestPitpalLobbiesResult = {
   watchlistCleared: number;
   statusEventsGenerated: number;
   statusEventsPosted: number;
-  mismatchesQueued: number;
+  presenceConfirmsQueued: number;
   observedAt: string;
 };
 
 /**
- * Store a PitPal lobby-monitor snapshot and enrich matching watchlist accounts.
- * PitPal is the presence source of truth while the Tampermonkey feed is active.
+ * Store a PitPal lobby-monitor snapshot and emit PitPal status Discord events.
+ *
+ * Channel split:
+ * - PitPal status webhook: every lobbies-related change (enter/leave/SPAWN/DOWN/lobby).
+ * - Presence (online/offline) webhook: Hypixel confirmatory scans only — queued on enter/leave
+ *   and mismatch; never marked online/offline from PitPal alone.
  */
 export async function ingestPitpalLobbies(
   db: Database,
@@ -273,7 +286,7 @@ export async function ingestPitpalLobbies(
   const watchlist = await repo.listWatchlist();
   let matched = 0;
   let cleared = 0;
-  let mismatchesQueued = 0;
+  let presenceConfirmsQueued = 0;
   const statusEvents: DiscordNotifyEvent[] = [];
 
   for (const account of watchlist) {
@@ -290,84 +303,75 @@ export async function ingestPitpalLobbies(
 
     if (hit) {
       matched += 1;
-      const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
-      statusEvents.push(
-        ...buildStatusEvents({
-          account,
-          previous,
-          next: hit,
-          at: observedAt,
-        }),
-      );
+      const events = buildStatusEvents({
+        account,
+        previous,
+        next: hit,
+        at: observedAt,
+      });
+      statusEvents.push(...events);
       await repo.update(account.id, {
         lastPitpalLobby: hit.lobbyName,
         lastPitpalLocation: hit.location,
         lastPitpalArmorType: hit.armorType ?? null,
         lastPitpalKillstreak: hit.killStreak ?? null,
         lastPitpalSeenAt: observedDate,
-        lastHypixelOnline: true,
-        lastHypixelOnlineAt: observedDate,
-        lastPresenceSource: "pitpal_lobbies",
-        lastSessionGame: sessionLabel,
+        // Enrich dashboard detail once Hypixel has confirmed online — do not flip presence here.
+        lastSessionGame: [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null,
       });
+      if (events.some((event) => event.kind === "pitpal_entered")) {
+        if (await enqueueHypixelPresenceConfirm(jobs, account.id, "entered", observedAt)) {
+          presenceConfirmsQueued += 1;
+        }
+      }
       continue;
     }
 
     if (previous) {
       cleared += 1;
-      statusEvents.push(
-        ...buildStatusEvents({
-          account,
-          previous,
-          next: null,
-          at: observedAt,
-        }),
-      );
+      const events = buildStatusEvents({
+        account,
+        previous,
+        next: null,
+        at: observedAt,
+      });
+      statusEvents.push(...events);
       await repo.update(account.id, {
         lastPitpalLobby: null,
         lastPitpalLocation: null,
         lastPitpalArmorType: null,
         lastPitpalKillstreak: null,
         lastPitpalSeenAt: null,
-        lastHypixelOnline: false,
-        lastHypixelOnlineAt: observedDate,
-        lastPresenceSource: "pitpal_lobbies",
-        lastSessionGame: null,
       });
+      if (await enqueueHypixelPresenceConfirm(jobs, account.id, "left", observedAt)) {
+        presenceConfirmsQueued += 1;
+      }
       continue;
     }
 
-    // Incongruence: Hypixel/watch thinks online, but fresh PitPal does not list them.
-    // Only notify/queue when this is a new mismatch episode (not already pitpal-absent).
-    if (
-      account.lastHypixelOnline === true &&
-      account.lastPresenceSource !== "pitpal_lobbies" &&
-      !previousByName.has(key)
-    ) {
-      statusEvents.push({
-        kind: "pitpal_mismatch",
-        accountId: account.id,
-        mcUsername: account.mcUsername,
-        at: observedAt,
-        detail: "Hypixel/watch online, absent from PitPal lobbies — queued index scan",
-      });
-      try {
-        await jobs.enqueue({
-          type: "scan_account",
-          payload: { accountId: account.id, triggeredBy: "manual" },
-          priority: 20,
-          idempotencyKey: `pitpal_mismatch_scan:${account.id}:${observedAt.slice(0, 13)}`,
+    // Hypixel/watch thinks online, but fresh PitPal does not list them → confirm via Hypixel.
+    // Discord mismatch only when we actually enqueue a new confirmatory scan (daily).
+    if (account.lastHypixelOnline === true && !previousByName.has(key)) {
+      const queued = await enqueueHypixelPresenceConfirm(
+        jobs,
+        account.id,
+        "mismatch",
+        observedAt,
+      );
+      if (queued) {
+        presenceConfirmsQueued += 1;
+        statusEvents.push({
+          kind: "pitpal_mismatch",
+          accountId: account.id,
+          mcUsername: account.mcUsername,
+          at: observedAt,
+          detail: "Hypixel online, absent from PitPal lobbies — queued confirmatory scan",
         });
-        mismatchesQueued += 1;
-      } catch {
-        // enqueue is best-effort
       }
     }
   }
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
-  // Edit presence dashboard in place with latest PitPal lobby/status lines.
-  await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
 
   return {
     playerCount: byName.size,
@@ -376,7 +380,7 @@ export async function ingestPitpalLobbies(
     watchlistCleared: cleared,
     statusEventsGenerated: statusEvents.length,
     statusEventsPosted,
-    mismatchesQueued,
+    presenceConfirmsQueued,
     observedAt,
   };
 }

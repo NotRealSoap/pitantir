@@ -13,7 +13,6 @@ import {
   type HypixelLiveEvent,
 } from "../accounts/live-events.js";
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
-import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
@@ -161,34 +160,27 @@ export class ScanAccountHandler {
       previousHash != null &&
       previousHash !== success.rawInventoryHash;
 
-    const pitpalAuthoritative = await isPitpalPresenceAuthoritative(this.db).catch(() => false);
-    const keepPitpalPresence =
-      pitpalAuthoritative &&
-      account.lastPresenceSource === "pitpal_lobbies" &&
-      Boolean(account.lastPitpalLobby || account.lastPitpalLocation);
+    // Presence channel = Hypixel confirmation only. PitPal never suppresses these updates.
+    const cameOnline = presence?.online === true && previousOnline === false;
+    const wentOffline = presence?.online === false && previousOnline === true;
 
-    // Only emit Hypixel online/offline transitions when PitPal is not the source of truth.
-    const cameOnline =
-      !keepPitpalPresence && presence?.online === true && previousOnline === false;
-    const wentOffline =
-      !keepPitpalPresence && presence?.online === false && previousOnline === true;
-
-    const sessionGame = keepPitpalPresence
-      ? account.lastSessionGame
-      : presence?.gameType || presence?.mode
+    const hypixelSession =
+      presence?.gameType || presence?.mode
         ? [presence.gameType, presence.mode].filter(Boolean).join("/")
         : null;
+    // Prefer live PitPal lobby/status on the roster when we have it; else Hypixel session.
+    const sessionGame =
+      account.lastPitpalLobby || account.lastPitpalLocation
+        ? [account.lastPitpalLobby, account.lastPitpalLocation].filter(Boolean).join(" · ") ||
+          hypixelSession
+        : hypixelSession;
 
     try {
       account = await this.accounts.update(account.id, {
-        ...(keepPitpalPresence
-          ? {}
-          : {
-              lastHypixelOnline: presence?.online ?? null,
-              lastHypixelOnlineAt: presence ? fetched.observedAt : account.lastHypixelOnlineAt,
-              lastPresenceSource: presence?.source ?? null,
-              lastSessionGame: sessionGame,
-            }),
+        lastHypixelOnline: presence?.online ?? null,
+        lastHypixelOnlineAt: presence ? fetched.observedAt : account.lastHypixelOnlineAt,
+        lastPresenceSource: presence?.source ?? null,
+        lastSessionGame: sessionGame,
         lastInventoryHash: success.rawInventoryHash,
         lastInventoryChangedAt: inventoryChanged
           ? fetched.observedAt

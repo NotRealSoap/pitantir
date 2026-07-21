@@ -127,7 +127,10 @@
             ? ` · ${result.statusEventsPosted} status msg`
             : result.statusEventsGenerated
               ? ` · ${result.statusEventsGenerated} status (not posted)`
-              : ""),
+              : "") +
+          (result.presenceConfirmsQueued
+            ? ` · ${result.presenceConfirmsQueued} Hypixel confirm`
+            : ""),
         true,
       );
     } catch (error) {

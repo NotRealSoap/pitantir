@@ -132,6 +132,15 @@ describe("channel routing + player rules", () => {
     expect(webhookUrlForEvent(base, "pitpal_location")).toContain("/webhooks/4/");
   });
 
+  it("never falls PitPal events back to the presence webhook", () => {
+    const withoutPitpal = normalizeDiscordWebhookSettings({
+      presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
+    });
+    expect(webhookUrlForEvent(withoutPitpal, "pitpal_entered")).toBeNull();
+    expect(webhookUrlForEvent(withoutPitpal, "pitpal_left")).toBeNull();
+    expect(webhookUrlForEvent(withoutPitpal, "came_online")).toContain("/webhooks/1/");
+  });
+
   it("resolves per-player overrides", () => {
     expect(resolvePlayerFlags(base, "acc-whytf").notifyInventoryUpdated).toBe(false);
     expect(resolvePlayerFlags(base, "acc-whytf").notifyItemGainedLost).toBe(true);

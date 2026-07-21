@@ -301,7 +301,8 @@ export function webhookUrlForEvent(
     kind === "pitpal_lobby" ||
     kind === "pitpal_mismatch"
   ) {
-    return settings.pitpalStatusWebhookUrl || presence;
+    // PitPal lobbies traffic never shares the presence (online/offline) channel.
+    return settings.pitpalStatusWebhookUrl;
   }
   if (kind === "came_online" || kind === "went_offline" || kind === "online_indexed") {
     return presence;
@@ -769,8 +770,8 @@ export async function notifyDiscordForLiveEvents(
 }
 
 /**
- * Append-only PitPal status messages (SPAWN/DOWN/OTHER / lobby hops).
- * Never deletes prior messages — uses the dedicated pitpal status channel.
+ * Append-only PitPal status messages (SPAWN/DOWN/OTHER / lobby hops / enter / leave).
+ * Requires the dedicated PitPal status webhook — never posts to online/offline presence.
  */
 export async function notifyPitpalStatusEvents(
   db: Database,
@@ -780,18 +781,13 @@ export async function notifyPitpalStatusEvents(
     if (events.length === 0) return 0;
     const settings = await getDiscordWebhookSettings(db);
     if (!settings.notifyPitpalStatusChanges) return 0;
-    const url = settings.pitpalStatusWebhookUrl || settings.presenceWebhookUrl;
+    const url = settings.pitpalStatusWebhookUrl;
     if (!url) return 0;
     let posted = 0;
     for (const event of events) {
       const rule = settings.playerRules.find((row) => row.accountId === event.accountId);
-      // Per-player override only when explicitly false; missing/legacy false repaired below.
       if (rule && rule.notifyPitpalStatusChanges === false) continue;
-      const result = await postDiscordWebhook(url, {
-        ...event,
-        // Ensure kind is preserved for embed coloring/copy.
-        kind: event.kind,
-      });
+      const result = await postDiscordWebhook(url, event);
       if (result.ok) posted += 1;
     }
     return posted;

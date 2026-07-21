@@ -175,7 +175,7 @@ export async function POST(request: Request) {
         : channel === "itemMoves"
           ? current.itemMovesWebhookUrl || current.presenceWebhookUrl
           : channel === "pitpalStatus"
-            ? current.pitpalStatusWebhookUrl || current.presenceWebhookUrl
+            ? current.pitpalStatusWebhookUrl
             : current.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
