@@ -252,6 +252,7 @@ export class ScanAccountHandler {
     });
     await appendHypixelLiveEvents(this.db, liveEvents).catch(() => undefined);
     await notifyDiscordForLiveEvents(this.db, liveEvents, {
+      accountId: account.id,
       presenceOnline: presence?.online ?? null,
       mcUsername: account.mcUsername,
       sessionGame,

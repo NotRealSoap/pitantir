@@ -6,9 +6,14 @@ import {
   postDiscordWebhook,
   refreshDiscordOnlineDashboard,
   setDiscordWebhookSettings,
+  type DiscordPlayerRule,
   type DiscordWebhookSettings,
 } from "@pitantir/db";
-import { getDatabase, isUsingPostgres } from "../../../../src/server/runtime";
+import {
+  getAccountsRepository,
+  getDatabase,
+  isUsingPostgres,
+} from "../../../../src/server/runtime";
 import { InMemoryRateLimiter } from "../../../../src/server/rate-limit";
 
 const rateLimiter = new InMemoryRateLimiter(20, 60_000);
@@ -23,15 +28,64 @@ function clientIp(request: Request): string {
 
 function publicView(settings: DiscordWebhookSettings) {
   return {
-    configured: Boolean(settings.webhookUrl),
-    webhookUrlMasked: maskDiscordWebhookUrl(settings.webhookUrl),
+    configured: Boolean(
+      settings.presenceWebhookUrl ||
+        settings.inventoryWebhookUrl ||
+        settings.itemMovesWebhookUrl,
+    ),
+    presenceWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceWebhookUrl),
+    inventoryWebhookUrlMasked: maskDiscordWebhookUrl(settings.inventoryWebhookUrl),
+    itemMovesWebhookUrlMasked: maskDiscordWebhookUrl(settings.itemMovesWebhookUrl),
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
-    notifyInventoryChanged: settings.notifyInventoryChanged,
     notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
+    notifyItemGainedLost: settings.notifyItemGainedLost,
+    notifyInventoryUpdated: settings.notifyInventoryUpdated,
     onlineDashboardEnabled: settings.onlineDashboardEnabled,
     onlineDashboardConfigured: Boolean(settings.onlineDashboardMessageId),
+    playerRules: settings.playerRules,
   };
+}
+
+function parseOptionalUrl(
+  value: unknown,
+  label: string,
+):
+  | { ok: true; provided: false }
+  | { ok: true; provided: true; url: string | null }
+  | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, provided: false };
+  if (value === null || value === "") return { ok: true, provided: true, url: null };
+  if (typeof value !== "string") return { ok: false, error: `${label} must be a string.` };
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: true, provided: true, url: null };
+  if (!isDiscordWebhookUrl(trimmed)) {
+    return {
+      ok: false,
+      error: `${label} must look like https://discord.com/api/webhooks/<id>/<token>`,
+    };
+  }
+  return { ok: true, provided: true, url: trimmed };
+}
+
+function parsePlayerRules(value: unknown): DiscordPlayerRule[] {
+  if (!Array.isArray(value)) return [];
+  const out: DiscordPlayerRule[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const rule = row as Record<string, unknown>;
+    if (typeof rule.accountId !== "string" || typeof rule.mcUsername !== "string") continue;
+    out.push({
+      accountId: rule.accountId,
+      mcUsername: rule.mcUsername,
+      notifyCameOnline: Boolean(rule.notifyCameOnline),
+      notifyWentOffline: Boolean(rule.notifyWentOffline),
+      notifyEveryOnlineScan: Boolean(rule.notifyEveryOnlineScan),
+      notifyItemGainedLost: Boolean(rule.notifyItemGainedLost),
+      notifyInventoryUpdated: Boolean(rule.notifyInventoryUpdated),
+    });
+  }
+  return out;
 }
 
 export async function GET() {
@@ -42,11 +96,18 @@ export async function GET() {
     );
   }
   const db = getDatabase();
-  if (!db) {
+  const repo = await getAccountsRepository();
+  if (!db || !repo) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
-  const settings = await getDiscordWebhookSettings(db);
-  return NextResponse.json(publicView(settings));
+  const [settings, watchlist] = await Promise.all([
+    getDiscordWebhookSettings(db),
+    repo.listWatchlist(),
+  ]);
+  return NextResponse.json({
+    ...publicView(settings),
+    watchlist: watchlist.map((row) => ({ id: row.id, mcUsername: row.mcUsername })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -65,7 +126,8 @@ export async function POST(request: Request) {
     );
   }
   const db = getDatabase();
-  if (!db) {
+  const repo = await getAccountsRepository();
+  if (!db || !repo) {
     return NextResponse.json({ ok: false, error: "Database unavailable." }, { status: 503 });
   }
 
@@ -84,18 +146,52 @@ export async function POST(request: Request) {
   const action = typeof input.action === "string" ? input.action : "save";
   const current = await getDiscordWebhookSettings(db);
 
+  async function withWatchlist(settings: DiscordWebhookSettings) {
+    const watchlist = await repo!.listWatchlist();
+    return {
+      ...publicView(settings),
+      watchlist: watchlist.map((row) => ({ id: row.id, mcUsername: row.mcUsername })),
+    };
+  }
+
   if (action === "test") {
-    if (!current.webhookUrl) {
+    const channel =
+      typeof input.channel === "string" ? input.channel : "presence";
+    const url =
+      channel === "inventory"
+        ? current.inventoryWebhookUrl || current.presenceWebhookUrl
+        : channel === "itemMoves"
+          ? current.itemMovesWebhookUrl || current.presenceWebhookUrl
+          : current.presenceWebhookUrl;
+    if (!url) {
       return NextResponse.json(
-        { ok: false, error: "Save a Discord webhook URL first." },
+        { ok: false, error: "Save a webhook URL for that channel first." },
         { status: 400 },
       );
     }
-    const result = await postDiscordWebhook(current.webhookUrl, {
-      kind: "came_online",
+    const kind =
+      channel === "inventory"
+        ? "inventory_updated"
+        : channel === "itemMoves"
+          ? "item_moved"
+          : "came_online";
+    const result = await postDiscordWebhook(url, {
+      kind,
       mcUsername: "Pitantir",
-      detail: "webhook test",
+      detail: `webhook test (${channel})`,
       at: new Date().toISOString(),
+      changes:
+        kind === "item_moved"
+          ? [
+              {
+                direction: "gained",
+                nonce: "0",
+                title: "Test Mystic",
+                summary: "0/1",
+                slotKey: "inv:0",
+              },
+            ]
+          : null,
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -103,18 +199,20 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+    if (channel === "presence") {
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+    }
     return NextResponse.json({
       ok: true,
-      message: "Test notification sent (and online dashboard refreshed).",
-      ...publicView(await getDiscordWebhookSettings(db)),
+      message: `Test sent to ${channel} channel.`,
+      ...(await withWatchlist(await getDiscordWebhookSettings(db))),
     });
   }
 
   if (action === "refresh_dashboard") {
-    if (!current.webhookUrl) {
+    if (!current.presenceWebhookUrl) {
       return NextResponse.json(
-        { ok: false, error: "Save a Discord webhook URL first." },
+        { ok: false, error: "Save a presence webhook URL first." },
         { status: 400 },
       );
     }
@@ -128,55 +226,55 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       message: "Online dashboard message posted/updated.",
-      ...publicView(await getDiscordWebhookSettings(db)),
+      ...(await withWatchlist(await getDiscordWebhookSettings(db))),
     });
   }
 
   if (action === "clear") {
-    if (current.webhookUrl && current.onlineDashboardMessageId) {
-      try {
-        await fetch(`${current.webhookUrl}/messages/${current.onlineDashboardMessageId}`, {
-          method: "DELETE",
-          signal: AbortSignal.timeout(8_000),
-        });
-      } catch {
-        // ignore
+    for (const url of [
+      current.presenceWebhookUrl,
+      current.inventoryWebhookUrl,
+      current.itemMovesWebhookUrl,
+    ]) {
+      if (url && current.onlineDashboardMessageId && url === current.presenceWebhookUrl) {
+        try {
+          await fetch(`${url}/messages/${current.onlineDashboardMessageId}`, {
+            method: "DELETE",
+            signal: AbortSignal.timeout(8_000),
+          });
+        } catch {
+          // ignore
+        }
       }
     }
     const next = await setDiscordWebhookSettings(db, {
       ...current,
-      webhookUrl: null,
+      presenceWebhookUrl: null,
+      inventoryWebhookUrl: null,
+      itemMovesWebhookUrl: null,
       onlineDashboardMessageId: null,
       onlineDashboardRosterKey: null,
+      playerRules: [],
     });
     return NextResponse.json({
       ok: true,
-      message: "Discord webhook cleared.",
-      ...publicView(next),
+      message: "Discord webhooks cleared.",
+      ...(await withWatchlist(next)),
     });
   }
 
-  // save
-  const webhookUrlRaw =
-    typeof input.webhookUrl === "string" ? input.webhookUrl.trim() : "";
-  let webhookUrl = current.webhookUrl;
-  if (webhookUrlRaw) {
-    if (!isDiscordWebhookUrl(webhookUrlRaw)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "URL must look like https://discord.com/api/webhooks/<id>/<token>",
-        },
-        { status: 400 },
-      );
-    }
-    webhookUrl = webhookUrlRaw;
-  }
+  const presence = parseOptionalUrl(input.presenceWebhookUrl, "Presence webhook");
+  const inventory = parseOptionalUrl(input.inventoryWebhookUrl, "Inventory webhook");
+  const itemMoves = parseOptionalUrl(input.itemMovesWebhookUrl, "Item moves webhook");
+  if (!presence.ok) return NextResponse.json({ ok: false, error: presence.error }, { status: 400 });
+  if (!inventory.ok) return NextResponse.json({ ok: false, error: inventory.error }, { status: 400 });
+  if (!itemMoves.ok) return NextResponse.json({ ok: false, error: itemMoves.error }, { status: 400 });
 
   try {
     const next = await setDiscordWebhookSettings(db, {
-      webhookUrl,
+      presenceWebhookUrl: presence.provided ? presence.url : current.presenceWebhookUrl,
+      inventoryWebhookUrl: inventory.provided ? inventory.url : current.inventoryWebhookUrl,
+      itemMovesWebhookUrl: itemMoves.provided ? itemMoves.url : current.itemMovesWebhookUrl,
       notifyCameOnline:
         typeof input.notifyCameOnline === "boolean"
           ? input.notifyCameOnline
@@ -185,32 +283,36 @@ export async function POST(request: Request) {
         typeof input.notifyWentOffline === "boolean"
           ? input.notifyWentOffline
           : current.notifyWentOffline,
-      notifyInventoryChanged:
-        typeof input.notifyInventoryChanged === "boolean"
-          ? input.notifyInventoryChanged
-          : current.notifyInventoryChanged,
       notifyEveryOnlineScan:
         typeof input.notifyEveryOnlineScan === "boolean"
           ? input.notifyEveryOnlineScan
           : current.notifyEveryOnlineScan,
+      notifyItemGainedLost:
+        typeof input.notifyItemGainedLost === "boolean"
+          ? input.notifyItemGainedLost
+          : current.notifyItemGainedLost,
+      notifyInventoryUpdated:
+        typeof input.notifyInventoryUpdated === "boolean"
+          ? input.notifyInventoryUpdated
+          : current.notifyInventoryUpdated,
       onlineDashboardEnabled:
         typeof input.onlineDashboardEnabled === "boolean"
           ? input.onlineDashboardEnabled
           : current.onlineDashboardEnabled,
       onlineDashboardMessageId: current.onlineDashboardMessageId,
       onlineDashboardRosterKey: current.onlineDashboardRosterKey,
+      playerRules:
+        input.playerRules !== undefined ? parsePlayerRules(input.playerRules) : current.playerRules,
     });
 
-    if (next.webhookUrl && next.onlineDashboardEnabled) {
+    if (next.presenceWebhookUrl && next.onlineDashboardEnabled) {
       await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
     }
 
     return NextResponse.json({
       ok: true,
-      message: webhookUrlRaw
-        ? "Discord webhook saved. Worker will notify on matching scans."
-        : "Notification preferences saved.",
-      ...publicView(await getDiscordWebhookSettings(db)),
+      message: "Discord notification settings saved.",
+      ...(await withWatchlist(await getDiscordWebhookSettings(db))),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save webhook.";

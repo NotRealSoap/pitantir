@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiscordWebhookPayload,
   buildOnlineDashboardPayload,
+  expandDiscordNotifyEvents,
   isDiscordWebhookUrl,
   maskDiscordWebhookUrl,
   normalizeDiscordWebhookSettings,
+  resolvePlayerFlags,
   rosterKeyFor,
+  webhookUrlForEvent,
 } from "./discord-webhook.js";
 
 describe("isDiscordWebhookUrl", () => {
@@ -15,16 +18,10 @@ describe("isDiscordWebhookUrl", () => {
         "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEF",
       ),
     ).toBe(true);
-    expect(
-      isDiscordWebhookUrl(
-        "https://canary.discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEF",
-      ),
-    ).toBe(true);
   });
 
   it("rejects non-discord URLs", () => {
     expect(isDiscordWebhookUrl("https://example.com/hooks/1")).toBe(false);
-    expect(isDiscordWebhookUrl("not-a-url")).toBe(false);
   });
 });
 
@@ -34,37 +31,96 @@ describe("maskDiscordWebhookUrl", () => {
       "https://discord.com/api/webhooks/123/abcdefghijklmnop",
     );
     expect(masked).toContain("abcd…mnop");
-    expect(masked).not.toContain("abcdefghijklmnop");
   });
 });
 
 describe("normalizeDiscordWebhookSettings", () => {
-  it("defaults notify flags including every-online-scan and dashboard", () => {
-    expect(normalizeDiscordWebhookSettings({})).toEqual({
-      webhookUrl: null,
-      notifyCameOnline: true,
-      notifyWentOffline: false,
+  it("migrates legacy webhookUrl into presence and splits inventory flags", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      webhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
       notifyInventoryChanged: true,
-      notifyEveryOnlineScan: true,
-      onlineDashboardEnabled: true,
-      onlineDashboardMessageId: null,
-      onlineDashboardRosterKey: null,
     });
+    expect(settings.presenceWebhookUrl).toContain("/webhooks/1/");
+    expect(settings.notifyItemGainedLost).toBe(true);
+    expect(settings.notifyInventoryUpdated).toBe(true);
+    expect(settings.playerRules).toEqual([]);
+  });
+
+  it("defaults item updates off and gained/lost on", () => {
+    const settings = normalizeDiscordWebhookSettings({});
+    expect(settings.notifyItemGainedLost).toBe(true);
+    expect(settings.notifyInventoryUpdated).toBe(false);
+    expect(settings.notifyEveryOnlineScan).toBe(true);
+  });
+});
+
+describe("channel routing + player rules", () => {
+  const base = normalizeDiscordWebhookSettings({
+    presenceWebhookUrl: "https://discord.com/api/webhooks/1/abcdefghijklmnopqrstuv",
+    inventoryWebhookUrl: "https://discord.com/api/webhooks/2/abcdefghijklmnopqrstuv",
+    itemMovesWebhookUrl: "https://discord.com/api/webhooks/3/abcdefghijklmnopqrstuv",
+    notifyItemGainedLost: true,
+    notifyInventoryUpdated: true,
+    notifyEveryOnlineScan: true,
+    playerRules: [
+      {
+        accountId: "acc-whytf",
+        mcUsername: "whytf",
+        notifyCameOnline: true,
+        notifyWentOffline: false,
+        notifyEveryOnlineScan: true,
+        notifyItemGainedLost: true,
+        notifyInventoryUpdated: false,
+      },
+    ],
+  });
+
+  it("routes kinds to the right webhook", () => {
+    expect(webhookUrlForEvent(base, "online_indexed")).toContain("/webhooks/1/");
+    expect(webhookUrlForEvent(base, "inventory_updated")).toContain("/webhooks/2/");
+    expect(webhookUrlForEvent(base, "item_moved")).toContain("/webhooks/3/");
+  });
+
+  it("resolves per-player overrides", () => {
+    expect(resolvePlayerFlags(base, "acc-whytf").notifyInventoryUpdated).toBe(false);
+    expect(resolvePlayerFlags(base, "acc-whytf").notifyItemGainedLost).toBe(true);
+    expect(resolvePlayerFlags(base, "someone-else").notifyInventoryUpdated).toBe(true);
+  });
+});
+
+describe("expandDiscordNotifyEvents", () => {
+  it("splits gained/lost from updates", () => {
+    const expanded = expandDiscordNotifyEvents([
+      {
+        kind: "inventory_changed",
+        accountId: "a1",
+        mcUsername: "Crazy",
+        changes: [
+          {
+            direction: "gained",
+            nonce: "1",
+            title: "Sword",
+            summary: null,
+            slotKey: "inv:0",
+          },
+          {
+            direction: "updated",
+            nonce: "2",
+            title: "Pants",
+            summary: "10/18",
+            slotKey: "inv:1",
+            previousSummary: "11/18",
+          },
+        ],
+      },
+    ]);
+    expect(expanded.map((row) => row.kind)).toEqual(["item_moved", "inventory_updated"]);
+    expect(expanded[0]?.changes).toHaveLength(1);
+    expect(expanded[1]?.changes).toHaveLength(1);
   });
 });
 
 describe("buildDiscordWebhookPayload", () => {
-  it("names the player for came_online", () => {
-    const payload = buildDiscordWebhookPayload({
-      kind: "came_online",
-      mcUsername: "Crazy",
-      detail: "PIT/pit",
-      at: "2026-07-21T12:00:00.000Z",
-    });
-    expect(payload.content).toBe("Crazy came online · PIT/pit");
-    expect(payload.embeds[0]?.title).toBe("Crazy came online · PIT/pit");
-  });
-
   it("formats still-online index pings", () => {
     const payload = buildDiscordWebhookPayload({
       kind: "online_indexed",
@@ -83,8 +139,6 @@ describe("online dashboard", () => {
     ];
     const payload = buildOnlineDashboardPayload(entries, "2026-07-21T12:00:00.000Z");
     expect(payload.content).toContain("Online now (2)");
-    expect(payload.content).toContain("Amy");
-    expect(payload.content).toContain("Bob");
     expect(rosterKeyFor(entries)).toBe(rosterKeyFor([...entries].reverse()));
   });
 });

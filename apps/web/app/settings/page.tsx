@@ -331,31 +331,114 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
   );
 }
 
+type DiscordPlayerRuleState = {
+  accountId: string;
+  mcUsername: string;
+  notifyCameOnline: boolean;
+  notifyWentOffline: boolean;
+  notifyEveryOnlineScan: boolean;
+  notifyItemGainedLost: boolean;
+  notifyInventoryUpdated: boolean;
+};
+
 type DiscordWebhookPayload = {
   configured?: boolean;
-  webhookUrlMasked?: string | null;
+  presenceWebhookUrlMasked?: string | null;
+  inventoryWebhookUrlMasked?: string | null;
+  itemMovesWebhookUrlMasked?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
-  notifyInventoryChanged?: boolean;
   notifyEveryOnlineScan?: boolean;
+  notifyItemGainedLost?: boolean;
+  notifyInventoryUpdated?: boolean;
   onlineDashboardEnabled?: boolean;
   onlineDashboardConfigured?: boolean;
+  playerRules?: DiscordPlayerRuleState[];
+  watchlist?: Array<{ id: string; mcUsername: string }>;
   ok?: boolean;
   message?: string;
   error?: string;
 };
 
+const DEFAULT_PLAYER_FLAGS = {
+  notifyCameOnline: true,
+  notifyWentOffline: false,
+  notifyEveryOnlineScan: true,
+  notifyItemGainedLost: true,
+  notifyInventoryUpdated: false,
+};
+
+function buildPlayerRows(
+  watchlist: Array<{ id: string; mcUsername: string }>,
+  rules: DiscordPlayerRuleState[],
+  defaults: typeof DEFAULT_PLAYER_FLAGS,
+): DiscordPlayerRuleState[] {
+  const byId = new Map(rules.map((rule) => [rule.accountId, rule]));
+  return watchlist
+    .slice()
+    .sort((a, b) => a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" }))
+    .map((account) => {
+      const rule = byId.get(account.id);
+      return {
+        accountId: account.id,
+        mcUsername: account.mcUsername,
+        notifyCameOnline: rule?.notifyCameOnline ?? defaults.notifyCameOnline,
+        notifyWentOffline: rule?.notifyWentOffline ?? defaults.notifyWentOffline,
+        notifyEveryOnlineScan: rule?.notifyEveryOnlineScan ?? defaults.notifyEveryOnlineScan,
+        notifyItemGainedLost: rule?.notifyItemGainedLost ?? defaults.notifyItemGainedLost,
+        notifyInventoryUpdated: rule?.notifyInventoryUpdated ?? defaults.notifyInventoryUpdated,
+      };
+    });
+}
+
+function flagsEqual(a: DiscordPlayerRuleState, defaults: typeof DEFAULT_PLAYER_FLAGS): boolean {
+  return (
+    a.notifyCameOnline === defaults.notifyCameOnline &&
+    a.notifyWentOffline === defaults.notifyWentOffline &&
+    a.notifyEveryOnlineScan === defaults.notifyEveryOnlineScan &&
+    a.notifyItemGainedLost === defaults.notifyItemGainedLost &&
+    a.notifyInventoryUpdated === defaults.notifyInventoryUpdated
+  );
+}
+
 function DiscordWebhookPanel() {
   const [status, setStatus] = useState<DiscordWebhookPayload | null>(null);
-  const [webhookUrl, setWebhookUrl] = useState("");
+  const [presenceWebhookUrl, setPresenceWebhookUrl] = useState("");
+  const [inventoryWebhookUrl, setInventoryWebhookUrl] = useState("");
+  const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
-  const [notifyInventoryChanged, setNotifyInventoryChanged] = useState(true);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
+  const [notifyItemGainedLost, setNotifyItemGainedLost] = useState(true);
+  const [notifyInventoryUpdated, setNotifyInventoryUpdated] = useState(false);
   const [onlineDashboardEnabled, setOnlineDashboardEnabled] = useState(true);
+  const [playerRows, setPlayerRows] = useState<DiscordPlayerRuleState[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function applyPayload(payload: DiscordWebhookPayload) {
+    setStatus(payload);
+    const defaults = {
+      notifyCameOnline: payload.notifyCameOnline ?? DEFAULT_PLAYER_FLAGS.notifyCameOnline,
+      notifyWentOffline: payload.notifyWentOffline ?? DEFAULT_PLAYER_FLAGS.notifyWentOffline,
+      notifyEveryOnlineScan:
+        payload.notifyEveryOnlineScan ?? DEFAULT_PLAYER_FLAGS.notifyEveryOnlineScan,
+      notifyItemGainedLost:
+        payload.notifyItemGainedLost ?? DEFAULT_PLAYER_FLAGS.notifyItemGainedLost,
+      notifyInventoryUpdated:
+        payload.notifyInventoryUpdated ?? DEFAULT_PLAYER_FLAGS.notifyInventoryUpdated,
+    };
+    setNotifyCameOnline(defaults.notifyCameOnline);
+    setNotifyWentOffline(defaults.notifyWentOffline);
+    setNotifyEveryOnlineScan(defaults.notifyEveryOnlineScan);
+    setNotifyItemGainedLost(defaults.notifyItemGainedLost);
+    setNotifyInventoryUpdated(defaults.notifyInventoryUpdated);
+    setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
+    setPlayerRows(
+      buildPlayerRows(payload.watchlist ?? [], payload.playerRules ?? [], defaults),
+    );
+  }
 
   const load = useCallback(async () => {
     try {
@@ -365,12 +448,7 @@ function DiscordWebhookPanel() {
         setStatus(null);
         return;
       }
-      setStatus(payload);
-      setNotifyCameOnline(payload.notifyCameOnline ?? true);
-      setNotifyWentOffline(payload.notifyWentOffline ?? false);
-      setNotifyInventoryChanged(payload.notifyInventoryChanged ?? true);
-      setNotifyEveryOnlineScan(payload.notifyEveryOnlineScan ?? true);
-      setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
+      applyPayload(payload);
     } catch {
       setStatus(null);
     }
@@ -395,15 +473,12 @@ function DiscordWebhookPanel() {
         setError(payload.error ?? "Request failed.");
         return;
       }
-      setStatus(payload);
+      applyPayload(payload);
       setMessage(payload.message ?? "Saved.");
-      setNotifyCameOnline(payload.notifyCameOnline ?? notifyCameOnline);
-      setNotifyWentOffline(payload.notifyWentOffline ?? notifyWentOffline);
-      setNotifyInventoryChanged(payload.notifyInventoryChanged ?? notifyInventoryChanged);
-      setNotifyEveryOnlineScan(payload.notifyEveryOnlineScan ?? notifyEveryOnlineScan);
-      setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? onlineDashboardEnabled);
-      if (body.action === "save" && typeof body.webhookUrl === "string" && body.webhookUrl) {
-        setWebhookUrl("");
+      if (body.action === "save") {
+        setPresenceWebhookUrl("");
+        setInventoryWebhookUrl("");
+        setItemMovesWebhookUrl("");
       }
     } catch {
       setError("Request failed.");
@@ -412,15 +487,34 @@ function DiscordWebhookPanel() {
     }
   }
 
+  function updatePlayer(
+    accountId: string,
+    key: keyof DiscordPlayerRuleState,
+    value: boolean,
+  ) {
+    setPlayerRows((rows) =>
+      rows.map((row) => (row.accountId === accountId ? { ...row, [key]: value } : row)),
+    );
+  }
+
+  const defaults = {
+    notifyCameOnline,
+    notifyWentOffline,
+    notifyEveryOnlineScan,
+    notifyItemGainedLost,
+    notifyInventoryUpdated,
+  };
+
   return (
-    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "52rem" }}>
       <h2 className="section-title" style={{ marginTop: 0 }}>
-        Discord webhook
+        Discord webhooks
       </h2>
       <p className="muted">
-        Use a <strong>dedicated Discord channel</strong> for Pitantir. The worker can ping on each
-        online scan and keep the <em>latest</em> channel message as a live “who’s online” roster
-        (it deletes/reposts that message after updates).
+        Use <strong>three dedicated channels</strong> (or reuse one URL in multiple slots). Presence
+        keeps the online roster as the latest message. Item moves are gained/lost mystics; inventory
+        updates are same-nonce lives/enchant/slot changes. Per-player rows override the defaults —
+        e.g. whytf online + additions/subtractions only.
       </p>
       <p>
         Status:{" "}
@@ -433,50 +527,81 @@ function DiscordWebhookPanel() {
           </span>
         ) : null}
       </p>
-      {status?.webhookUrlMasked ? (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
-          Saved URL: <code>{status.webhookUrlMasked}</code>
-        </p>
-      ) : null}
 
       <form
         className="form-stack"
         style={{ marginTop: "0.75rem", maxWidth: "100%" }}
         onSubmit={(event) => {
           event.preventDefault();
+          const playerRules = playerRows.filter((row) => !flagsEqual(row, defaults));
           void run({
             action: "save",
-            webhookUrl: webhookUrl.trim() || undefined,
+            presenceWebhookUrl: presenceWebhookUrl.trim() || undefined,
+            inventoryWebhookUrl: inventoryWebhookUrl.trim() || undefined,
+            itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             notifyCameOnline,
             notifyWentOffline,
-            notifyInventoryChanged,
             notifyEveryOnlineScan,
+            notifyItemGainedLost,
+            notifyInventoryUpdated,
             onlineDashboardEnabled,
+            playerRules,
           });
         }}
       >
         <label>
-          Webhook URL
+          Presence channel webhook (online / offline / dashboard)
           <input
             type="password"
             autoComplete="off"
-            value={webhookUrl}
-            onChange={(event) => setWebhookUrl(event.target.value)}
+            value={presenceWebhookUrl}
+            onChange={(event) => setPresenceWebhookUrl(event.target.value)}
             placeholder={
-              status?.configured
-                ? "Paste a new URL to replace"
+              status?.presenceWebhookUrlMasked
+                ? `Saved: ${status.presenceWebhookUrlMasked}`
                 : "https://discord.com/api/webhooks/…"
             }
           />
         </label>
+        <label>
+          Inventory updates webhook (lives / enchants / slot)
+          <input
+            type="password"
+            autoComplete="off"
+            value={inventoryWebhookUrl}
+            onChange={(event) => setInventoryWebhookUrl(event.target.value)}
+            placeholder={
+              status?.inventoryWebhookUrlMasked
+                ? `Saved: ${status.inventoryWebhookUrlMasked}`
+                : "Optional — falls back to presence"
+            }
+          />
+        </label>
+        <label>
+          Item additions / subtractions webhook
+          <input
+            type="password"
+            autoComplete="off"
+            value={itemMovesWebhookUrl}
+            onChange={(event) => setItemMovesWebhookUrl(event.target.value)}
+            placeholder={
+              status?.itemMovesWebhookUrlMasked
+                ? `Saved: ${status.itemMovesWebhookUrlMasked}`
+                : "Optional — falls back to presence"
+            }
+          />
+        </label>
 
+        <h3 className="section-title" style={{ fontSize: "1rem", marginBottom: 0 }}>
+          Default notify flags
+        </h3>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
             type="checkbox"
             checked={notifyEveryOnlineScan}
             onChange={(event) => setNotifyEveryOnlineScan(event.target.checked)}
           />
-          Notify every time an online player is scanned
+          Every online scan
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
@@ -485,16 +610,7 @@ function DiscordWebhookPanel() {
             onChange={(event) => setNotifyCameOnline(event.target.checked)}
             disabled={notifyEveryOnlineScan}
           />
-          Notify only when a player comes online
-          {notifyEveryOnlineScan ? " (covered by every-scan)" : ""}
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <input
-            type="checkbox"
-            checked={notifyInventoryChanged}
-            onChange={(event) => setNotifyInventoryChanged(event.target.checked)}
-          />
-          Notify on inventory changes
+          Came online only {notifyEveryOnlineScan ? "(covered by every-scan)" : ""}
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
@@ -502,7 +618,23 @@ function DiscordWebhookPanel() {
             checked={notifyWentOffline}
             onChange={(event) => setNotifyWentOffline(event.target.checked)}
           />
-          Notify when a player goes offline
+          Went offline
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={notifyItemGainedLost}
+            onChange={(event) => setNotifyItemGainedLost(event.target.checked)}
+          />
+          Item additions / subtractions
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={notifyInventoryUpdated}
+            onChange={(event) => setNotifyInventoryUpdated(event.target.checked)}
+          />
+          Inventory field updates (no gain/loss)
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
@@ -510,19 +642,139 @@ function DiscordWebhookPanel() {
             checked={onlineDashboardEnabled}
             onChange={(event) => setOnlineDashboardEnabled(event.target.checked)}
           />
-          Keep latest channel message as online roster dashboard
+          Presence channel: keep latest message as online roster
         </label>
+
+        <h3 className="section-title" style={{ fontSize: "1rem", marginBottom: 0 }}>
+          Per-player overrides
+        </h3>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Only rows that differ from the defaults above are saved. Leave someone matching defaults
+          to inherit.
+        </p>
+        {playerRows.length === 0 ? (
+          <p className="muted">No watchlist accounts yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="discord-player-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Online scan</th>
+                  <th>Offline</th>
+                  <th>+/− items</th>
+                  <th>Inv update</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {playerRows.map((row) => {
+                  const custom = !flagsEqual(row, defaults);
+                  return (
+                    <tr key={row.accountId} className={custom ? "is-custom" : undefined}>
+                      <td>
+                        <strong>{row.mcUsername}</strong>
+                        {custom ? <div className="muted">custom</div> : null}
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row.notifyEveryOnlineScan}
+                          onChange={(event) =>
+                            updatePlayer(row.accountId, "notifyEveryOnlineScan", event.target.checked)
+                          }
+                          aria-label={`${row.mcUsername} every online scan`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row.notifyWentOffline}
+                          onChange={(event) =>
+                            updatePlayer(row.accountId, "notifyWentOffline", event.target.checked)
+                          }
+                          aria-label={`${row.mcUsername} offline`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row.notifyItemGainedLost}
+                          onChange={(event) =>
+                            updatePlayer(row.accountId, "notifyItemGainedLost", event.target.checked)
+                          }
+                          aria-label={`${row.mcUsername} item moves`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row.notifyInventoryUpdated}
+                          onChange={(event) =>
+                            updatePlayer(
+                              row.accountId,
+                              "notifyInventoryUpdated",
+                              event.target.checked,
+                            )
+                          }
+                          aria-label={`${row.mcUsername} inventory updates`}
+                        />
+                      </td>
+                      <td>
+                        {custom ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPlayerRows((rows) =>
+                                rows.map((entry) =>
+                                  entry.accountId === row.accountId
+                                    ? {
+                                        ...entry,
+                                        ...defaults,
+                                        accountId: entry.accountId,
+                                        mcUsername: entry.mcUsername,
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                          >
+                            Reset
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="row-actions">
           <button type="submit" className="primary" disabled={busy}>
-            {busy ? "Saving…" : status?.configured ? "Save changes" : "Save webhook"}
+            {busy ? "Saving…" : "Save Discord settings"}
           </button>
           <button
             type="button"
             disabled={busy || !status?.configured}
-            onClick={() => void run({ action: "test" })}
+            onClick={() => void run({ action: "test", channel: "presence" })}
           >
-            Send test
+            Test presence
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured}
+            onClick={() => void run({ action: "test", channel: "itemMoves" })}
+          >
+            Test item moves
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured}
+            onClick={() => void run({ action: "test", channel: "inventory" })}
+          >
+            Test inventory
           </button>
           <button
             type="button"
@@ -536,7 +788,7 @@ function DiscordWebhookPanel() {
             disabled={busy || !status?.configured}
             onClick={() => void run({ action: "clear" })}
           >
-            Clear
+            Clear all
           </button>
         </div>
       </form>
@@ -631,9 +883,10 @@ export default function SettingsPage() {
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
           </li>
           <li>
-            Discord: use a dedicated channel. Enable “every online scan” for per-index pings, and
-            “online roster dashboard” so Pitantir keeps the latest message as the who’s-online list
-            (deletes/reposts after updates). Prefer no other bots posting in that channel.
+            Discord: three channel webhooks (presence / inventory updates / item +/−) plus per-player
+            overrides on Settings. Example: whytf = online scans + additions/subtractions only, no
+            inventory field updates. Presence channel should be dedicated so the online roster can
+            stay as the latest message.
           </li>
         </ul>
       </section>

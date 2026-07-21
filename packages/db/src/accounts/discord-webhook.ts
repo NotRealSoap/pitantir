@@ -2,28 +2,48 @@ import { eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { adminSettings } from "../schema/accounts.js";
 import { now } from "../identity/store.js";
-import { describeLiveSignal, type InventoryChangeItem } from "@pitantir/shared/live-signal-copy";
+import {
+  describeLiveSignal,
+  formatInventoryChangeLabel,
+  type InventoryChangeItem,
+} from "@pitantir/shared/live-signal-copy";
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
 
-export type DiscordWebhookSettings = {
-  webhookUrl: string | null;
+export type DiscordPlayerNotifyFlags = {
   notifyCameOnline: boolean;
   notifyWentOffline: boolean;
-  notifyInventoryChanged: boolean;
-  /** Post every time a watched account is scanned while online. */
   notifyEveryOnlineScan: boolean;
-  /** Keep an editable/reposted message listing who is online. */
+  /** Mystics gained or lost (nonce added/removed). */
+  notifyItemGainedLost: boolean;
+  /** Same mystic updated (lives/enchants/slot) without gain/loss. */
+  notifyInventoryUpdated: boolean;
+};
+
+export type DiscordPlayerRule = DiscordPlayerNotifyFlags & {
+  accountId: string;
+  mcUsername: string;
+};
+
+export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
+  /** Online/offline alerts + online roster dashboard. */
+  presenceWebhookUrl: string | null;
+  /** Same-nonce inventory updates (lives/enchants/slot). */
+  inventoryWebhookUrl: string | null;
+  /** Item additions/subtractions (gained/lost). */
+  itemMovesWebhookUrl: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
-  /** Sorted username key used to skip no-op dashboard refreshes. */
   onlineDashboardRosterKey: string | null;
+  /** Per-watchlist-player overrides (missing player → global defaults). */
+  playerRules: DiscordPlayerRule[];
 };
 
 export type DiscordNotifyEvent = {
   kind: LiveEventKind | string;
+  accountId?: string | null;
   mcUsername: string;
   detail?: string | null;
   changes?: InventoryChangeItem[] | null;
@@ -36,15 +56,23 @@ export type OnlineRosterEntry = {
   seenAt?: string | Date | null;
 };
 
-const DEFAULT_SETTINGS: DiscordWebhookSettings = {
-  webhookUrl: null,
+const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
   notifyCameOnline: true,
   notifyWentOffline: false,
-  notifyInventoryChanged: true,
   notifyEveryOnlineScan: true,
+  notifyItemGainedLost: true,
+  notifyInventoryUpdated: false,
+};
+
+const DEFAULT_SETTINGS: DiscordWebhookSettings = {
+  presenceWebhookUrl: null,
+  inventoryWebhookUrl: null,
+  itemMovesWebhookUrl: null,
+  ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
   onlineDashboardRosterKey: null,
+  playerRules: [],
 };
 
 const DISCORD_WEBHOOK_RE =
@@ -64,43 +92,74 @@ export function maskDiscordWebhookUrl(url: string | null | undefined): string | 
   return [...parts.slice(0, -1), maskedToken].join("/");
 }
 
+function readUrl(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readBool(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizePlayerRule(value: unknown): DiscordPlayerRule | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.accountId !== "string" || !row.accountId.trim()) return null;
+  if (typeof row.mcUsername !== "string" || !row.mcUsername.trim()) return null;
+  return {
+    accountId: row.accountId.trim(),
+    mcUsername: row.mcUsername.trim(),
+    notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
+    notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
+    notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
+    notifyItemGainedLost: readBool(row.notifyItemGainedLost, DEFAULT_FLAGS.notifyItemGainedLost),
+    notifyInventoryUpdated: readBool(
+      row.notifyInventoryUpdated,
+      DEFAULT_FLAGS.notifyInventoryUpdated,
+    ),
+  };
+}
+
 export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, playerRules: [] };
   }
   const row = value as Record<string, unknown>;
-  const webhookUrl =
-    typeof row.webhookUrl === "string" && row.webhookUrl.trim().length > 0
-      ? row.webhookUrl.trim()
-      : null;
+  const legacy = readUrl(row.webhookUrl);
+  const presenceWebhookUrl = readUrl(row.presenceWebhookUrl) ?? legacy;
+  const inventoryWebhookUrl = readUrl(row.inventoryWebhookUrl);
+  const itemMovesWebhookUrl = readUrl(row.itemMovesWebhookUrl);
+
+  // Migrate old single inventory toggle into the two new flags when present.
+  const legacyInventory =
+    typeof row.notifyInventoryChanged === "boolean" ? row.notifyInventoryChanged : null;
+
+  const playerRules = Array.isArray(row.playerRules)
+    ? row.playerRules.map(normalizePlayerRule).filter((rule): rule is DiscordPlayerRule => Boolean(rule))
+    : [];
+
   return {
-    webhookUrl,
-    notifyCameOnline:
-      typeof row.notifyCameOnline === "boolean"
-        ? row.notifyCameOnline
-        : DEFAULT_SETTINGS.notifyCameOnline,
-    notifyWentOffline:
-      typeof row.notifyWentOffline === "boolean"
-        ? row.notifyWentOffline
-        : DEFAULT_SETTINGS.notifyWentOffline,
-    notifyInventoryChanged:
-      typeof row.notifyInventoryChanged === "boolean"
-        ? row.notifyInventoryChanged
-        : DEFAULT_SETTINGS.notifyInventoryChanged,
-    notifyEveryOnlineScan:
-      typeof row.notifyEveryOnlineScan === "boolean"
-        ? row.notifyEveryOnlineScan
-        : DEFAULT_SETTINGS.notifyEveryOnlineScan,
-    onlineDashboardEnabled:
-      typeof row.onlineDashboardEnabled === "boolean"
-        ? row.onlineDashboardEnabled
-        : DEFAULT_SETTINGS.onlineDashboardEnabled,
+    presenceWebhookUrl,
+    inventoryWebhookUrl,
+    itemMovesWebhookUrl,
+    notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
+    notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
+    notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
+    notifyItemGainedLost: readBool(
+      row.notifyItemGainedLost,
+      legacyInventory ?? DEFAULT_FLAGS.notifyItemGainedLost,
+    ),
+    notifyInventoryUpdated: readBool(
+      row.notifyInventoryUpdated,
+      legacyInventory ?? DEFAULT_FLAGS.notifyInventoryUpdated,
+    ),
+    onlineDashboardEnabled: readBool(row.onlineDashboardEnabled, true),
     onlineDashboardMessageId:
       typeof row.onlineDashboardMessageId === "string" && row.onlineDashboardMessageId.trim()
         ? row.onlineDashboardMessageId.trim()
         : null,
     onlineDashboardRosterKey:
       typeof row.onlineDashboardRosterKey === "string" ? row.onlineDashboardRosterKey : null,
+    playerRules,
   };
 }
 
@@ -115,24 +174,36 @@ export async function getDiscordWebhookSettings(
   return normalizeDiscordWebhookSettings(rows[0]?.value);
 }
 
+function assertOptionalWebhook(url: string | null, label: string): void {
+  if (url && !isDiscordWebhookUrl(url)) {
+    throw new Error(`${label} must be a Discord webhook URL.`);
+  }
+}
+
 export async function setDiscordWebhookSettings(
   db: Database,
   settings: DiscordWebhookSettings,
 ): Promise<DiscordWebhookSettings> {
   const next: DiscordWebhookSettings = {
-    webhookUrl: settings.webhookUrl?.trim() || null,
+    presenceWebhookUrl: settings.presenceWebhookUrl?.trim() || null,
+    inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
+    itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
-    notifyInventoryChanged: Boolean(settings.notifyInventoryChanged),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
+    notifyItemGainedLost: Boolean(settings.notifyItemGainedLost),
+    notifyInventoryUpdated: Boolean(settings.notifyInventoryUpdated),
     onlineDashboardEnabled: Boolean(settings.onlineDashboardEnabled),
     onlineDashboardMessageId: settings.onlineDashboardMessageId?.trim() || null,
     onlineDashboardRosterKey: settings.onlineDashboardRosterKey ?? null,
+    playerRules: (settings.playerRules ?? [])
+      .map((rule) => normalizePlayerRule(rule))
+      .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
   };
-  if (next.webhookUrl && !isDiscordWebhookUrl(next.webhookUrl)) {
-    throw new Error("Webhook URL must be a Discord webhook URL.");
-  }
-  if (!next.webhookUrl) {
+  assertOptionalWebhook(next.presenceWebhookUrl, "Presence webhook");
+  assertOptionalWebhook(next.inventoryWebhookUrl, "Inventory webhook");
+  assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
+  if (!next.presenceWebhookUrl) {
     next.onlineDashboardMessageId = null;
     next.onlineDashboardRosterKey = null;
   }
@@ -157,16 +228,127 @@ export async function setDiscordWebhookSettings(
   return next;
 }
 
-function shouldNotify(settings: DiscordWebhookSettings, kind: string): boolean {
-  if (!settings.webhookUrl) return false;
-  if (kind === "online_indexed") return settings.notifyEveryOnlineScan;
-  if (kind === "came_online") {
-    // Avoid double-posting when every online scan already covers the transition.
-    return settings.notifyCameOnline && !settings.notifyEveryOnlineScan;
+export function resolvePlayerFlags(
+  settings: DiscordWebhookSettings,
+  accountId?: string | null,
+): DiscordPlayerNotifyFlags {
+  if (!accountId) {
+    return {
+      notifyCameOnline: settings.notifyCameOnline,
+      notifyWentOffline: settings.notifyWentOffline,
+      notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
+      notifyItemGainedLost: settings.notifyItemGainedLost,
+      notifyInventoryUpdated: settings.notifyInventoryUpdated,
+    };
   }
-  if (kind === "went_offline") return settings.notifyWentOffline;
-  if (kind === "inventory_changed") return settings.notifyInventoryChanged;
+  const rule = settings.playerRules.find((row) => row.accountId === accountId);
+  if (!rule) {
+    return {
+      notifyCameOnline: settings.notifyCameOnline,
+      notifyWentOffline: settings.notifyWentOffline,
+      notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
+      notifyItemGainedLost: settings.notifyItemGainedLost,
+      notifyInventoryUpdated: settings.notifyInventoryUpdated,
+    };
+  }
+  return {
+    notifyCameOnline: rule.notifyCameOnline,
+    notifyWentOffline: rule.notifyWentOffline,
+    notifyEveryOnlineScan: rule.notifyEveryOnlineScan,
+    notifyItemGainedLost: rule.notifyItemGainedLost,
+    notifyInventoryUpdated: rule.notifyInventoryUpdated,
+  };
+}
+
+export function webhookUrlForEvent(
+  settings: DiscordWebhookSettings,
+  kind: string,
+): string | null {
+  const presence = settings.presenceWebhookUrl;
+  if (kind === "came_online" || kind === "went_offline" || kind === "online_indexed") {
+    return presence;
+  }
+  if (kind === "item_moved") {
+    return settings.itemMovesWebhookUrl || presence;
+  }
+  if (kind === "inventory_updated" || kind === "inventory_changed") {
+    return settings.inventoryWebhookUrl || presence;
+  }
+  return presence;
+}
+
+function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
+  return Boolean(
+    settings.presenceWebhookUrl ||
+      settings.inventoryWebhookUrl ||
+      settings.itemMovesWebhookUrl,
+  );
+}
+
+function shouldNotify(
+  flags: DiscordPlayerNotifyFlags,
+  kind: string,
+): boolean {
+  if (kind === "online_indexed") return flags.notifyEveryOnlineScan;
+  if (kind === "came_online") {
+    return flags.notifyCameOnline && !flags.notifyEveryOnlineScan;
+  }
+  if (kind === "went_offline") return flags.notifyWentOffline;
+  if (kind === "item_moved") return flags.notifyItemGainedLost;
+  if (kind === "inventory_updated") return flags.notifyInventoryUpdated;
+  if (kind === "inventory_changed") {
+    return flags.notifyItemGainedLost || flags.notifyInventoryUpdated;
+  }
   return false;
+}
+
+function detailFromChanges(changes: InventoryChangeItem[]): string {
+  return changes
+    .slice(0, 6)
+    .map((change) => {
+      const label = formatInventoryChangeLabel(change);
+      if (change.direction === "gained") return `gained ${label}`;
+      if (change.direction === "lost") return `lost ${label}`;
+      return `updated ${label}`;
+    })
+    .join("; ");
+}
+
+/** Split inventory_changed into item_moved vs inventory_updated for channel routing. */
+export function expandDiscordNotifyEvents(events: DiscordNotifyEvent[]): DiscordNotifyEvent[] {
+  const out: DiscordNotifyEvent[] = [];
+  for (const event of events) {
+    if (event.kind !== "inventory_changed") {
+      out.push(event);
+      continue;
+    }
+    const changes = event.changes ?? [];
+    const moves = changes.filter(
+      (change) => change.direction === "gained" || change.direction === "lost",
+    );
+    const updates = changes.filter((change) => change.direction === "updated");
+    if (moves.length === 0 && updates.length === 0) {
+      out.push(event);
+      continue;
+    }
+    if (moves.length > 0) {
+      out.push({
+        ...event,
+        kind: "item_moved",
+        changes: moves,
+        detail: detailFromChanges(moves),
+      });
+    }
+    if (updates.length > 0) {
+      out.push({
+        ...event,
+        kind: "inventory_updated",
+        changes: updates,
+        detail: detailFromChanges(updates),
+      });
+    }
+  }
+  return out;
 }
 
 function embedColor(kind: string): number {
@@ -176,6 +358,9 @@ function embedColor(kind: string): number {
       return 0x57f287;
     case "went_offline":
       return 0x99aab5;
+    case "item_moved":
+      return 0xeb459e;
+    case "inventory_updated":
     case "inventory_changed":
       return 0xfee75c;
     default:
@@ -187,18 +372,24 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
   content: string;
   embeds: Array<Record<string, unknown>>;
 } {
-  const kindForCopy = event.kind === "online_indexed" ? "scanned" : event.kind;
   const headline =
     event.kind === "online_indexed"
       ? event.detail
         ? `${event.mcUsername} still online · ${event.detail}`
         : `${event.mcUsername} still online`
-      : describeLiveSignal({
-          kind: kindForCopy,
-          mcUsername: event.mcUsername,
-          detail: event.detail,
-          changes: event.changes,
-        });
+      : event.kind === "item_moved" || event.kind === "inventory_updated"
+        ? describeLiveSignal({
+            kind: "inventory_changed",
+            mcUsername: event.mcUsername,
+            detail: event.detail,
+            changes: event.changes,
+          })
+        : describeLiveSignal({
+            kind: event.kind,
+            mcUsername: event.mcUsername,
+            detail: event.detail,
+            changes: event.changes,
+          });
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     { name: "Player", value: event.mcUsername || "Unknown", inline: true },
@@ -360,16 +551,13 @@ async function postRawDiscordWebhook(
   return { ok: true, status: result.status, messageId };
 }
 
-/**
- * Delete the previous roster message (if any) and post a fresh one so it stays
- * the latest message in a dedicated Discord channel.
- */
 export async function refreshDiscordOnlineDashboard(
   db: Database,
   options?: { force?: boolean },
 ): Promise<void> {
   const settings = await getDiscordWebhookSettings(db);
-  if (!settings.webhookUrl || !settings.onlineDashboardEnabled) return;
+  const webhookUrl = settings.presenceWebhookUrl;
+  if (!webhookUrl || !settings.onlineDashboardEnabled) return;
 
   const repo = new AccountsRepository(db);
   const online = (await repo.listWatchlist())
@@ -380,16 +568,20 @@ export async function refreshDiscordOnlineDashboard(
       seenAt: row.lastHypixelOnlineAt,
     }));
   const nextKey = rosterKeyFor(online);
-  if (!options?.force && nextKey === settings.onlineDashboardRosterKey && settings.onlineDashboardMessageId) {
+  if (
+    !options?.force &&
+    nextKey === settings.onlineDashboardRosterKey &&
+    settings.onlineDashboardMessageId
+  ) {
     return;
   }
 
   if (settings.onlineDashboardMessageId) {
-    await deleteDiscordWebhookMessage(settings.webhookUrl, settings.onlineDashboardMessageId);
+    await deleteDiscordWebhookMessage(webhookUrl, settings.onlineDashboardMessageId);
   }
 
   const payload = buildOnlineDashboardPayload(online, new Date().toISOString());
-  const posted = await postRawDiscordWebhook(settings.webhookUrl, payload);
+  const posted = await postRawDiscordWebhook(webhookUrl, payload);
   if (!posted.ok || !posted.messageId) return;
 
   await setDiscordWebhookSettings(db, {
@@ -400,13 +592,14 @@ export async function refreshDiscordOnlineDashboard(
 }
 
 export type DiscordScanNotifyContext = {
+  accountId: string;
   presenceOnline: boolean | null;
   mcUsername: string;
   sessionGame?: string | null;
   at?: string | null;
 };
 
-/** Best-effort notify for noteworthy live events + optional per-scan online pings. */
+/** Best-effort notify with channel routing + per-player rules. */
 export async function notifyDiscordForLiveEvents(
   db: Database,
   events: DiscordNotifyEvent[],
@@ -414,19 +607,24 @@ export async function notifyDiscordForLiveEvents(
 ): Promise<{ postedCount: number }> {
   try {
     const settings = await getDiscordWebhookSettings(db);
-    if (!settings.webhookUrl) return { postedCount: 0 };
+    if (!anyWebhookConfigured(settings)) return { postedCount: 0 };
 
-    const toSend: DiscordNotifyEvent[] = events.filter((event) =>
-      shouldNotify(settings, event.kind),
+    const accountId = context?.accountId ?? events[0]?.accountId ?? null;
+    const flags = resolvePlayerFlags(settings, accountId);
+    const expanded = expandDiscordNotifyEvents(events);
+
+    const toSend: DiscordNotifyEvent[] = expanded.filter((event) =>
+      shouldNotify(flags, event.kind),
     );
 
     if (
       context?.presenceOnline === true &&
-      settings.notifyEveryOnlineScan &&
+      flags.notifyEveryOnlineScan &&
       !toSend.some((event) => event.kind === "online_indexed")
     ) {
       toSend.push({
         kind: "online_indexed",
+        accountId: context.accountId,
         mcUsername: context.mcUsername,
         detail: context.sessionGame ?? "online",
         at: context.at ?? new Date().toISOString(),
@@ -434,14 +632,24 @@ export async function notifyDiscordForLiveEvents(
     }
 
     let postedCount = 0;
+    let postedPresence = false;
     for (const event of toSend) {
-      const result = await postDiscordWebhook(settings.webhookUrl, event);
-      if (result.ok) postedCount += 1;
+      const url = webhookUrlForEvent(settings, event.kind);
+      if (!url) continue;
+      const result = await postDiscordWebhook(url, event);
+      if (result.ok) {
+        postedCount += 1;
+        if (
+          event.kind === "came_online" ||
+          event.kind === "went_offline" ||
+          event.kind === "online_indexed"
+        ) {
+          postedPresence = true;
+        }
+      }
     }
 
-    // Always re-anchor the dashboard after we posted event messages so it stays last.
-    // Otherwise only refresh when the roster itself changed.
-    await refreshDiscordOnlineDashboard(db, { force: postedCount > 0 }).catch(() => undefined);
+    await refreshDiscordOnlineDashboard(db, { force: postedPresence }).catch(() => undefined);
     return { postedCount };
   } catch {
     return { postedCount: 0 };

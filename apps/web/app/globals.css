@@ -555,11 +555,34 @@ code {
   max-width: 42rem;
 }
 
-.events-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-bottom: 0.85rem;
+.discord-player-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.discord-player-table th,
+.discord-player-table td {
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--pit-border);
+  vertical-align: middle;
+}
+
+.discord-player-table th {
+  color: var(--pit-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.discord-player-table tr.is-custom {
+  background: color-mix(in srgb, var(--pit-gold) 8%, transparent);
+}
+
+.discord-player-table td:nth-child(n + 2):nth-child(-n + 5) {
+  text-align: center;
 }
 
 .events-filter {
