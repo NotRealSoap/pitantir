@@ -12,6 +12,7 @@ import {
   appendHypixelLiveEvents,
   type HypixelLiveEvent,
 } from "../accounts/live-events.js";
+import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
@@ -250,6 +251,7 @@ export class ScanAccountHandler {
             : "presence unknown",
     });
     await appendHypixelLiveEvents(this.db, liveEvents).catch(() => undefined);
+    await notifyDiscordForLiveEvents(this.db, liveEvents).catch(() => undefined);
 
     const enqueued = await this.enqueueProcessScan(success.id);
     const slots = extractBookSlots(fetched.rawInventory);

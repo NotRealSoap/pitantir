@@ -331,6 +331,184 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
   );
 }
 
+type DiscordWebhookPayload = {
+  configured?: boolean;
+  webhookUrlMasked?: string | null;
+  notifyCameOnline?: boolean;
+  notifyWentOffline?: boolean;
+  notifyInventoryChanged?: boolean;
+  ok?: boolean;
+  message?: string;
+  error?: string;
+};
+
+function DiscordWebhookPanel() {
+  const [status, setStatus] = useState<DiscordWebhookPayload | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [notifyCameOnline, setNotifyCameOnline] = useState(true);
+  const [notifyWentOffline, setNotifyWentOffline] = useState(false);
+  const [notifyInventoryChanged, setNotifyInventoryChanged] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/discord-webhook");
+      const payload = (await response.json()) as DiscordWebhookPayload;
+      if (!response.ok) {
+        setStatus(null);
+        return;
+      }
+      setStatus(payload);
+      setNotifyCameOnline(payload.notifyCameOnline ?? true);
+      setNotifyWentOffline(payload.notifyWentOffline ?? false);
+      setNotifyInventoryChanged(payload.notifyInventoryChanged ?? true);
+    } catch {
+      setStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function run(body: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/discord-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as DiscordWebhookPayload;
+      if (!response.ok || payload.ok === false) {
+        setError(payload.error ?? "Request failed.");
+        return;
+      }
+      setStatus(payload);
+      setMessage(payload.message ?? "Saved.");
+      setNotifyCameOnline(payload.notifyCameOnline ?? notifyCameOnline);
+      setNotifyWentOffline(payload.notifyWentOffline ?? notifyWentOffline);
+      setNotifyInventoryChanged(payload.notifyInventoryChanged ?? notifyInventoryChanged);
+      if (body.action === "save" && typeof body.webhookUrl === "string" && body.webhookUrl) {
+        setWebhookUrl("");
+      }
+    } catch {
+      setError("Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Discord webhook
+      </h2>
+      <p className="muted">
+        Post a channel notification when a watched player comes online. Optionally also notify on
+        inventory moves or offline transitions. The worker sends these after each scan.
+      </p>
+      <p>
+        Status:{" "}
+        <span className="chip">
+          {status == null ? "Checking…" : status.configured ? "configured" : "not configured"}
+        </span>
+      </p>
+      {status?.webhookUrlMasked ? (
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
+          Saved URL: <code>{status.webhookUrlMasked}</code>
+        </p>
+      ) : null}
+
+      <form
+        className="form-stack"
+        style={{ marginTop: "0.75rem", maxWidth: "100%" }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void run({
+            action: "save",
+            webhookUrl: webhookUrl.trim() || undefined,
+            notifyCameOnline,
+            notifyWentOffline,
+            notifyInventoryChanged,
+          });
+        }}
+      >
+        <label>
+          Webhook URL
+          <input
+            type="password"
+            autoComplete="off"
+            value={webhookUrl}
+            onChange={(event) => setWebhookUrl(event.target.value)}
+            placeholder={
+              status?.configured
+                ? "Paste a new URL to replace"
+                : "https://discord.com/api/webhooks/…"
+            }
+          />
+        </label>
+
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={notifyCameOnline}
+            onChange={(event) => setNotifyCameOnline(event.target.checked)}
+          />
+          Notify when a player comes online
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={notifyInventoryChanged}
+            onChange={(event) => setNotifyInventoryChanged(event.target.checked)}
+          />
+          Notify on inventory changes
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={notifyWentOffline}
+            onChange={(event) => setNotifyWentOffline(event.target.checked)}
+          />
+          Notify when a player goes offline
+        </label>
+
+        <div className="row-actions">
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? "Saving…" : status?.configured ? "Save changes" : "Save webhook"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured}
+            onClick={() => void run({ action: "test" })}
+          >
+            Send test
+          </button>
+          <button
+            type="button"
+            disabled={busy || !status?.configured}
+            onClick={() => void run({ action: "clear" })}
+          >
+            Clear
+          </button>
+        </div>
+      </form>
+
+      {message ? <p role="status">{message}</p> : null}
+      {error ? (
+        <p role="alert" className="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const [pitpandaConfigured, setPitpandaConfigured] = useState<boolean | null>(null);
   const [hypixelConfigured, setHypixelConfigured] = useState<boolean | null>(null);
@@ -389,6 +567,8 @@ export default function SettingsPage() {
 
       <HypixelUsagePanel enabled={Boolean(hypixelConfigured)} />
 
+      <DiscordWebhookPanel />
+
       <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
         <h2 className="section-title" style={{ marginTop: 0 }}>
           Notes
@@ -407,6 +587,10 @@ export default function SettingsPage() {
             Online status uses <code>lastLogin</code>/<code>lastLogout</code> from each inventory
             scan (free). For Hypixel’s more accurate <code>/v2/status</code> (extra request per
             scan), set <code>HYPIXEL_STATUS_CHECKS=true</code> on the worker.
+          </li>
+          <li>
+            Discord webhooks fire from the worker when a watched account comes online (and optionally
+            for inventory / offline). Create a webhook in Discord channel settings → Integrations.
           </li>
         </ul>
       </section>
