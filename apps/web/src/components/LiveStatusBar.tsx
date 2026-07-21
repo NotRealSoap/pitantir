@@ -117,13 +117,22 @@ export function LiveStatusBar() {
     }
 
     void load();
-    // 2s is enough for the strip; local reset countdown still ticks every 1s.
-    const pollId = window.setInterval(() => void load(), 2_000);
+    // Server poll every 8s; local reset countdown still ticks every 1s.
+    // Skip polls while the tab is hidden so the Next.js terminal isn't flooded.
+    const pollId = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, 8_000);
     const tickId = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(pollId);
       window.clearInterval(tickId);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
