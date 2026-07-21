@@ -9,6 +9,7 @@ import {
 } from "@pitantir/shared/live-signal-copy";
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
+import { notesIndicate140er } from "./furry-stashes.js";
 import { resolveEffectivePresence } from "./presence.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
@@ -55,9 +56,16 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    * Messages are append-only — never deleted by the dashboard refresher.
    */
   pitpalStatusWebhookUrl: string | null;
+  /**
+   * Optional second roster dashboard: effectively-online accounts that are NOT 140er-labelled.
+   * Edited in place like the main online dashboard.
+   */
+  non140erDashboardWebhookUrl: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
   onlineDashboardRosterKey: string | null;
+  non140erDashboardMessageId: string | null;
+  non140erDashboardRosterKey: string | null;
   /** Per-watchlist-player overrides (missing player → global defaults). */
   playerRules: DiscordPlayerRule[];
 };
@@ -98,10 +106,13 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   inventoryWebhookUrl: null,
   itemMovesWebhookUrl: null,
   pitpalStatusWebhookUrl: null,
+  non140erDashboardWebhookUrl: null,
   ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
   onlineDashboardRosterKey: null,
+  non140erDashboardMessageId: null,
+  non140erDashboardRosterKey: null,
   playerRules: [],
 };
 
@@ -192,6 +203,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     inventoryWebhookUrl,
     itemMovesWebhookUrl,
     pitpalStatusWebhookUrl,
+    non140erDashboardWebhookUrl: readUrl(row.non140erDashboardWebhookUrl),
     notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
     notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
     notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
@@ -211,6 +223,12 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
         : null,
     onlineDashboardRosterKey:
       typeof row.onlineDashboardRosterKey === "string" ? row.onlineDashboardRosterKey : null,
+    non140erDashboardMessageId:
+      typeof row.non140erDashboardMessageId === "string" && row.non140erDashboardMessageId.trim()
+        ? row.non140erDashboardMessageId.trim()
+        : null,
+    non140erDashboardRosterKey:
+      typeof row.non140erDashboardRosterKey === "string" ? row.non140erDashboardRosterKey : null,
     playerRules,
   };
 }
@@ -297,6 +315,7 @@ export async function setDiscordWebhookSettings(
     inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
+    non140erDashboardWebhookUrl: settings.non140erDashboardWebhookUrl?.trim() || null,
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
@@ -306,6 +325,8 @@ export async function setDiscordWebhookSettings(
     onlineDashboardEnabled: Boolean(settings.onlineDashboardEnabled),
     onlineDashboardMessageId: settings.onlineDashboardMessageId?.trim() || null,
     onlineDashboardRosterKey: settings.onlineDashboardRosterKey ?? null,
+    non140erDashboardMessageId: settings.non140erDashboardMessageId?.trim() || null,
+    non140erDashboardRosterKey: settings.non140erDashboardRosterKey ?? null,
     playerRules: (settings.playerRules ?? [])
       .map((rule) => normalizePlayerRule(rule))
       .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
@@ -315,9 +336,14 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.inventoryWebhookUrl, "Inventory webhook");
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
+  assertOptionalWebhook(next.non140erDashboardWebhookUrl, "Non-140er dashboard webhook");
   if (!next.presenceWebhookUrl) {
     next.onlineDashboardMessageId = null;
     next.onlineDashboardRosterKey = null;
+  }
+  if (!next.non140erDashboardWebhookUrl) {
+    next.non140erDashboardMessageId = null;
+    next.non140erDashboardRosterKey = null;
   }
 
   // Merge onto existing JSON so unknown/future keys are not dropped.
@@ -337,7 +363,8 @@ export async function setDiscordWebhookSettings(
       !next.presenceWebhookUrl &&
       !next.presenceAlertsWebhookUrl &&
       !next.inventoryWebhookUrl &&
-      !next.itemMovesWebhookUrl;
+      !next.itemMovesWebhookUrl &&
+      !next.non140erDashboardWebhookUrl;
     if (clearingAllChannels) {
       await deleteAdminSetting(db, DISCORD_PITPAL_STATUS_WEBHOOK_KEY);
     } else {
@@ -371,6 +398,8 @@ export async function setDiscordOnlineDashboardMeta(
   meta: {
     onlineDashboardMessageId?: string | null;
     onlineDashboardRosterKey?: string | null;
+    non140erDashboardMessageId?: string | null;
+    non140erDashboardRosterKey?: string | null;
   },
 ): Promise<void> {
   const current = await getDiscordWebhookSettings(db);
@@ -384,6 +413,14 @@ export async function setDiscordOnlineDashboardMeta(
       meta.onlineDashboardRosterKey !== undefined
         ? meta.onlineDashboardRosterKey
         : current.onlineDashboardRosterKey,
+    non140erDashboardMessageId:
+      meta.non140erDashboardMessageId !== undefined
+        ? meta.non140erDashboardMessageId
+        : current.non140erDashboardMessageId,
+    non140erDashboardRosterKey:
+      meta.non140erDashboardRosterKey !== undefined
+        ? meta.non140erDashboardRosterKey
+        : current.non140erDashboardRosterKey,
   });
 }
 
@@ -446,7 +483,8 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
       settings.presenceAlertsWebhookUrl ||
       settings.inventoryWebhookUrl ||
       settings.itemMovesWebhookUrl ||
-      settings.pitpalStatusWebhookUrl,
+      settings.pitpalStatusWebhookUrl ||
+      settings.non140erDashboardWebhookUrl,
   );
 }
 
@@ -634,16 +672,30 @@ export function rosterKeyFor(entries: OnlineRosterEntry[]): string {
     .join("\n");
 }
 
+export type OnlineDashboardPayloadOptions = {
+  /** Headline prefix before the count, e.g. "Online now" or "Non-140er online". */
+  headline?: string;
+  /** Embed title prefix before "· N". */
+  title?: string;
+  emptyMessage?: string;
+  footer?: string;
+};
+
 export function buildOnlineDashboardPayload(
   entries: OnlineRosterEntry[],
   updatedAt: string,
+  options?: OnlineDashboardPayloadOptions,
 ): { content: string; embeds: Array<Record<string, unknown>> } {
+  const headline = options?.headline ?? "Online now";
+  const title = options?.title ?? "Watchlist online";
+  const emptyMessage = options?.emptyMessage ?? "_Nobody on the watchlist is online._";
+  const footer = options?.footer ?? "Pitantir online dashboard · edited in place";
   const sorted = [...entries].sort((a, b) =>
     a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" }),
   );
   const lines =
     sorted.length === 0
-      ? ["_Nobody on the watchlist is online._"]
+      ? [emptyMessage]
       : sorted.map((entry) => {
           const bits = [
             entry.lobby,
@@ -658,14 +710,14 @@ export function buildOnlineDashboardPayload(
         });
   const body = lines.join("\n");
   return {
-    content: `**Online now (${sorted.length})**\n${body}`.slice(0, 2000),
+    content: `**${headline} (${sorted.length})**\n${body}`.slice(0, 2000),
     embeds: [
       {
-        title: `Watchlist online · ${sorted.length}`,
+        title: `${title} · ${sorted.length}`,
         description: body.slice(0, 4096),
         color: 0x57f287,
         timestamp: updatedAt,
-        footer: { text: "Pitantir online dashboard · edited in place" },
+        footer: { text: footer },
       },
     ],
   };
@@ -770,8 +822,48 @@ async function postRawDiscordWebhook(
     : { ok: true, status: result.status };
 }
 
+async function upsertDashboardMessage(options: {
+  db: Database;
+  webhookUrl: string;
+  messageId: string | null;
+  rosterKey: string | null;
+  nextKey: string;
+  payload: { content: string; embeds: Array<Record<string, unknown>> };
+  force: boolean;
+  messageIdField: "onlineDashboardMessageId" | "non140erDashboardMessageId";
+  rosterKeyField: "onlineDashboardRosterKey" | "non140erDashboardRosterKey";
+}): Promise<void> {
+  if (!options.force && options.nextKey === options.rosterKey && options.messageId) {
+    return;
+  }
+
+  if (options.messageId) {
+    const edited = await editDiscordWebhookMessage(
+      options.webhookUrl,
+      options.messageId,
+      options.payload,
+    );
+    if (edited) {
+      await setDiscordOnlineDashboardMeta(options.db, {
+        [options.rosterKeyField]: options.nextKey,
+      });
+      return;
+    }
+  }
+
+  const posted = await postRawDiscordWebhook(options.webhookUrl, options.payload);
+  if (!posted.ok || !posted.messageId) return;
+
+  await setDiscordOnlineDashboardMeta(options.db, {
+    [options.messageIdField]: posted.messageId,
+    [options.rosterKeyField]: options.nextKey,
+  });
+}
+
 /**
- * Update the presence-channel online roster in place (PATCH).
+ * Update roster dashboards in place (PATCH).
+ * Main presence channel: all effectively-online watchlist accounts.
+ * Optional non-140er channel: same roster minus 140er-labelled notes.
  * Only creates a new message when none exists or edit fails — never deletes.
  */
 export async function refreshDiscordOnlineDashboard(
@@ -779,11 +871,10 @@ export async function refreshDiscordOnlineDashboard(
   options?: { force?: boolean },
 ): Promise<void> {
   const settings = await getDiscordWebhookSettings(db);
-  const webhookUrl = settings.presenceWebhookUrl;
-  if (!webhookUrl || !settings.onlineDashboardEnabled) return;
+  if (!settings.onlineDashboardEnabled) return;
 
   const repo = new AccountsRepository(db);
-  const online = (await repo.listWatchlist())
+  const onlineWithNotes = (await repo.listWatchlist())
     .map((row) => {
       const presence = resolveEffectivePresence(row);
       if (!presence.online) return null;
@@ -796,41 +887,52 @@ export async function refreshDiscordOnlineDashboard(
         armorType: row.lastPitpalArmorType,
         killStreak: row.lastPitpalKillstreak,
         apiOff: presence.apiOff,
+        notes: row.notes,
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
-  const nextKey = rosterKeyFor(online);
-  if (
-    !options?.force &&
-    nextKey === settings.onlineDashboardRosterKey &&
-    settings.onlineDashboardMessageId
-  ) {
-    return;
+
+  const online: OnlineRosterEntry[] = onlineWithNotes.map(
+    ({ notes: _notes, ...entry }) => entry,
+  );
+  const non140er: OnlineRosterEntry[] = onlineWithNotes
+    .filter((row) => !notesIndicate140er(row.notes))
+    .map(({ notes: _notes, ...entry }) => entry);
+
+  const updatedAt = new Date().toISOString();
+
+  if (settings.presenceWebhookUrl) {
+    await upsertDashboardMessage({
+      db,
+      webhookUrl: settings.presenceWebhookUrl,
+      messageId: settings.onlineDashboardMessageId,
+      rosterKey: settings.onlineDashboardRosterKey,
+      nextKey: rosterKeyFor(online),
+      payload: buildOnlineDashboardPayload(online, updatedAt),
+      force: Boolean(options?.force),
+      messageIdField: "onlineDashboardMessageId",
+      rosterKeyField: "onlineDashboardRosterKey",
+    });
   }
 
-  const payload = buildOnlineDashboardPayload(online, new Date().toISOString());
-
-  if (settings.onlineDashboardMessageId) {
-    const edited = await editDiscordWebhookMessage(
-      webhookUrl,
-      settings.onlineDashboardMessageId,
-      payload,
-    );
-    if (edited) {
-      await setDiscordOnlineDashboardMeta(db, {
-        onlineDashboardRosterKey: nextKey,
-      });
-      return;
-    }
+  if (settings.non140erDashboardWebhookUrl) {
+    await upsertDashboardMessage({
+      db,
+      webhookUrl: settings.non140erDashboardWebhookUrl,
+      messageId: settings.non140erDashboardMessageId,
+      rosterKey: settings.non140erDashboardRosterKey,
+      nextKey: rosterKeyFor(non140er),
+      payload: buildOnlineDashboardPayload(non140er, updatedAt, {
+        headline: "Non-140er online",
+        title: "Non-140er online",
+        emptyMessage: "_No non-140er watchlist accounts are online._",
+        footer: "Pitantir non-140er dashboard · edited in place",
+      }),
+      force: Boolean(options?.force),
+      messageIdField: "non140erDashboardMessageId",
+      rosterKeyField: "non140erDashboardRosterKey",
+    });
   }
-
-  const posted = await postRawDiscordWebhook(webhookUrl, payload);
-  if (!posted.ok || !posted.messageId) return;
-
-  await setDiscordOnlineDashboardMeta(db, {
-    onlineDashboardMessageId: posted.messageId,
-    onlineDashboardRosterKey: nextKey,
-  });
 }
 
 export type DiscordScanNotifyContext = {

@@ -349,6 +349,7 @@ type DiscordWebhookPayload = {
   inventoryWebhookUrlMasked?: string | null;
   itemMovesWebhookUrlMasked?: string | null;
   pitpalStatusWebhookUrlMasked?: string | null;
+  non140erDashboardWebhookUrlMasked?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyEveryOnlineScan?: boolean;
@@ -357,6 +358,7 @@ type DiscordWebhookPayload = {
   notifyPitpalStatusChanges?: boolean;
   onlineDashboardEnabled?: boolean;
   onlineDashboardConfigured?: boolean;
+  non140erDashboardConfigured?: boolean;
   playerRules?: DiscordPlayerRuleState[];
   watchlist?: Array<{ id: string; mcUsername: string }>;
   ok?: boolean;
@@ -416,6 +418,7 @@ function DiscordWebhookPanel() {
   const [inventoryWebhookUrl, setInventoryWebhookUrl] = useState("");
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
+  const [non140erDashboardWebhookUrl, setNon140erDashboardWebhookUrl] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
@@ -495,6 +498,7 @@ function DiscordWebhookPanel() {
         setInventoryWebhookUrl("");
         setItemMovesWebhookUrl("");
         setPitpalStatusWebhookUrl("");
+        setNon140erDashboardWebhookUrl("");
       }
     } catch {
       setError("Request failed.");
@@ -529,6 +533,7 @@ function DiscordWebhookPanel() {
       </h2>
       <p className="muted">
         Use <strong>dedicated channels</strong>. Online dashboard = roster only (edited in place).
+        Non-140er dashboard = same roster minus players whose notes contain <code>140er</code>.
         Online/offline alerts = Hypixel came-online / went-offline / still-online index pings. PitPal
         status = lobbies changes (append-only). Leave a URL blank to keep the saved value.
       </p>
@@ -557,6 +562,16 @@ function DiscordWebhookPanel() {
             dashboard live
           </span>
         ) : null}
+        {status?.non140erDashboardWebhookUrlMasked ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            non-140er saved
+          </span>
+        ) : null}
+        {status?.non140erDashboardConfigured ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            non-140er live
+          </span>
+        ) : null}
       </p>
 
       <form
@@ -572,6 +587,7 @@ function DiscordWebhookPanel() {
             inventoryWebhookUrl: inventoryWebhookUrl.trim() || undefined,
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
+            non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
             notifyCameOnline,
             notifyWentOffline,
             notifyEveryOnlineScan,
@@ -595,6 +611,21 @@ function DiscordWebhookPanel() {
               status?.presenceWebhookUrlMasked
                 ? `Saved: ${status.presenceWebhookUrlMasked}`
                 : "https://discord.com/api/webhooks/…"
+            }
+          />
+        </label>
+        <label>
+          Non-140er roster dashboard webhook (excludes notes with 140er · edited in place)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={non140erDashboardWebhookUrl}
+            onChange={(event) => setNon140erDashboardWebhookUrl(event.target.value)}
+            placeholder={
+              status?.non140erDashboardWebhookUrlMasked
+                ? `Saved: ${status.non140erDashboardWebhookUrlMasked}`
+                : "Optional — separate channel for non-140er online roster"
             }
           />
         </label>
@@ -879,6 +910,22 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
+            disabled={
+              busy ||
+              (!status?.non140erDashboardWebhookUrlMasked && !non140erDashboardWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "non140erDashboard",
+                webhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
+              })
+            }
+          >
+            Test non-140er dashboard
+          </button>
+          <button
+            type="button"
             disabled={busy || (!status?.configured && !itemMovesWebhookUrl.trim())}
             onClick={() =>
               void run({
@@ -934,10 +981,16 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
-            disabled={busy || !status?.configured || !onlineDashboardEnabled}
+            disabled={
+              busy ||
+              !onlineDashboardEnabled ||
+              (!status?.presenceWebhookUrlMasked &&
+                !status?.non140erDashboardWebhookUrlMasked &&
+                !status?.configured)
+            }
             onClick={() => void run({ action: "refresh_dashboard" })}
           >
-            Refresh dashboard
+            Refresh dashboard(s)
           </button>
           <button
             type="button"

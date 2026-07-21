@@ -68,6 +68,19 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.notifyEveryOnlineScan).toBe(true);
     expect(settings.notifyPitpalStatusChanges).toBe(true);
     expect(settings.pitpalStatusWebhookUrl).toBeNull();
+    expect(settings.non140erDashboardWebhookUrl).toBeNull();
+  });
+
+  it("reads non-140er dashboard webhook settings", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      non140erDashboardWebhookUrl:
+        "https://discord.com/api/webhooks/9/abcdefghijklmnopqrstuv",
+      non140erDashboardMessageId: "msg-1",
+      non140erDashboardRosterKey: "Amy\t\t\t\t",
+    });
+    expect(settings.non140erDashboardWebhookUrl).toContain("/webhooks/9/");
+    expect(settings.non140erDashboardMessageId).toBe("msg-1");
+    expect(settings.non140erDashboardRosterKey).toBe("Amy\t\t\t\t");
   });
 
   it("repairs legacy player rules that stored notifyPitpalStatusChanges as false", () => {
@@ -242,5 +255,21 @@ describe("online dashboard", () => {
     );
     expect(payload.content).toContain("NEYREGLA");
     expect(payload.content).toContain("API Off");
+  });
+
+  it("supports non-140er dashboard labeling", () => {
+    const payload = buildOnlineDashboardPayload(
+      [{ mcUsername: "Trader" }],
+      "2026-07-21T12:00:00.000Z",
+      {
+        headline: "Non-140er online",
+        title: "Non-140er online",
+        emptyMessage: "_No non-140er watchlist accounts are online._",
+        footer: "Pitantir non-140er dashboard · edited in place",
+      },
+    );
+    expect(payload.content).toContain("Non-140er online (1)");
+    expect(payload.embeds[0]?.title).toBe("Non-140er online · 1");
+    expect((payload.embeds[0]?.footer as { text: string }).text).toContain("non-140er");
   });
 });
