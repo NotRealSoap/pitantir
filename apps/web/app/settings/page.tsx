@@ -374,6 +374,9 @@ type DiscordWebhookPayload = {
   pitpalStatusWebhookUrlMasked?: string | null;
   non140erDashboardWebhookUrlMasked?: string | null;
   opsAlertDiscordUserId?: string | null;
+  downwatchRoleId?: string | null;
+  downwatchChannelId?: string | null;
+  downwatchWebhookUrlMasked?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyEveryOnlineScan?: boolean;
@@ -444,6 +447,9 @@ function DiscordWebhookPanel() {
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
   const [non140erDashboardWebhookUrl, setNon140erDashboardWebhookUrl] = useState("");
   const [opsAlertDiscordUserId, setOpsAlertDiscordUserId] = useState("");
+  const [downwatchRoleId, setDownwatchRoleId] = useState("");
+  const [downwatchChannelId, setDownwatchChannelId] = useState("");
+  const [downwatchWebhookUrl, setDownwatchWebhookUrl] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
@@ -478,6 +484,8 @@ function DiscordWebhookPanel() {
     setNotifyPitpalStatusChanges(defaults.notifyPitpalStatusChanges);
     setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
     setOpsAlertDiscordUserId(payload.opsAlertDiscordUserId ?? "");
+    setDownwatchRoleId(payload.downwatchRoleId ?? "");
+    setDownwatchChannelId(payload.downwatchChannelId ?? "");
     setPlayerRows(
       buildPlayerRows(payload.watchlist ?? [], payload.playerRules ?? [], defaults),
     );
@@ -525,6 +533,7 @@ function DiscordWebhookPanel() {
         setItemMovesWebhookUrl("");
         setPitpalStatusWebhookUrl("");
         setNon140erDashboardWebhookUrl("");
+        setDownwatchWebhookUrl("");
       }
     } catch {
       setError("Request failed.");
@@ -615,7 +624,10 @@ function DiscordWebhookPanel() {
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
             non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
+            downwatchWebhookUrl: downwatchWebhookUrl.trim() || undefined,
             opsAlertDiscordUserId: opsAlertDiscordUserId.trim(),
+            downwatchRoleId: downwatchRoleId.trim(),
+            downwatchChannelId: downwatchChannelId.trim(),
             notifyCameOnline,
             notifyWentOffline,
             notifyEveryOnlineScan,
@@ -670,6 +682,53 @@ function DiscordWebhookPanel() {
               status?.opsAlertDiscordUserId
                 ? `Saved: ${status.opsAlertDiscordUserId}`
                 : "Discord Developer Mode → Copy User ID (17–20 digits)"
+            }
+          />
+        </label>
+        <label>
+          Downwatch role ID (pinged when listed players go PitPal DOWN)
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            value={downwatchRoleId}
+            onChange={(event) => setDownwatchRoleId(event.target.value)}
+            placeholder={
+              status?.downwatchRoleId
+                ? `Saved: ${status.downwatchRoleId}`
+                : "Discord Developer Mode → Copy Role ID"
+            }
+          />
+        </label>
+        <label>
+          Downwatch command channel ID (`!downwatch add IGN` · needs DISCORD_BOT_TOKEN)
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            value={downwatchChannelId}
+            onChange={(event) => setDownwatchChannelId(event.target.value)}
+            placeholder={
+              status?.downwatchChannelId
+                ? `Saved: ${status.downwatchChannelId}`
+                : "Channel the worker polls for commands"
+            }
+          />
+        </label>
+        <label>
+          Downwatch webhook (DOWN role pings · optional)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={downwatchWebhookUrl}
+            onChange={(event) => setDownwatchWebhookUrl(event.target.value)}
+            placeholder={
+              status?.downwatchWebhookUrlMasked
+                ? `Saved: ${status.downwatchWebhookUrlMasked}`
+                : "Optional — falls back to PitPal status / alerts"
             }
           />
         </label>
@@ -1056,6 +1115,153 @@ function DiscordWebhookPanel() {
   );
 }
 
+function DownwatchPanel() {
+  const [entries, setEntries] = useState<Array<{ mcUsername: string; addedAt: string }>>([]);
+  const [ign, setIgn] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [botConfigured, setBotConfigured] = useState(false);
+  const [roleId, setRoleId] = useState<string | null>(null);
+  const [channelId, setChannelId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/downwatch");
+      const payload = (await response.json()) as {
+        entries?: Array<{ mcUsername: string; addedAt: string }>;
+        botTokenConfigured?: boolean;
+        downwatchRoleId?: string | null;
+        downwatchChannelId?: string | null;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(payload.error ?? "Unable to load downwatch.");
+        return;
+      }
+      setEntries(payload.entries ?? []);
+      setBotConfigured(Boolean(payload.botTokenConfigured));
+      setRoleId(payload.downwatchRoleId ?? null);
+      setChannelId(payload.downwatchChannelId ?? null);
+    } catch {
+      setError("Unable to load downwatch.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function run(action: "add" | "remove", mcUsername: string) {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/downwatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, mcUsername }),
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        entries?: Array<{ mcUsername: string; addedAt: string }>;
+      };
+      if (!response.ok || payload.ok === false) {
+        setError(payload.error ?? "Request failed.");
+        return;
+      }
+      setEntries(payload.entries ?? []);
+      setMessage(payload.message ?? "Updated.");
+      setIgn("");
+    } catch {
+      setError("Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "52rem" }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Downwatch
+      </h2>
+      <p className="muted">
+        Special list: when a listed player goes PitPal <code>DOWN</code>, Discord pings a role.
+        Manage from Settings or Discord: <code>!downwatch add IGN</code> / <code>!dw remove IGN</code>{" "}
+        / <code>!downwatch list</code> in the command channel (worker polls with{" "}
+        <code>DISCORD_BOT_TOKEN</code>).
+      </p>
+      <p>
+        Status:{" "}
+        <span className="chip">{botConfigured ? "bot token set" : "bot token missing"}</span>
+        {roleId ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            role configured
+          </span>
+        ) : null}
+        {channelId ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            channel configured
+          </span>
+        ) : null}
+        <span className="chip" style={{ marginLeft: "0.35rem" }}>
+          {entries.length} watched
+        </span>
+      </p>
+      <form
+        className="form-stack"
+        style={{ marginTop: "0.75rem", maxWidth: "24rem" }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ign.trim()) void run("add", ign.trim());
+        }}
+      >
+        <label>
+          Add IGN
+          <input
+            value={ign}
+            onChange={(event) => setIgn(event.target.value)}
+            placeholder="MinecraftUsername"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="row-actions">
+          <button type="submit" className="primary" disabled={busy || !ign.trim()}>
+            {busy ? "Saving…" : "Add to downwatch"}
+          </button>
+        </div>
+      </form>
+      {entries.length === 0 ? (
+        <p className="muted">No downwatch accounts yet.</p>
+      ) : (
+        <ul style={{ marginTop: "0.75rem", paddingLeft: "1.1rem" }}>
+          {entries.map((entry) => (
+            <li key={entry.mcUsername} style={{ marginBottom: "0.35rem" }}>
+              <strong>{entry.mcUsername}</strong>{" "}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run("remove", entry.mcUsername)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message ? <p role="status">{message}</p> : null}
+      {error ? (
+        <p role="alert" className="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function PitPalBridgePanel() {
   const [snapshot, setSnapshot] = useState<{
     observedAt?: string | null;
@@ -1219,6 +1425,8 @@ export default function SettingsPage() {
       <HypixelUsagePanel enabled={Boolean(hypixelConfigured)} />
 
       <DiscordWebhookPanel />
+
+      <DownwatchPanel />
 
       <PitPalBridgePanel />
 

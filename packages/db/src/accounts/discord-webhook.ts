@@ -10,6 +10,7 @@ import {
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
 import { notesIndicate140er } from "./notes-labels.js";
+import { eventIndicatesWentDown, getDownwatchState, isOnDownwatch } from "./downwatch.js";
 import { resolveEffectivePresence } from "./presence.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
@@ -66,6 +67,18 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    * Username alone cannot ping — paste User ID from Discord Developer Mode.
    */
   opsAlertDiscordUserId: string | null;
+  /**
+   * Role snowflake pinged when a downwatch-listed account goes PitPal DOWN.
+   */
+  downwatchRoleId: string | null;
+  /**
+   * Channel the worker polls for `!downwatch` / `!dw` commands (requires DISCORD_BOT_TOKEN).
+   */
+  downwatchChannelId: string | null;
+  /**
+   * Optional webhook for DOWN role pings. Falls back to PitPal status, then alerts.
+   */
+  downwatchWebhookUrl: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
   onlineDashboardRosterKey: string | null;
@@ -113,6 +126,9 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   pitpalStatusWebhookUrl: null,
   non140erDashboardWebhookUrl: null,
   opsAlertDiscordUserId: null,
+  downwatchRoleId: null,
+  downwatchChannelId: null,
+  downwatchWebhookUrl: null,
   ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
@@ -128,6 +144,10 @@ export const OPS_ALERT_DISCORD_USERNAME = "ambienangel";
 const DISCORD_USER_ID_RE = /^\d{17,20}$/;
 
 export function isDiscordUserId(value: string): boolean {
+  return DISCORD_USER_ID_RE.test(value.trim());
+}
+
+export function isDiscordSnowflakeId(value: string): boolean {
   return DISCORD_USER_ID_RE.test(value.trim());
 }
 
@@ -224,6 +244,15 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
         typeof row.opsAlertDiscordUserId === "string" ? row.opsAlertDiscordUserId.trim() : "";
       return raw && isDiscordUserId(raw) ? raw : null;
     })(),
+    downwatchRoleId: (() => {
+      const raw = typeof row.downwatchRoleId === "string" ? row.downwatchRoleId.trim() : "";
+      return raw && isDiscordSnowflakeId(raw) ? raw : null;
+    })(),
+    downwatchChannelId: (() => {
+      const raw = typeof row.downwatchChannelId === "string" ? row.downwatchChannelId.trim() : "";
+      return raw && isDiscordSnowflakeId(raw) ? raw : null;
+    })(),
+    downwatchWebhookUrl: readUrl(row.downwatchWebhookUrl),
     notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
     notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
     notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
@@ -340,6 +369,15 @@ export async function setDiscordWebhookSettings(
       const raw = settings.opsAlertDiscordUserId?.trim() || "";
       return raw && isDiscordUserId(raw) ? raw : null;
     })(),
+    downwatchRoleId: (() => {
+      const raw = settings.downwatchRoleId?.trim() || "";
+      return raw && isDiscordSnowflakeId(raw) ? raw : null;
+    })(),
+    downwatchChannelId: (() => {
+      const raw = settings.downwatchChannelId?.trim() || "";
+      return raw && isDiscordSnowflakeId(raw) ? raw : null;
+    })(),
+    downwatchWebhookUrl: settings.downwatchWebhookUrl?.trim() || null,
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
@@ -361,6 +399,7 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
   assertOptionalWebhook(next.non140erDashboardWebhookUrl, "Non-140er dashboard webhook");
+  assertOptionalWebhook(next.downwatchWebhookUrl, "Downwatch webhook");
   if (!next.presenceWebhookUrl) {
     next.onlineDashboardMessageId = null;
     next.onlineDashboardRosterKey = null;
@@ -388,7 +427,8 @@ export async function setDiscordWebhookSettings(
       !next.presenceAlertsWebhookUrl &&
       !next.inventoryWebhookUrl &&
       !next.itemMovesWebhookUrl &&
-      !next.non140erDashboardWebhookUrl;
+      !next.non140erDashboardWebhookUrl &&
+      !next.downwatchWebhookUrl;
     if (clearingAllChannels) {
       await deleteAdminSetting(db, DISCORD_PITPAL_STATUS_WEBHOOK_KEY);
     } else {
@@ -508,7 +548,8 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
       settings.inventoryWebhookUrl ||
       settings.itemMovesWebhookUrl ||
       settings.pitpalStatusWebhookUrl ||
-      settings.non140erDashboardWebhookUrl,
+      settings.non140erDashboardWebhookUrl ||
+      settings.downwatchWebhookUrl,
   );
 }
 
@@ -1111,6 +1152,65 @@ export async function notifyPitpalStatusEvents(
       const rule = settings.playerRules.find((row) => row.accountId === event.accountId);
       if (rule && rule.notifyPitpalStatusChanges === false) continue;
       const result = await postDiscordWebhook(url, event);
+      if (result.ok) posted += 1;
+    }
+    return posted;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Role-ping when a downwatch-listed account transitions to PitPal DOWN.
+ * Independent of per-player PitPal mute flags (140er rules still get this ping).
+ */
+export async function notifyDownwatchWentDown(
+  db: Database,
+  events: DiscordNotifyEvent[],
+): Promise<number> {
+  try {
+    const downEvents = events.filter(eventIndicatesWentDown);
+    if (downEvents.length === 0) return 0;
+
+    const [settings, state] = await Promise.all([
+      getDiscordWebhookSettings(db),
+      getDownwatchState(db),
+    ]);
+    if (state.entries.length === 0) return 0;
+
+    const roleId =
+      settings.downwatchRoleId?.trim() ||
+      (process.env.DISCORD_DOWNWATCH_ROLE_ID ?? "").trim() ||
+      null;
+    if (!roleId || !isDiscordSnowflakeId(roleId)) return 0;
+
+    const webhookUrl =
+      settings.downwatchWebhookUrl ||
+      settings.pitpalStatusWebhookUrl ||
+      settings.presenceAlertsWebhookUrl ||
+      settings.presenceWebhookUrl;
+    if (!webhookUrl) return 0;
+
+    let posted = 0;
+    for (const event of downEvents) {
+      if (!isOnDownwatch(state, event.mcUsername)) continue;
+      const mention = `<@&${roleId}>`;
+      const detail = event.detail?.trim() || "DOWN";
+      const content =
+        `${mention} **${event.mcUsername}** went DOWN · ${detail}`.slice(0, 2000);
+      const result = await postRawDiscordWebhook(webhookUrl, {
+        content,
+        embeds: [
+          {
+            title: `${event.mcUsername} · DOWN`,
+            description: detail.slice(0, 1000),
+            color: 0xed4245,
+            timestamp: event.at ?? new Date().toISOString(),
+            footer: { text: "Pitantir downwatch" },
+          },
+        ],
+        allowed_mentions: { parse: [], roles: [roleId] },
+      });
       if (result.ok) posted += 1;
     }
     return posted;

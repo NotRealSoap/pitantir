@@ -244,7 +244,7 @@ export async function runWorkerMain(): Promise<void> {
   }
 
   const pollMs = envInt("WORKER_POLL_MS", DEFAULT_POLL_MS);
-  const { client, scheduler, loop, workerId, inventory } =
+  const { client, scheduler, loop, workerId, inventory, db } =
     await createWorkerRuntime(connectionString);
 
   console.log(
@@ -253,6 +253,7 @@ export async function runWorkerMain(): Promise<void> {
       workerId,
       pollMs,
       inventorySource: inventory.id,
+      downwatchDiscord: Boolean(process.env.DISCORD_BOT_TOKEN?.trim()),
     }),
   );
 
@@ -263,10 +264,38 @@ export async function runWorkerMain(): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  let lastDownwatchPollAt = 0;
+  const downwatchPollMs = envInt("DOWNWATCH_DISCORD_POLL_MS", 5_000);
+
   try {
     while (!stopping) {
       await scheduler.tick();
       const claimed = await loop.tick();
+
+      const nowMs = Date.now();
+      if (nowMs - lastDownwatchPollAt >= downwatchPollMs) {
+        lastDownwatchPollAt = nowMs;
+        try {
+          const { pollDownwatchDiscordCommands } = await import("./downwatch-discord.js");
+          const result = await pollDownwatchDiscordCommands(db);
+          if (result.processed > 0) {
+            console.log(
+              JSON.stringify({
+                msg: "downwatch discord commands",
+                processed: result.processed,
+              }),
+            );
+          }
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "downwatch discord poll failed",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      }
+
       if (!claimed) {
         await new Promise((resolve) => setTimeout(resolve, pollMs));
       }

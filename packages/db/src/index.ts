@@ -14,6 +14,7 @@ export * from "./accounts/scan-stagger.js";
 export * from "./accounts/discord-webhook.js";
 export * from "./accounts/pitpal-lobbies.js";
 export * from "./accounts/furry-stashes.js";
+export * from "./accounts/downwatch.js";
 export * from "./accounts/presence.js";
 export * from "./accounts/pitpanda-presence.js";
 export * from "./jobs/index.js";

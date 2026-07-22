@@ -34,7 +34,8 @@ function publicView(settings: DiscordWebhookSettings) {
         settings.inventoryWebhookUrl ||
         settings.itemMovesWebhookUrl ||
         settings.pitpalStatusWebhookUrl ||
-        settings.non140erDashboardWebhookUrl,
+        settings.non140erDashboardWebhookUrl ||
+        settings.downwatchWebhookUrl,
     ),
     presenceWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceWebhookUrl),
     presenceAlertsWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceAlertsWebhookUrl),
@@ -45,6 +46,9 @@ function publicView(settings: DiscordWebhookSettings) {
       settings.non140erDashboardWebhookUrl,
     ),
     opsAlertDiscordUserId: settings.opsAlertDiscordUserId,
+    downwatchRoleId: settings.downwatchRoleId,
+    downwatchChannelId: settings.downwatchChannelId,
+    downwatchWebhookUrlMasked: maskDiscordWebhookUrl(settings.downwatchWebhookUrl),
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
     notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
@@ -367,6 +371,7 @@ export async function POST(request: Request) {
     input.non140erDashboardWebhookUrl,
     "Non-140er dashboard webhook",
   );
+  const downwatchWebhook = parseOptionalUrl(input.downwatchWebhookUrl, "Downwatch webhook");
   if (!presence.ok) return NextResponse.json({ ok: false, error: presence.error }, { status: 400 });
   if (!presenceAlerts.ok) {
     return NextResponse.json({ ok: false, error: presenceAlerts.error }, { status: 400 });
@@ -376,6 +381,9 @@ export async function POST(request: Request) {
   if (!pitpalStatus.ok) return NextResponse.json({ ok: false, error: pitpalStatus.error }, { status: 400 });
   if (!non140erDashboard.ok) {
     return NextResponse.json({ ok: false, error: non140erDashboard.error }, { status: 400 });
+  }
+  if (!downwatchWebhook.ok) {
+    return NextResponse.json({ ok: false, error: downwatchWebhook.error }, { status: 400 });
   }
 
   try {
@@ -392,6 +400,9 @@ export async function POST(request: Request) {
       non140erDashboardWebhookUrl: non140erDashboard.provided
         ? non140erDashboard.url
         : current.non140erDashboardWebhookUrl,
+      downwatchWebhookUrl: downwatchWebhook.provided
+        ? downwatchWebhook.url
+        : current.downwatchWebhookUrl,
       opsAlertDiscordUserId: (() => {
         if (typeof input.opsAlertDiscordUserId !== "string") {
           return current.opsAlertDiscordUserId;
@@ -400,6 +411,28 @@ export async function POST(request: Request) {
         if (!raw) return null;
         if (!/^\d{17,20}$/.test(raw)) {
           throw new Error("Ops alert Discord user ID must be a 17–20 digit snowflake.");
+        }
+        return raw;
+      })(),
+      downwatchRoleId: (() => {
+        if (typeof input.downwatchRoleId !== "string") {
+          return current.downwatchRoleId;
+        }
+        const raw = input.downwatchRoleId.trim();
+        if (!raw) return null;
+        if (!/^\d{17,20}$/.test(raw)) {
+          throw new Error("Downwatch role ID must be a 17–20 digit snowflake.");
+        }
+        return raw;
+      })(),
+      downwatchChannelId: (() => {
+        if (typeof input.downwatchChannelId !== "string") {
+          return current.downwatchChannelId;
+        }
+        const raw = input.downwatchChannelId.trim();
+        if (!raw) return null;
+        if (!/^\d{17,20}$/.test(raw)) {
+          throw new Error("Downwatch channel ID must be a 17–20 digit snowflake.");
         }
         return raw;
       })(),

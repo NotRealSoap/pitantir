@@ -4,6 +4,7 @@ import { adminSettings } from "../schema/accounts.js";
 import { now } from "../identity/store.js";
 import { AccountsRepository, type Account } from "./repository.js";
 import {
+  notifyDownwatchWentDown,
   notifyPitpalStatusEvents,
   refreshDiscordOnlineDashboard,
   type DiscordNotifyEvent,
@@ -401,6 +402,7 @@ export async function ingestPitpalLobbies(
   }
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
+  const downwatchPosted = await notifyDownwatchWentDown(db, statusEvents).catch(() => 0);
   // Soft-online roster (incl. API Off) lives on the presence dashboard.
   await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
 
@@ -410,7 +412,7 @@ export async function ingestPitpalLobbies(
     watchlistMatched: matched,
     watchlistCleared: cleared,
     statusEventsGenerated: statusEvents.length,
-    statusEventsPosted,
+    statusEventsPosted: statusEventsPosted + downwatchPosted,
     presenceConfirmsQueued,
     observedAt,
   };
