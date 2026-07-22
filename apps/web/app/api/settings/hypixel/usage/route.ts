@@ -145,7 +145,6 @@ export async function POST(request: Request) {
     }
 
     if (action === "apply_recommended_interval" || action === "set_interval") {
-      let seconds: number;
       if (action === "set_interval") {
         const raw =
           body !== null &&
@@ -157,27 +156,38 @@ export async function POST(request: Request) {
         if (!Number.isFinite(raw)) {
           return NextResponse.json({ error: "scanIntervalSeconds is required." }, { status: 400 });
         }
-        seconds = Math.floor(raw);
-      } else {
-        const view = await usagePayload();
-        if (view.recommendedIntervalSeconds == null) {
-          return NextResponse.json(
-            {
-              error:
-                "No quota snapshot yet. Click “Refresh quota” first (or run a scan) so a recommendation can be computed.",
-            },
-            { status: 400 },
-          );
-        }
-        seconds = view.recommendedIntervalSeconds;
+        const seconds = Math.floor(raw);
+        const updated = await repo.setWatchlistScanInterval(seconds);
+        return NextResponse.json({
+          ok: true,
+          message: `Updated scan interval to every ${seconds}s for non-140ers (${updated} watch-list account(s); 140ers stay ≥30m).`,
+          scanIntervalSeconds: seconds,
+          updated,
+          ...(await usagePayload()),
+        });
       }
 
-      const updated = await repo.setWatchlistScanInterval(seconds);
+      const view = await usagePayload();
+      if (view.recommendedIntervalSeconds == null) {
+        return NextResponse.json(
+          {
+            error:
+              "No quota snapshot yet. Click “Refresh quota” first (or run a scan) so a recommendation can be computed.",
+          },
+          { status: 400 },
+        );
+      }
+      const result = await repo.setSplitWatchlistScanIntervals({
+        normalIntervalSeconds: view.recommendedIntervalSeconds,
+        slowIntervalSeconds:
+          view.recommendedSlowIntervalSeconds ?? 30 * 60,
+      });
       return NextResponse.json({
         ok: true,
-        message: `Updated scan interval to every ${seconds}s for ${updated} watch-list account(s).`,
-        scanIntervalSeconds: seconds,
-        updated,
+        message: `Pacing set for ~${Math.round((view.budgetUtilization ?? 0.8) * 100)}% of key budget: non-140ers every ${view.recommendedIntervalSeconds}s (${result.normalCount}), 140ers every ${view.recommendedSlowIntervalSeconds ?? 1800}s (${result.slowCount}).`,
+        scanIntervalSeconds: view.recommendedIntervalSeconds,
+        slowIntervalSeconds: view.recommendedSlowIntervalSeconds ?? 1800,
+        updated: result.updated,
         ...(await usagePayload()),
       });
     }

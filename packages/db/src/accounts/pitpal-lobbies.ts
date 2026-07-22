@@ -9,7 +9,12 @@ import {
   type DiscordNotifyEvent,
 } from "./discord-webhook.js";
 import { JobsRepository } from "../jobs/repository.js";
-import { hotNextScanAt, PRESENCE_HOT_INTERVAL_SECONDS, PRESENCE_HOT_PRIORITY } from "./presence.js";
+import {
+  accountIs140er,
+  hotNextScanAt,
+  PRESENCE_HOT_INTERVAL_SECONDS,
+  PRESENCE_HOT_PRIORITY,
+} from "./presence.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
 
@@ -318,9 +323,16 @@ export async function ingestPitpalLobbies(
       const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
       const casingPatch =
         hit.name && hit.name !== account.mcUsername ? { mcUsername: hit.name } : {};
-      const hotAt = hotNextScanAt(observedDate, account.id.split("").reduce((n, c) => n + c.charCodeAt(0), 0));
+      // Non-140ers: pull Hypixel confirm forward. 140ers keep ≥30m index floor.
+      const allowHotPull = !accountIs140er(account);
+      const hotAt = hotNextScanAt(
+        observedDate,
+        account.id.split("").reduce((n, c) => n + c.charCodeAt(0), 0),
+      );
       const nextScanAt =
-        account.nextScanAt.getTime() > observedDate.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000
+        allowHotPull &&
+        account.nextScanAt.getTime() >
+          observedDate.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000
           ? hotAt
           : undefined;
       await repo.update(account.id, {
@@ -331,7 +343,9 @@ export async function ingestPitpalLobbies(
         lastPitpalKillstreak: hit.killStreak ?? null,
         lastPitpalSeenAt: observedDate,
         lastSessionGame: sessionLabel,
-        priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY),
+        ...(allowHotPull
+          ? { priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY) }
+          : {}),
         ...(nextScanAt ? { nextScanAt } : {}),
       });
       if (events.some((event) => event.kind === "pitpal_entered")) {

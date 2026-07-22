@@ -14,6 +14,7 @@ import {
 } from "../accounts/live-events.js";
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
 import {
+  accountIs140er,
   hotNextScanAt,
   PRESENCE_HOT_INTERVAL_SECONDS,
   PRESENCE_HOT_PRIORITY,
@@ -213,8 +214,9 @@ export class ScanAccountHandler {
     const cameOnline = nextEffective.online && !previousEffective.online;
     const wentOffline = !nextEffective.online && previousEffective.online;
 
-    // Hotspot: keep online accounts on a short cadence.
-    if (nextEffective.online) {
+    // Hotspot: keep online non-140er accounts on a short cadence.
+    // 140ers stay on their ≥30m Hypixel index floor.
+    if (nextEffective.online && !accountIs140er(account)) {
       const hotAt = hotNextScanAt(
         fetched.observedAt,
         account.id.split("").reduce((n, c) => n + c.charCodeAt(0), 0),

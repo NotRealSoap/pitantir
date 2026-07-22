@@ -1,13 +1,17 @@
 import type { Account } from "./repository.js";
+import { notesIndicate140er } from "./notes-labels.js";
+import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 
 /** Treat PitPal lobby sightings as fresh within this window. */
 export const PITPAL_PRESENCE_FRESH_MS = 90_000;
-/** While effectively online, scan at least this often. */
+/** While effectively online (non-140er), scan at least this often. */
 export const PRESENCE_HOT_INTERVAL_SECONDS = 180;
 /** Job priority bump while effectively online (lower runs sooner). */
 export const PRESENCE_HOT_PRIORITY = 35;
 /** PitPanda lastseen within this window counts as a weak online hint. */
 export const PITPANDA_LASTSEEN_FRESH_MS = 5 * 60_000;
+/** 140er-labelled accounts: Hypixel index at most this often. */
+export const PRESENCE_140ER_INTERVAL_SECONDS = HYPIXEL_140ER_INTERVAL_SECONDS;
 
 export type EffectivePresence = {
   /** Show on dashboard / treat as activity hotspot. */
@@ -67,12 +71,23 @@ export function resolveEffectivePresence(
   };
 }
 
+export function accountIs140er(
+  account: Pick<Account, "notes"> | { notes?: string | null },
+): boolean {
+  return notesIndicate140er(account.notes);
+}
+
 export function effectiveScanIntervalSeconds(
-  account: Pick<Account, "scanIntervalSeconds"> &
+  account: Pick<Account, "scanIntervalSeconds" | "notes"> &
     Parameters<typeof resolveEffectivePresence>[0],
   options?: Parameters<typeof resolveEffectivePresence>[1],
 ): number {
   const base = Math.max(30, Math.floor(account.scanIntervalSeconds || 3600));
+  // 140ers: presence dashboard still updates from PitPal, but Hypixel indexing
+  // is capped at 30 minutes — never the hot 3-minute path.
+  if (accountIs140er(account)) {
+    return Math.max(base, PRESENCE_140ER_INTERVAL_SECONDS);
+  }
   if (resolveEffectivePresence(account, options).online) {
     return Math.min(base, PRESENCE_HOT_INTERVAL_SECONDS);
   }
@@ -80,10 +95,11 @@ export function effectiveScanIntervalSeconds(
 }
 
 export function effectiveScanPriority(
-  account: Pick<Account, "priority"> & Parameters<typeof resolveEffectivePresence>[0],
+  account: Pick<Account, "priority" | "notes"> & Parameters<typeof resolveEffectivePresence>[0],
   options?: Parameters<typeof resolveEffectivePresence>[1],
 ): number {
   const base = Math.floor(account.priority || 100);
+  if (accountIs140er(account)) return base;
   if (resolveEffectivePresence(account, options).online) {
     return Math.min(base, PRESENCE_HOT_PRIORITY);
   }

@@ -3,6 +3,8 @@ import type { Database } from "../client.js";
 import { accounts, type AccountRow } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
 import { normalizeUuid } from "@pitantir/shared";
+import { notesIndicate140er } from "./notes-labels.js";
+import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 import { staggeredNextScanAts } from "./scan-stagger.js";
 
 function normalizeOptionalUuid(value: string | null | undefined): string | null | undefined {
@@ -402,12 +404,20 @@ export class AccountsRepository {
   /**
    * Set scanIntervalSeconds for every watch-listed account and stagger nextScanAt
    * across the window so the worker does not burst-scan the whole roster.
+   * 140er-labelled accounts are clamped to at least `slowIntervalSeconds` (default 30m).
    */
-  async setWatchlistScanInterval(scanIntervalSeconds: number): Promise<number> {
+  async setWatchlistScanInterval(
+    scanIntervalSeconds: number,
+    options?: { slowIntervalSeconds?: number },
+  ): Promise<number> {
     const seconds = Math.floor(scanIntervalSeconds);
     if (!Number.isFinite(seconds) || seconds < 30 || seconds > 86_400) {
       throw new Error("scanIntervalSeconds must be between 30 and 86400");
     }
+    const slowFloor = Math.max(
+      30,
+      Math.floor(options?.slowIntervalSeconds ?? HYPIXEL_140ER_INTERVAL_SECONDS),
+    );
     const timestamp = now();
     const watchlist = await this.listWatchlist();
     const nextAts = staggeredNextScanAts({
@@ -419,16 +429,81 @@ export class AccountsRepository {
 
     for (let i = 0; i < watchlist.length; i += 1) {
       const account = watchlist[i]!;
+      const interval = notesIndicate140er(account.notes)
+        ? Math.max(seconds, slowFloor)
+        : seconds;
       await this.db
         .update(accounts)
         .set({
-          scanIntervalSeconds: seconds,
+          scanIntervalSeconds: interval,
           nextScanAt: nextAts[i]!,
           updatedAt: timestamp,
         })
         .where(eq(accounts.id, account.id));
     }
     return watchlist.length;
+  }
+
+  /**
+   * Apply split pacing: 140ers at the slow floor, everyone else at `normalIntervalSeconds`.
+   */
+  async setSplitWatchlistScanIntervals(input: {
+    normalIntervalSeconds: number;
+    slowIntervalSeconds?: number;
+  }): Promise<{ updated: number; normalCount: number; slowCount: number }> {
+    const normalSeconds = Math.floor(input.normalIntervalSeconds);
+    const slowSeconds = Math.max(
+      30,
+      Math.floor(input.slowIntervalSeconds ?? HYPIXEL_140ER_INTERVAL_SECONDS),
+    );
+    if (!Number.isFinite(normalSeconds) || normalSeconds < 30 || normalSeconds > 86_400) {
+      throw new Error("normalIntervalSeconds must be between 30 and 86400");
+    }
+
+    const timestamp = now();
+    const watchlist = await this.listWatchlist();
+    const normal = watchlist.filter((row) => !notesIndicate140er(row.notes));
+    const slow = watchlist.filter((row) => notesIndicate140er(row.notes));
+
+    const normalAts = staggeredNextScanAts({
+      count: normal.length,
+      intervalSeconds: normalSeconds,
+      from: timestamp,
+      mode: "rebalance",
+    });
+    const slowAts = staggeredNextScanAts({
+      count: slow.length,
+      intervalSeconds: slowSeconds,
+      from: timestamp,
+      mode: "rebalance",
+    });
+
+    for (let i = 0; i < normal.length; i += 1) {
+      await this.db
+        .update(accounts)
+        .set({
+          scanIntervalSeconds: normalSeconds,
+          nextScanAt: normalAts[i]!,
+          updatedAt: timestamp,
+        })
+        .where(eq(accounts.id, normal[i]!.id));
+    }
+    for (let i = 0; i < slow.length; i += 1) {
+      await this.db
+        .update(accounts)
+        .set({
+          scanIntervalSeconds: slowSeconds,
+          nextScanAt: slowAts[i]!,
+          updatedAt: timestamp,
+        })
+        .where(eq(accounts.id, slow[i]!.id));
+    }
+
+    return {
+      updated: watchlist.length,
+      normalCount: normal.length,
+      slowCount: slow.length,
+    };
   }
 
   /** Re-spread nextScanAt for the current watch list without changing interval. */

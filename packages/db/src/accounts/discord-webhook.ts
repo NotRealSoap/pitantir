@@ -9,7 +9,7 @@ import {
 } from "@pitantir/shared/live-signal-copy";
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
-import { notesIndicate140er } from "./furry-stashes.js";
+import { notesIndicate140er } from "./notes-labels.js";
 import { resolveEffectivePresence } from "./presence.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";

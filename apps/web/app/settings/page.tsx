@@ -108,10 +108,14 @@ type HypixelUsagePayload = {
   stale?: boolean;
   watchlistCount?: number;
   refreshingCount?: number;
+  normalRefreshingCount?: number;
+  slowRefreshingCount?: number;
   currentIntervalSeconds?: number | null;
   recommendedIntervalSeconds?: number | null;
+  recommendedSlowIntervalSeconds?: number | null;
   estimatedRequestsPerWindow?: number | null;
   estimatedBudgetPerWindow?: number | null;
+  budgetUtilization?: number;
   databaseReady?: boolean;
   error?: string;
   message?: string;
@@ -194,8 +198,9 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
         Hypixel API usage
       </h2>
       <p className="muted">
-        Live from Hypixel <code>RateLimit-*</code> headers on each scan (or Refresh quota). Leave
-        headroom so you do not trip the key throttle while refreshing as often as possible.
+        Live from Hypixel <code>RateLimit-*</code> headers on each scan (or Refresh quota). The
+        worker aims for ~80% of the key window (e.g. ~240 of 300 / 5 minutes). Accounts with{" "}
+        <code>140er</code> in notes are Hypixel-indexed at most every 30 minutes.
       </p>
 
       {!enabled ? (
@@ -242,21 +247,39 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
 
           <p className="muted" style={{ marginTop: "0.75rem" }}>
             Watch list: <strong>{usage?.refreshingCount ?? 0}</strong> refreshing /{" "}
-            {usage?.watchlistCount ?? 0} total. Current interval:{" "}
+            {usage?.watchlistCount ?? 0} total
+            {usage?.slowRefreshingCount != null ? (
+              <>
+                {" "}
+                (<strong>{usage.normalRefreshingCount ?? 0}</strong> normal ·{" "}
+                <strong>{usage.slowRefreshingCount}</strong> 140er)
+              </>
+            ) : null}
+            . Current cool interval:{" "}
             <strong>{formatDuration(usage?.currentIntervalSeconds)}</strong>
             {usage?.recommendedIntervalSeconds != null ? (
               <>
                 {" "}
-                · recommended: <strong>{formatDuration(usage.recommendedIntervalSeconds)}</strong>
+                · recommended non-140er:{" "}
+                <strong>{formatDuration(usage.recommendedIntervalSeconds)}</strong>
+                {usage.recommendedSlowIntervalSeconds != null ? (
+                  <>
+                    {" "}
+                    · 140er:{" "}
+                    <strong>{formatDuration(usage.recommendedSlowIntervalSeconds)}</strong>
+                  </>
+                ) : null}
               </>
             ) : null}
           </p>
           {usage?.estimatedBudgetPerWindow != null ? (
             <p className="muted" style={{ marginTop: "0.35rem" }}>
-              Budget ≈ <strong>{usage.estimatedBudgetPerWindow}</strong> scans / ~
-              {formatDuration(snapshot?.windowSeconds ?? null)} window (85% of limit). At the current
-              interval, estimated load ≈{" "}
-              <strong>{usage.estimatedRequestsPerWindow ?? "—"}</strong> / window.
+              Target budget ≈ <strong>{usage.estimatedBudgetPerWindow}</strong> scans / ~
+              {formatDuration(snapshot?.windowSeconds ?? null)} window (
+              {Math.round((usage.budgetUtilization ?? 0.8) * 100)}% of limit). Estimated load at
+              current intervals ≈ <strong>{usage.estimatedRequestsPerWindow ?? "—"}</strong> /
+              window. Click <em>Apply recommended interval</em> to retune cool cadence (and lock
+              140ers to 30m).
             </p>
           ) : (
             <p className="muted" style={{ marginTop: "0.35rem" }}>

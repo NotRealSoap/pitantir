@@ -3,10 +3,12 @@ import type { Database } from "../client.js";
 import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
+import { getHypixelRateLimitSnapshot } from "../accounts/hypixel-usage.js";
 import {
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
 } from "../accounts/presence.js";
+import { scanEnqueueAllowance } from "@pitantir/shared/inventory";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
 
@@ -17,18 +19,22 @@ export interface ScheduleTickResult {
   skippedDuplicate: number;
   skippedDisabled: number;
   paused: boolean;
+  allowance: number;
 }
 
 /**
- * How many due accounts to enqueue per worker loop iteration.
- * Keeping this small turns “everyone due → giant burst → long silence” into a steady drip.
+ * Hard ceiling per worker loop tick. Budget pacing usually asks for fewer.
+ * Keeps a due pile from becoming a burst when quota is far behind target.
  */
-export const MAX_SCAN_ENQUEUES_PER_TICK = 1;
+export const MAX_SCAN_ENQUEUES_PER_TICK = 4;
 
 /**
  * Enqueue `scan_account` jobs for watchlisted+enabled accounts whose `next_scan_at` is due.
  * Global `hypixel_scans_paused` stops scheduled refresh without removing the watch list.
  * Manual Scan now still works so one-off checks don't require unpausing.
+ *
+ * Cadence aims for ~80% of the Hypixel key window (e.g. ~240 of 300 / 5min) using the
+ * latest RateLimit snapshot. Per-account intervals still apply (140ers ≥ 30 minutes).
  */
 export class ScanScheduler {
   private readonly accounts: AccountsRepository;
@@ -48,6 +54,7 @@ export class ScanScheduler {
         skippedDuplicate: 0,
         skippedDisabled: 0,
         paused: true,
+        allowance: 0,
       };
     }
 
@@ -58,7 +65,15 @@ export class ScanScheduler {
       if (pri !== 0) return pri;
       return a.nextScanAt.getTime() - b.nextScanAt.getTime();
     });
-    const batch = ordered.slice(0, MAX_SCAN_ENQUEUES_PER_TICK);
+
+    const snapshot = await getHypixelRateLimitSnapshot(this.db);
+    const allowance = scanEnqueueAllowance({
+      snapshot,
+      dueCount: ordered.length,
+      maxPerTick: MAX_SCAN_ENQUEUES_PER_TICK,
+      now: asOf,
+    });
+    const batch = ordered.slice(0, allowance);
     const deferred = Math.max(0, ordered.length - batch.length);
 
     let enqueued = 0;
@@ -84,7 +99,7 @@ export class ScanScheduler {
         skippedDuplicate += 1;
       }
 
-      // Each account uses its own effective interval (hot vs cool) — never the max of the due set.
+      // Each account uses its own effective interval (hot / cool / 140er floor).
       const nextScanAt = new Date(
         asOf.getTime() + effectiveScanIntervalSeconds(account) * 1000,
       );
@@ -101,6 +116,7 @@ export class ScanScheduler {
       skippedDuplicate,
       skippedDisabled: 0,
       paused: false,
+      allowance,
     };
   }
 

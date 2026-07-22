@@ -1,12 +1,17 @@
 import {
+  DEFAULT_HYPIXEL_BUDGET_UTILIZATION,
+  HYPIXEL_140ER_INTERVAL_SECONDS,
   buildHypixelRateLimitSnapshot,
+  hypixelBudgetPerWindow,
   parseHypixelRateLimitHeaders,
   recommendScanIntervalSeconds,
+  recommendSplitScanIntervals,
   resetAtFromSnapshot,
   usedFromSnapshot,
   type HypixelRateLimitSnapshot,
 } from "@pitantir/shared/inventory";
 import type { PublicAccount } from "@pitantir/db";
+import { notesIndicate140er } from "@pitantir/db";
 
 export interface HypixelUsageView {
   configured: boolean;
@@ -17,10 +22,14 @@ export interface HypixelUsageView {
   stale: boolean;
   watchlistCount: number;
   refreshingCount: number;
+  normalRefreshingCount: number;
+  slowRefreshingCount: number;
   currentIntervalSeconds: number | null;
   recommendedIntervalSeconds: number | null;
+  recommendedSlowIntervalSeconds: number | null;
   estimatedRequestsPerWindow: number | null;
   estimatedBudgetPerWindow: number | null;
+  budgetUtilization: number;
 }
 
 export function buildHypixelUsageView(input: {
@@ -31,6 +40,8 @@ export function buildHypixelUsageView(input: {
 }): HypixelUsageView {
   const now = input.now ?? new Date();
   const refreshing = input.watchlist.filter((row) => row.enabled);
+  const slowRefreshing = refreshing.filter((row) => notesIndicate140er(row.notes));
+  const normalRefreshing = refreshing.filter((row) => !notesIndicate140er(row.notes));
   const intervals = refreshing.map((row) => row.scanIntervalSeconds);
   const currentIntervalSeconds =
     intervals.length > 0 ? Math.min(...intervals) : input.watchlist[0]?.scanIntervalSeconds ?? null;
@@ -45,8 +56,20 @@ export function buildHypixelUsageView(input: {
     stale = at.getTime() < now.getTime() - 5_000;
   }
 
+  const split = input.snapshot
+    ? recommendSplitScanIntervals({
+        normalCount: normalRefreshing.length,
+        slowCount: slowRefreshing.length,
+        limit: input.snapshot.limit,
+        windowSeconds: input.snapshot.windowSeconds,
+        slowIntervalSeconds: HYPIXEL_140ER_INTERVAL_SECONDS,
+      })
+    : null;
+
+  // Keep a single "recommended" number for the UI primary button (non-140er pace).
   const recommendedIntervalSeconds = input.snapshot
-    ? recommendScanIntervalSeconds({
+    ? split?.normalIntervalSeconds ??
+      recommendScanIntervalSeconds({
         watchlistCount: Math.max(refreshing.length, 1),
         limit: input.snapshot.limit,
         windowSeconds: input.snapshot.windowSeconds,
@@ -54,12 +77,24 @@ export function buildHypixelUsageView(input: {
     : null;
 
   const estimatedBudgetPerWindow = input.snapshot
-    ? Math.max(1, Math.floor(input.snapshot.limit * 0.85))
+    ? hypixelBudgetPerWindow(input.snapshot.limit, DEFAULT_HYPIXEL_BUDGET_UTILIZATION)
     : null;
 
   const estimatedRequestsPerWindow =
-    recommendedIntervalSeconds != null && refreshing.length > 0
-      ? Math.ceil((refreshing.length * (input.snapshot?.windowSeconds ?? 300)) / (currentIntervalSeconds ?? recommendedIntervalSeconds))
+    input.snapshot && refreshing.length > 0
+      ? Math.ceil(
+          normalRefreshing.reduce((sum, row) => {
+            const interval = Math.max(30, row.scanIntervalSeconds || 3600);
+            return sum + (input.snapshot!.windowSeconds / interval);
+          }, 0) +
+            slowRefreshing.reduce((sum, row) => {
+              const interval = Math.max(
+                HYPIXEL_140ER_INTERVAL_SECONDS,
+                row.scanIntervalSeconds || HYPIXEL_140ER_INTERVAL_SECONDS,
+              );
+              return sum + (input.snapshot!.windowSeconds / interval);
+            }, 0),
+        )
       : null;
 
   return {
@@ -71,10 +106,14 @@ export function buildHypixelUsageView(input: {
     stale,
     watchlistCount: input.watchlist.length,
     refreshingCount: refreshing.length,
+    normalRefreshingCount: normalRefreshing.length,
+    slowRefreshingCount: slowRefreshing.length,
     currentIntervalSeconds,
     recommendedIntervalSeconds,
+    recommendedSlowIntervalSeconds: split?.slowIntervalSeconds ?? null,
     estimatedRequestsPerWindow,
     estimatedBudgetPerWindow,
+    budgetUtilization: DEFAULT_HYPIXEL_BUDGET_UTILIZATION,
   };
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
+  PRESENCE_140ER_INTERVAL_SECONDS,
   PRESENCE_HOT_INTERVAL_SECONDS,
   PRESENCE_HOT_PRIORITY,
   resolveEffectivePresence,
@@ -14,6 +15,7 @@ const base = {
   lastPitpalSeenAt: null as Date | null,
   scanIntervalSeconds: 3600,
   priority: 100,
+  notes: null as string | null,
 };
 
 describe("resolveEffectivePresence", () => {
@@ -79,5 +81,17 @@ describe("hotspot scheduling helpers", () => {
   it("keeps cool interval when offline", () => {
     expect(effectiveScanIntervalSeconds(base)).toBe(3600);
     expect(effectiveScanPriority(base)).toBe(100);
+  });
+
+  it("caps 140er accounts at 30 minutes even when online", () => {
+    const labeled = {
+      ...base,
+      lastHypixelOnline: true,
+      notes: "furry-stashes: 140er",
+      scanIntervalSeconds: 120,
+      priority: 20,
+    };
+    expect(effectiveScanIntervalSeconds(labeled)).toBe(PRESENCE_140ER_INTERVAL_SECONDS);
+    expect(effectiveScanPriority(labeled)).toBe(20);
   });
 });

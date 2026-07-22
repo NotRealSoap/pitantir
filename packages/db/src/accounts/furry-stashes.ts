@@ -6,6 +6,8 @@ import {
   type DiscordPlayerRule,
   type DiscordWebhookSettings,
 } from "./discord-webhook.js";
+import { notesIndicate140er } from "./notes-labels.js";
+import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 
 export type FurryStashEntry = {
   username: string;
@@ -13,13 +15,9 @@ export type FurryStashEntry = {
   is140er: boolean;
 };
 
-const USERNAME_RE = /^[A-Za-z0-9_]{3,16}$/;
+export { notesIndicate140er } from "./notes-labels.js";
 
-/** PitPal furry-stash notes that mark presence-only monitoring. */
-export function notesIndicate140er(notes: string | null | undefined): boolean {
-  if (!notes) return false;
-  return /\b140ers?\b/i.test(notes) || /140er/i.test(notes);
-}
+const USERNAME_RE = /^[A-Za-z0-9_]{3,16}$/;
 
 export function coerceFurryStashEntry(value: unknown): FurryStashEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -134,8 +132,15 @@ export async function syncFurryStashesWatchlist(
     if (ensured.promoted) promoted += 1;
 
     const account = ensured.account;
+    const patches: { notes?: string; scanIntervalSeconds?: number } = {};
     if (account.notes !== noteLabel) {
-      await repo.update(account.id, { notes: noteLabel });
+      patches.notes = noteLabel;
+    }
+    if (entry.is140er && account.scanIntervalSeconds < HYPIXEL_140ER_INTERVAL_SECONDS) {
+      patches.scanIntervalSeconds = HYPIXEL_140ER_INTERVAL_SECONDS;
+    }
+    if (Object.keys(patches).length > 0) {
+      await repo.update(account.id, patches);
       updated += 1;
     }
 
