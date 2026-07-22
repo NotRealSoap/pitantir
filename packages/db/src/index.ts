@@ -6,6 +6,7 @@ export * from "./item-data/pitpanda-ownership-ingestor.js";
 export * from "./search/local-item-search.js";
 export * from "./accounts/repository.js";
 export * from "./accounts/scan-control.js";
+export * from "./accounts/hypixel-circuit.js";
 export * from "./accounts/hypixel-usage.js";
 export * from "./accounts/live-events.js";
 export * from "./accounts/hypixel-api-calls.js";

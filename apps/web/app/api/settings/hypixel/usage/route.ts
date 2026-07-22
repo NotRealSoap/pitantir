@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   appendHypixelApiCall,
+  getHypixelApiCircuit,
   getHypixelRateLimitSnapshot,
+  getHypixelScansPaused,
+  handleHypixelApiCallOutcome,
   setHypixelRateLimitSnapshot,
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
@@ -111,27 +114,70 @@ export async function POST(request: Request) {
       if (!apiKey) {
         return NextResponse.json({ error: "Hypixel API key is not configured." }, { status: 400 });
       }
+      if ((await getHypixelScansPaused(db)) || (await getHypixelApiCircuit(db)).trippedAt) {
+        return NextResponse.json(
+          {
+            error:
+              "Hypixel API calls are paused (manual pause or consecutive-failure circuit). Resume from Accounts first.",
+          },
+          { status: 503 },
+        );
+      }
       const previous = await getHypixelRateLimitSnapshot(db);
-      const snapshot = await probeHypixelRateLimit({
-        apiKey,
-        previousWindowSeconds: previous?.windowSeconds ?? null,
-      });
-      await setHypixelRateLimitSnapshot(db, snapshot);
-      await appendHypixelApiCall(db, {
-        id: randomUUID(),
-        at: new Date().toISOString(),
-        endpoint: "punishmentstats",
-        accountId: null,
-        mcUsername: null,
-        ok: true,
-        statusCode: 200,
-        detail: "quota probe",
-      }).catch(() => undefined);
-      return NextResponse.json({
-        ok: true,
-        message: "Quota refreshed from Hypixel RateLimit headers.",
-        ...(await usagePayload()),
-      });
+      try {
+        const snapshot = await probeHypixelRateLimit({
+          apiKey,
+          previousWindowSeconds: previous?.windowSeconds ?? null,
+        });
+        await setHypixelRateLimitSnapshot(db, snapshot);
+        await appendHypixelApiCall(db, {
+          id: randomUUID(),
+          at: new Date().toISOString(),
+          endpoint: "punishmentstats",
+          accountId: null,
+          mcUsername: null,
+          ok: true,
+          statusCode: 200,
+          detail: "quota probe",
+        }).catch(() => undefined);
+        await handleHypixelApiCallOutcome(db, {
+          ok: true,
+          endpoint: "punishmentstats",
+          statusCode: 200,
+          detail: "quota probe",
+        }).catch(() => undefined);
+        return NextResponse.json({
+          ok: true,
+          message: "Quota refreshed from Hypixel RateLimit headers.",
+          ...(await usagePayload()),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Hypixel probe failed";
+        await appendHypixelApiCall(db, {
+          id: randomUUID(),
+          at: new Date().toISOString(),
+          endpoint: "punishmentstats",
+          accountId: null,
+          mcUsername: null,
+          ok: false,
+          statusCode: 0,
+          detail: message.slice(0, 200),
+        }).catch(() => undefined);
+        const circuit = await handleHypixelApiCallOutcome(db, {
+          ok: false,
+          endpoint: "punishmentstats",
+          statusCode: 0,
+          detail: message.slice(0, 200),
+        }).catch(() => null);
+        return NextResponse.json(
+          {
+            error: message,
+            circuitOpen: circuit?.tripped || circuit?.alreadyOpen || false,
+            consecutiveFailures: circuit?.consecutiveFailures,
+          },
+          { status: 500 },
+        );
+      }
     }
 
     if (action === "rebalance_schedule") {

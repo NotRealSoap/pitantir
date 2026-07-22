@@ -14,6 +14,8 @@ export default function AccountsPage() {
   const [watchlist, setWatchlist] = useState<PublicAccountDto[]>([]);
   const [contacts, setContacts] = useState<PublicAccountDto[]>([]);
   const [scansPaused, setScansPaused] = useState(false);
+  const [circuitOpen, setCircuitOpen] = useState(false);
+  const [circuitDetail, setCircuitDetail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [mcUuid, setMcUuid] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,8 @@ export default function AccountsPage() {
         watchlist?: PublicAccountDto[];
         contacts?: PublicAccountDto[];
         scansPaused?: boolean;
+        circuitOpen?: boolean;
+        lastFailureDetail?: string | null;
         error?: string;
       };
       if (!accountsResponse.ok) {
@@ -44,6 +48,8 @@ export default function AccountsPage() {
       setWatchlist(payload.watchlist ?? []);
       setContacts(payload.contacts ?? []);
       setScansPaused(Boolean(payload.scansPaused));
+      setCircuitOpen(Boolean(payload.circuitOpen));
+      setCircuitDetail(payload.lastFailureDetail ?? null);
 
       if (usageResponse.ok) {
         const usage = (await usageResponse.json()) as {
@@ -117,16 +123,23 @@ export default function AccountsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paused }),
     });
-    const payload = (await response.json()) as { paused?: boolean; error?: string };
+    const payload = (await response.json()) as {
+      paused?: boolean;
+      circuitOpen?: boolean;
+      lastFailureDetail?: string | null;
+      error?: string;
+    };
     if (!response.ok) {
       setError(payload.error ?? "Unable to update scan pause.");
       return;
     }
     setScansPaused(Boolean(payload.paused));
+    setCircuitOpen(Boolean(payload.circuitOpen));
+    setCircuitDetail(payload.lastFailureDetail ?? null);
     setNote(
       payload.paused
-        ? "Scheduled Hypixel refresh is paused (API quota protected)."
-        : "Scheduled Hypixel refresh resumed.",
+        ? "Hypixel API calls paused (scheduled + manual)."
+        : "Hypixel refreshing resumed — failure circuit cleared.",
     );
   }
 
@@ -202,6 +215,11 @@ export default function AccountsPage() {
           <span className="chip">
             Scheduled refresh: <strong>{scansPaused ? "paused" : "running"}</strong>
           </span>
+          {circuitOpen ? (
+            <span className="chip" style={{ background: "color-mix(in srgb, #c45c3e 25%, transparent)" }}>
+              API circuit open
+            </span>
+          ) : null}
           {scansPaused ? (
             <button type="button" className="primary" onClick={() => void setPaused(false)}>
               Resume refreshing
@@ -216,10 +234,18 @@ export default function AccountsPage() {
           </button>
         </div>
         <p className="muted" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
-          Pause stops scheduled worker scans only. Manual Scan now still works for one-offs.
-          “Fix username casing” uses Mojang (not Hypixel) so lowercase imports like{" "}
-          <code>3amcatnoises9</code> become <code>3AMCatNoises9</code>.
+          Pause stops all Hypixel API calls (scheduled + manual). After 3 consecutive Hypixel
+          failures the worker auto-pauses and pings Discord ops. “Fix username casing” uses Mojang
+          (not Hypixel) so lowercase imports like <code>3amcatnoises9</code> become{" "}
+          <code>3AMCatNoises9</code>.
         </p>
+        {circuitOpen ? (
+          <p role="alert" className="alert" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
+            Hypixel API circuit is open
+            {circuitDetail ? <> — {circuitDetail}</> : null}. Fix the outage, then click Resume
+            refreshing.
+          </p>
+        ) : null}
         {hypixelUsageLabel ? (
           <p className="muted" style={{ marginBottom: 0, marginTop: "0.5rem" }}>
             <Link href="/settings">{hypixelUsageLabel}</Link>

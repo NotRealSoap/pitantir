@@ -373,6 +373,7 @@ type DiscordWebhookPayload = {
   itemMovesWebhookUrlMasked?: string | null;
   pitpalStatusWebhookUrlMasked?: string | null;
   non140erDashboardWebhookUrlMasked?: string | null;
+  opsAlertDiscordUserId?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyEveryOnlineScan?: boolean;
@@ -442,6 +443,7 @@ function DiscordWebhookPanel() {
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
   const [non140erDashboardWebhookUrl, setNon140erDashboardWebhookUrl] = useState("");
+  const [opsAlertDiscordUserId, setOpsAlertDiscordUserId] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
@@ -475,6 +477,7 @@ function DiscordWebhookPanel() {
     setNotifyInventoryUpdated(defaults.notifyInventoryUpdated);
     setNotifyPitpalStatusChanges(defaults.notifyPitpalStatusChanges);
     setOnlineDashboardEnabled(payload.onlineDashboardEnabled ?? true);
+    setOpsAlertDiscordUserId(payload.opsAlertDiscordUserId ?? "");
     setPlayerRows(
       buildPlayerRows(payload.watchlist ?? [], payload.playerRules ?? [], defaults),
     );
@@ -557,8 +560,9 @@ function DiscordWebhookPanel() {
       <p className="muted">
         Use <strong>dedicated channels</strong>. Online dashboard = roster only (edited in place).
         Non-140er dashboard = same roster minus players whose notes contain <code>140er</code>.
-        Online/offline alerts = Hypixel came-online / went-offline / still-online index pings. PitPal
-        status = lobbies changes (append-only). Leave a URL blank to keep the saved value.
+        Online/offline alerts = Hypixel came-online / went-offline / still-online index pings (also used
+        for Hypixel outage alerts that ping ops). PitPal status = lobbies changes (append-only). Leave a
+        URL blank to keep the saved value.
       </p>
       <p>
         Status:{" "}
@@ -611,6 +615,7 @@ function DiscordWebhookPanel() {
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
             non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
+            opsAlertDiscordUserId: opsAlertDiscordUserId.trim(),
             notifyCameOnline,
             notifyWentOffline,
             notifyEveryOnlineScan,
@@ -649,6 +654,22 @@ function DiscordWebhookPanel() {
               status?.non140erDashboardWebhookUrlMasked
                 ? `Saved: ${status.non140erDashboardWebhookUrlMasked}`
                 : "Optional — separate channel for non-140er online roster"
+            }
+          />
+        </label>
+        <label>
+          Ops alert Discord user ID (pings ambienangel on Hypixel outage)
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            value={opsAlertDiscordUserId}
+            onChange={(event) => setOpsAlertDiscordUserId(event.target.value)}
+            placeholder={
+              status?.opsAlertDiscordUserId
+                ? `Saved: ${status.opsAlertDiscordUserId}`
+                : "Discord Developer Mode → Copy User ID (17–20 digits)"
             }
           />
         </label>

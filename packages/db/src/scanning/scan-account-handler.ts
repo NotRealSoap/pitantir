@@ -14,6 +14,10 @@ import {
 } from "../accounts/live-events.js";
 import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
 import {
+  getHypixelScansPaused,
+} from "../accounts/scan-control.js";
+import { isHypixelApiCircuitOpen } from "../accounts/hypixel-circuit.js";
+import {
   accountIs140er,
   hotNextScanAt,
   PRESENCE_HOT_INTERVAL_SECONDS,
@@ -100,6 +104,19 @@ export class ScanAccountHandler {
         errorMessage: "Account is disabled",
       });
       return { scan: failed, enqueuedProcessScan: false, inventorySource: this.inventory.id };
+    }
+
+    if ((await getHypixelScansPaused(this.db)) || (await isHypixelApiCircuitOpen(this.db))) {
+      const failed = await this.scans.markFailure(scan.id, {
+        errorCode: "upstream_unavailable",
+        errorMessage:
+          "Hypixel API calls are paused (manual pause or consecutive-failure circuit). Resume from Accounts when ready.",
+      });
+      return {
+        scan: failed,
+        enqueuedProcessScan: false,
+        inventorySource: this.inventory.id,
+      };
     }
 
     const fetched = await this.inventory.fetchInventory({

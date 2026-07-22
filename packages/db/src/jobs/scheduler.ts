@@ -4,6 +4,7 @@ import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
 import { getHypixelRateLimitSnapshot } from "../accounts/hypixel-usage.js";
+import { isHypixelApiCircuitOpen } from "../accounts/hypixel-circuit.js";
 import {
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
@@ -134,6 +135,11 @@ export class ScanScheduler {
     }
     if (!account.enabled) {
       throw new Error("Account refresh is paused for this IGN");
+    }
+    if ((await getHypixelScansPaused(this.db)) || (await isHypixelApiCircuitOpen(this.db))) {
+      throw new Error(
+        "Hypixel API calls are paused (manual pause or consecutive-failure circuit). Resume from Accounts when ready.",
+      );
     }
 
     const result = await this.jobs.enqueue({

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getHypixelScansPaused, setHypixelScansPaused } from "@pitantir/db";
+import {
+  clearHypixelApiCircuit,
+  getHypixelApiCircuit,
+  getHypixelScansPaused,
+  setHypixelScansPaused,
+} from "@pitantir/db";
 import { getDatabase, isUsingPostgres } from "../../../src/server/runtime";
 
 /** Global Hypixel refresh pause — protects API quota without leaving the watch list. */
@@ -11,7 +16,17 @@ export async function GET() {
   if (!db) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
-  return NextResponse.json({ paused: await getHypixelScansPaused(db) });
+  const [paused, circuit] = await Promise.all([
+    getHypixelScansPaused(db),
+    getHypixelApiCircuit(db),
+  ]);
+  return NextResponse.json({
+    paused,
+    circuitOpen: Boolean(circuit.trippedAt),
+    consecutiveFailures: circuit.consecutiveFailures,
+    lastFailureDetail: circuit.lastFailureDetail,
+    trippedAt: circuit.trippedAt,
+  });
 }
 
 export async function POST(request: Request) {
@@ -41,5 +56,15 @@ export async function POST(request: Request) {
 
   const paused = (body as { paused: boolean }).paused;
   await setHypixelScansPaused(db, paused);
-  return NextResponse.json({ paused });
+  if (!paused) {
+    await clearHypixelApiCircuit(db);
+  }
+  const circuit = await getHypixelApiCircuit(db);
+  return NextResponse.json({
+    paused,
+    circuitOpen: Boolean(circuit.trippedAt),
+    consecutiveFailures: circuit.consecutiveFailures,
+    lastFailureDetail: circuit.lastFailureDetail,
+    trippedAt: circuit.trippedAt,
+  });
 }

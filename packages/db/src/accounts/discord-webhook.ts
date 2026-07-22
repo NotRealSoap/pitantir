@@ -61,6 +61,11 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    * Edited in place like the main online dashboard.
    */
   non140erDashboardWebhookUrl: string | null;
+  /**
+   * Discord snowflake for ops outage pings (e.g. ambienangel).
+   * Username alone cannot ping — paste User ID from Discord Developer Mode.
+   */
+  opsAlertDiscordUserId: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
   onlineDashboardRosterKey: string | null;
@@ -107,6 +112,7 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   itemMovesWebhookUrl: null,
   pitpalStatusWebhookUrl: null,
   non140erDashboardWebhookUrl: null,
+  opsAlertDiscordUserId: null,
   ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
@@ -115,6 +121,15 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   non140erDashboardRosterKey: null,
   playerRules: [],
 };
+
+/** Display name used in Hypixel outage alerts (ping still needs opsAlertDiscordUserId). */
+export const OPS_ALERT_DISCORD_USERNAME = "ambienangel";
+
+const DISCORD_USER_ID_RE = /^\d{17,20}$/;
+
+export function isDiscordUserId(value: string): boolean {
+  return DISCORD_USER_ID_RE.test(value.trim());
+}
 
 const DISCORD_WEBHOOK_RE =
   /^https:\/\/((?:canary|ptb)\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w.-]+$/i;
@@ -204,6 +219,11 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     itemMovesWebhookUrl,
     pitpalStatusWebhookUrl,
     non140erDashboardWebhookUrl: readUrl(row.non140erDashboardWebhookUrl),
+    opsAlertDiscordUserId: (() => {
+      const raw =
+        typeof row.opsAlertDiscordUserId === "string" ? row.opsAlertDiscordUserId.trim() : "";
+      return raw && isDiscordUserId(raw) ? raw : null;
+    })(),
     notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
     notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
     notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
@@ -316,6 +336,10 @@ export async function setDiscordWebhookSettings(
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
     non140erDashboardWebhookUrl: settings.non140erDashboardWebhookUrl?.trim() || null,
+    opsAlertDiscordUserId: (() => {
+      const raw = settings.opsAlertDiscordUserId?.trim() || "";
+      return raw && isDiscordUserId(raw) ? raw : null;
+    })(),
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
@@ -797,7 +821,11 @@ async function editDiscordWebhookMessage(
 
 async function postRawDiscordWebhook(
   webhookUrl: string,
-  payload: { content: string; embeds: Array<Record<string, unknown>> },
+  payload: {
+    content: string;
+    embeds?: Array<Record<string, unknown>>;
+    allowed_mentions?: { parse?: string[]; users?: string[] };
+  },
 ): Promise<{ ok: boolean; status: number; messageId?: string; error?: string }> {
   const result = await discordFetch(`${webhookUrl}?wait=true`, {
     method: "POST",
@@ -820,6 +848,70 @@ async function postRawDiscordWebhook(
   return messageId
     ? { ok: true, status: result.status, messageId }
     : { ok: true, status: result.status };
+}
+
+function resolveOpsAlertDiscordUserId(settings: DiscordWebhookSettings): string | null {
+  const fromSettings = settings.opsAlertDiscordUserId?.trim() || "";
+  if (fromSettings && isDiscordUserId(fromSettings)) return fromSettings;
+  const fromEnv = (process.env.DISCORD_OPS_ALERT_USER_ID ?? "").trim();
+  if (fromEnv && isDiscordUserId(fromEnv)) return fromEnv;
+  return null;
+}
+
+/**
+ * One-shot Hypixel outage ping (circuit breaker). Uses alerts channel, else dashboard.
+ * Mentions opsAlertDiscordUserId when configured (Discord requires a snowflake to ping).
+ */
+export async function notifyHypixelApiOutage(
+  db: Database,
+  input: {
+    consecutiveFailures: number;
+    detail: string;
+    at?: string;
+  },
+): Promise<boolean> {
+  const settings = await getDiscordWebhookSettings(db);
+  const webhookUrl =
+    settings.presenceAlertsWebhookUrl || settings.presenceWebhookUrl || null;
+  if (!webhookUrl) return false;
+
+  const userId = resolveOpsAlertDiscordUserId(settings);
+  const mention = userId ? `<@${userId}>` : `@${OPS_ALERT_DISCORD_USERNAME}`;
+  const headline = `${mention} Hypixel API paused after ${input.consecutiveFailures} consecutive failures`;
+  const detail = input.detail.slice(0, 900);
+  const content = `${headline}\n${detail}\nResume Hypixel refreshing on the Accounts page after fixing the outage.`.slice(
+    0,
+    2000,
+  );
+
+  const posted = await postRawDiscordWebhook(webhookUrl, {
+    content,
+    embeds: [
+      {
+        title: "Hypixel API circuit open",
+        description: detail,
+        color: 0xed4245,
+        timestamp: input.at ?? new Date().toISOString(),
+        footer: { text: "Pitantir · auto-paused after consecutive failures" },
+        fields: [
+          {
+            name: "Operator",
+            value: userId
+              ? `${OPS_ALERT_DISCORD_USERNAME} (<@${userId}>)`
+              : `${OPS_ALERT_DISCORD_USERNAME} (set ops Discord user ID in Settings to enable a real ping)`,
+            inline: true,
+          },
+          {
+            name: "Failures",
+            value: String(input.consecutiveFailures),
+            inline: true,
+          },
+        ],
+      },
+    ],
+    allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },
+  });
+  return posted.ok;
 }
 
 async function upsertDashboardMessage(options: {

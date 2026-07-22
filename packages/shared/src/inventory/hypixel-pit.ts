@@ -249,15 +249,30 @@ export class HypixelPitInventorySource implements InventorySource {
     account?: InventoryAccountRef,
   ): Promise<HypixelPlayerResponse["player"]> {
     const undashed = uuid.replace(/-/g, "").toLowerCase();
-    const response = await this.fetchImpl(
-      `https://api.hypixel.net/v2/player?uuid=${encodeURIComponent(undashed)}`,
-      {
-        headers: {
-          "API-Key": this.options.apiKey,
-          Accept: "application/json",
+    let response: Response;
+    try {
+      response = await this.fetchImpl(
+        `https://api.hypixel.net/v2/player?uuid=${encodeURIComponent(undashed)}`,
+        {
+          headers: {
+            "API-Key": this.options.apiKey,
+            Accept: "application/json",
+          },
         },
-      },
-    );
+      );
+    } catch (error) {
+      await this.noteApiCall({
+        endpoint: "player",
+        account,
+        ok: false,
+        statusCode: 0,
+        detail: error instanceof Error ? error.message.slice(0, 120) : "network error",
+      }).catch(() => undefined);
+      throw Object.assign(
+        new Error(error instanceof Error ? error.message : "Hypixel network error"),
+        { code: "upstream_unavailable" },
+      );
+    }
 
     await this.noteRateLimit(response.headers).catch(() => undefined);
 

@@ -44,6 +44,7 @@ function publicView(settings: DiscordWebhookSettings) {
     non140erDashboardWebhookUrlMasked: maskDiscordWebhookUrl(
       settings.non140erDashboardWebhookUrl,
     ),
+    opsAlertDiscordUserId: settings.opsAlertDiscordUserId,
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
     notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
@@ -391,6 +392,17 @@ export async function POST(request: Request) {
       non140erDashboardWebhookUrl: non140erDashboard.provided
         ? non140erDashboard.url
         : current.non140erDashboardWebhookUrl,
+      opsAlertDiscordUserId: (() => {
+        if (typeof input.opsAlertDiscordUserId !== "string") {
+          return current.opsAlertDiscordUserId;
+        }
+        const raw = input.opsAlertDiscordUserId.trim();
+        if (!raw) return null;
+        if (!/^\d{17,20}$/.test(raw)) {
+          throw new Error("Ops alert Discord user ID must be a 17–20 digit snowflake.");
+        }
+        return raw;
+      })(),
       notifyCameOnline:
         typeof input.notifyCameOnline === "boolean"
           ? input.notifyCameOnline

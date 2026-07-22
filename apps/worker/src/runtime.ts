@@ -15,6 +15,7 @@ import {
   getHypixelRateLimitSnapshot,
   setHypixelRateLimitSnapshot,
   appendHypixelApiCall,
+  handleHypixelApiCallOutcome,
   type Database,
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
@@ -105,6 +106,32 @@ function createInventorySource(db: Database): InventorySource {
           console.warn(
             JSON.stringify({
               msg: "failed to persist hypixel api call",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+        try {
+          const circuit = await handleHypixelApiCallOutcome(db, {
+            ok: call.ok,
+            detail: call.detail ?? null,
+            endpoint: call.endpoint,
+            statusCode: call.statusCode,
+          });
+          if (circuit.tripped) {
+            console.error(
+              JSON.stringify({
+                msg: "hypixel api circuit open — paused after consecutive failures",
+                consecutiveFailures: circuit.consecutiveFailures,
+                detail: call.detail ?? null,
+                endpoint: call.endpoint,
+                statusCode: call.statusCode,
+              }),
+            );
+          }
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "failed to update hypixel api circuit",
               error: error instanceof Error ? error.message : String(error),
             }),
           );

@@ -4,7 +4,7 @@ import {
   getDatabase,
   isUsingPostgres,
 } from "../../../src/server/runtime";
-import { getHypixelScansPaused } from "@pitantir/db";
+import { getHypixelApiCircuit, getHypixelScansPaused } from "@pitantir/db";
 import {
   MojangLookupError,
   resolveMinecraftProfileByUsername,
@@ -39,10 +39,11 @@ export async function GET() {
     return NextResponse.json({ error: "Accounts repository unavailable." }, { status: 503 });
   }
 
-  const [watchlist, contacts, scansPaused] = await Promise.all([
+  const [watchlist, contacts, scansPaused, circuit] = await Promise.all([
     repo.listWatchlist(),
     repo.listOwnershipContacts(),
     getHypixelScansPaused(db),
+    getHypixelApiCircuit(db),
   ]);
 
   return NextResponse.json({
@@ -50,6 +51,10 @@ export async function GET() {
     contacts,
     accounts: [...watchlist, ...contacts],
     scansPaused,
+    circuitOpen: Boolean(circuit.trippedAt),
+    consecutiveFailures: circuit.consecutiveFailures,
+    lastFailureDetail: circuit.lastFailureDetail,
+    trippedAt: circuit.trippedAt,
   });
 }
 
