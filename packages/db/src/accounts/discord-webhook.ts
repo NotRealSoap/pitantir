@@ -79,11 +79,17 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    * Optional webhook for DOWN role pings. Falls back to PitPal status, then alerts.
    */
   downwatchWebhookUrl: string | null;
+  /**
+   * Optional roster dashboard of effectively-online downwatch accounts (edited in place).
+   */
+  downwatchDashboardWebhookUrl: string | null;
   onlineDashboardEnabled: boolean;
   onlineDashboardMessageId: string | null;
   onlineDashboardRosterKey: string | null;
   non140erDashboardMessageId: string | null;
   non140erDashboardRosterKey: string | null;
+  downwatchDashboardMessageId: string | null;
+  downwatchDashboardRosterKey: string | null;
   /** Per-watchlist-player overrides (missing player → global defaults). */
   playerRules: DiscordPlayerRule[];
 };
@@ -129,12 +135,15 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   downwatchRoleId: null,
   downwatchChannelId: null,
   downwatchWebhookUrl: null,
+  downwatchDashboardWebhookUrl: null,
   ...DEFAULT_FLAGS,
   onlineDashboardEnabled: true,
   onlineDashboardMessageId: null,
   onlineDashboardRosterKey: null,
   non140erDashboardMessageId: null,
   non140erDashboardRosterKey: null,
+  downwatchDashboardMessageId: null,
+  downwatchDashboardRosterKey: null,
   playerRules: [],
 };
 
@@ -253,6 +262,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
       return raw && isDiscordSnowflakeId(raw) ? raw : null;
     })(),
     downwatchWebhookUrl: readUrl(row.downwatchWebhookUrl),
+    downwatchDashboardWebhookUrl: readUrl(row.downwatchDashboardWebhookUrl),
     notifyCameOnline: readBool(row.notifyCameOnline, DEFAULT_FLAGS.notifyCameOnline),
     notifyWentOffline: readBool(row.notifyWentOffline, DEFAULT_FLAGS.notifyWentOffline),
     notifyEveryOnlineScan: readBool(row.notifyEveryOnlineScan, DEFAULT_FLAGS.notifyEveryOnlineScan),
@@ -278,6 +288,15 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
         : null,
     non140erDashboardRosterKey:
       typeof row.non140erDashboardRosterKey === "string" ? row.non140erDashboardRosterKey : null,
+    downwatchDashboardMessageId:
+      typeof row.downwatchDashboardMessageId === "string" &&
+      row.downwatchDashboardMessageId.trim()
+        ? row.downwatchDashboardMessageId.trim()
+        : null,
+    downwatchDashboardRosterKey:
+      typeof row.downwatchDashboardRosterKey === "string"
+        ? row.downwatchDashboardRosterKey
+        : null,
     playerRules,
   };
 }
@@ -378,6 +397,7 @@ export async function setDiscordWebhookSettings(
       return raw && isDiscordSnowflakeId(raw) ? raw : null;
     })(),
     downwatchWebhookUrl: settings.downwatchWebhookUrl?.trim() || null,
+    downwatchDashboardWebhookUrl: settings.downwatchDashboardWebhookUrl?.trim() || null,
     notifyCameOnline: Boolean(settings.notifyCameOnline),
     notifyWentOffline: Boolean(settings.notifyWentOffline),
     notifyEveryOnlineScan: Boolean(settings.notifyEveryOnlineScan),
@@ -389,6 +409,8 @@ export async function setDiscordWebhookSettings(
     onlineDashboardRosterKey: settings.onlineDashboardRosterKey ?? null,
     non140erDashboardMessageId: settings.non140erDashboardMessageId?.trim() || null,
     non140erDashboardRosterKey: settings.non140erDashboardRosterKey ?? null,
+    downwatchDashboardMessageId: settings.downwatchDashboardMessageId?.trim() || null,
+    downwatchDashboardRosterKey: settings.downwatchDashboardRosterKey ?? null,
     playerRules: (settings.playerRules ?? [])
       .map((rule) => normalizePlayerRule(rule))
       .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
@@ -400,6 +422,7 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
   assertOptionalWebhook(next.non140erDashboardWebhookUrl, "Non-140er dashboard webhook");
   assertOptionalWebhook(next.downwatchWebhookUrl, "Downwatch webhook");
+  assertOptionalWebhook(next.downwatchDashboardWebhookUrl, "Downwatch dashboard webhook");
   if (!next.presenceWebhookUrl) {
     next.onlineDashboardMessageId = null;
     next.onlineDashboardRosterKey = null;
@@ -407,6 +430,10 @@ export async function setDiscordWebhookSettings(
   if (!next.non140erDashboardWebhookUrl) {
     next.non140erDashboardMessageId = null;
     next.non140erDashboardRosterKey = null;
+  }
+  if (!next.downwatchDashboardWebhookUrl) {
+    next.downwatchDashboardMessageId = null;
+    next.downwatchDashboardRosterKey = null;
   }
 
   // Merge onto existing JSON so unknown/future keys are not dropped.
@@ -428,7 +455,8 @@ export async function setDiscordWebhookSettings(
       !next.inventoryWebhookUrl &&
       !next.itemMovesWebhookUrl &&
       !next.non140erDashboardWebhookUrl &&
-      !next.downwatchWebhookUrl;
+      !next.downwatchWebhookUrl &&
+      !next.downwatchDashboardWebhookUrl;
     if (clearingAllChannels) {
       await deleteAdminSetting(db, DISCORD_PITPAL_STATUS_WEBHOOK_KEY);
     } else {
@@ -464,6 +492,8 @@ export async function setDiscordOnlineDashboardMeta(
     onlineDashboardRosterKey?: string | null;
     non140erDashboardMessageId?: string | null;
     non140erDashboardRosterKey?: string | null;
+    downwatchDashboardMessageId?: string | null;
+    downwatchDashboardRosterKey?: string | null;
   },
 ): Promise<void> {
   const current = await getDiscordWebhookSettings(db);
@@ -485,6 +515,14 @@ export async function setDiscordOnlineDashboardMeta(
       meta.non140erDashboardRosterKey !== undefined
         ? meta.non140erDashboardRosterKey
         : current.non140erDashboardRosterKey,
+    downwatchDashboardMessageId:
+      meta.downwatchDashboardMessageId !== undefined
+        ? meta.downwatchDashboardMessageId
+        : current.downwatchDashboardMessageId,
+    downwatchDashboardRosterKey:
+      meta.downwatchDashboardRosterKey !== undefined
+        ? meta.downwatchDashboardRosterKey
+        : current.downwatchDashboardRosterKey,
   });
 }
 
@@ -549,7 +587,8 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
       settings.itemMovesWebhookUrl ||
       settings.pitpalStatusWebhookUrl ||
       settings.non140erDashboardWebhookUrl ||
-      settings.downwatchWebhookUrl,
+      settings.downwatchWebhookUrl ||
+      settings.downwatchDashboardWebhookUrl,
   );
 }
 
@@ -963,8 +1002,14 @@ async function upsertDashboardMessage(options: {
   nextKey: string;
   payload: { content: string; embeds: Array<Record<string, unknown>> };
   force: boolean;
-  messageIdField: "onlineDashboardMessageId" | "non140erDashboardMessageId";
-  rosterKeyField: "onlineDashboardRosterKey" | "non140erDashboardRosterKey";
+  messageIdField:
+    | "onlineDashboardMessageId"
+    | "non140erDashboardMessageId"
+    | "downwatchDashboardMessageId";
+  rosterKeyField:
+    | "onlineDashboardRosterKey"
+    | "non140erDashboardRosterKey"
+    | "downwatchDashboardRosterKey";
 }): Promise<void> {
   if (!options.force && options.nextKey === options.rosterKey && options.messageId) {
     return;
@@ -997,6 +1042,7 @@ async function upsertDashboardMessage(options: {
  * Update roster dashboards in place (PATCH).
  * Main presence channel: all effectively-online watchlist accounts.
  * Optional non-140er channel: same roster minus 140er-labelled notes.
+ * Optional downwatch channel: effectively-online accounts on the downwatch list.
  * Only creates a new message when none exists or edit fails — never deletes.
  */
 export async function refreshDiscordOnlineDashboard(
@@ -1007,6 +1053,11 @@ export async function refreshDiscordOnlineDashboard(
   if (!settings.onlineDashboardEnabled) return;
 
   const repo = new AccountsRepository(db);
+  const downwatch = await getDownwatchState(db);
+  const downwatchNames = new Set(
+    downwatch.entries.map((entry) => entry.mcUsername.toLowerCase()),
+  );
+
   const onlineWithNotes = (await repo.listWatchlist())
     .map((row) => {
       const presence = resolveEffectivePresence(row);
@@ -1030,6 +1081,9 @@ export async function refreshDiscordOnlineDashboard(
   );
   const non140er: OnlineRosterEntry[] = onlineWithNotes
     .filter((row) => !notesIndicate140er(row.notes))
+    .map(({ notes: _notes, ...entry }) => entry);
+  const downwatchOnline: OnlineRosterEntry[] = onlineWithNotes
+    .filter((row) => downwatchNames.has(row.mcUsername.toLowerCase()))
     .map(({ notes: _notes, ...entry }) => entry);
 
   const updatedAt = new Date().toISOString();
@@ -1064,6 +1118,25 @@ export async function refreshDiscordOnlineDashboard(
       force: Boolean(options?.force),
       messageIdField: "non140erDashboardMessageId",
       rosterKeyField: "non140erDashboardRosterKey",
+    });
+  }
+
+  if (settings.downwatchDashboardWebhookUrl) {
+    await upsertDashboardMessage({
+      db,
+      webhookUrl: settings.downwatchDashboardWebhookUrl,
+      messageId: settings.downwatchDashboardMessageId,
+      rosterKey: settings.downwatchDashboardRosterKey,
+      nextKey: rosterKeyFor(downwatchOnline),
+      payload: buildOnlineDashboardPayload(downwatchOnline, updatedAt, {
+        headline: "Downwatch online",
+        title: "Downwatch online",
+        emptyMessage: "_No downwatch accounts are online._",
+        footer: "Pitantir downwatch dashboard · edited in place",
+      }),
+      force: Boolean(options?.force),
+      messageIdField: "downwatchDashboardMessageId",
+      rosterKeyField: "downwatchDashboardRosterKey",
     });
   }
 }

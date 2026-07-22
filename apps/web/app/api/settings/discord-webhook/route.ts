@@ -35,7 +35,8 @@ function publicView(settings: DiscordWebhookSettings) {
         settings.itemMovesWebhookUrl ||
         settings.pitpalStatusWebhookUrl ||
         settings.non140erDashboardWebhookUrl ||
-        settings.downwatchWebhookUrl,
+        settings.downwatchWebhookUrl ||
+        settings.downwatchDashboardWebhookUrl,
     ),
     presenceWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceWebhookUrl),
     presenceAlertsWebhookUrlMasked: maskDiscordWebhookUrl(settings.presenceAlertsWebhookUrl),
@@ -49,6 +50,9 @@ function publicView(settings: DiscordWebhookSettings) {
     downwatchRoleId: settings.downwatchRoleId,
     downwatchChannelId: settings.downwatchChannelId,
     downwatchWebhookUrlMasked: maskDiscordWebhookUrl(settings.downwatchWebhookUrl),
+    downwatchDashboardWebhookUrlMasked: maskDiscordWebhookUrl(
+      settings.downwatchDashboardWebhookUrl,
+    ),
     notifyCameOnline: settings.notifyCameOnline,
     notifyWentOffline: settings.notifyWentOffline,
     notifyEveryOnlineScan: settings.notifyEveryOnlineScan,
@@ -58,6 +62,7 @@ function publicView(settings: DiscordWebhookSettings) {
     onlineDashboardEnabled: settings.onlineDashboardEnabled,
     onlineDashboardConfigured: Boolean(settings.onlineDashboardMessageId),
     non140erDashboardConfigured: Boolean(settings.non140erDashboardMessageId),
+    downwatchDashboardConfigured: Boolean(settings.downwatchDashboardMessageId),
     playerRules: settings.playerRules,
   };
 }
@@ -201,6 +206,8 @@ export async function POST(request: Request) {
       else if (channel === "pitpalStatus") patch.pitpalStatusWebhookUrl = draft.url;
       else if (channel === "presenceAlerts") patch.presenceAlertsWebhookUrl = draft.url;
       else if (channel === "non140erDashboard") patch.non140erDashboardWebhookUrl = draft.url;
+      else if (channel === "downwatch") patch.downwatchWebhookUrl = draft.url;
+      else if (channel === "downwatchDashboard") patch.downwatchDashboardWebhookUrl = draft.url;
       else patch.presenceWebhookUrl = draft.url;
       settings = await setDiscordWebhookSettings(db, patch);
     }
@@ -219,7 +226,11 @@ export async function POST(request: Request) {
               ? settings.presenceAlertsWebhookUrl || settings.presenceWebhookUrl
               : channel === "non140erDashboard"
                 ? settings.non140erDashboardWebhookUrl
-                : settings.presenceWebhookUrl;
+                : channel === "downwatch"
+                  ? settings.downwatchWebhookUrl
+                  : channel === "downwatchDashboard"
+                    ? settings.downwatchDashboardWebhookUrl
+                    : settings.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
         {
@@ -231,7 +242,11 @@ export async function POST(request: Request) {
                 ? "Paste the online/offline alerts webhook URL above, then click Test (or Save)."
                 : channel === "non140erDashboard"
                   ? "Paste the non-140er dashboard webhook URL above, then click Test (or Save)."
-                  : "Save a webhook URL for that channel first.",
+                  : channel === "downwatchDashboard"
+                    ? "Paste the downwatch dashboard webhook URL above, then click Test (or Save)."
+                    : channel === "downwatch"
+                      ? "Paste the downwatch alert webhook URL above, then click Test (or Save)."
+                      : "Save a webhook URL for that channel first.",
         },
         { status: 400 },
       );
@@ -243,7 +258,9 @@ export async function POST(request: Request) {
           ? "item_moved"
           : channel === "pitpalStatus"
             ? "pitpal_location"
-            : channel === "presence" || channel === "non140erDashboard"
+            : channel === "presence" ||
+                channel === "non140erDashboard" ||
+                channel === "downwatchDashboard"
               ? "online_indexed"
               : "came_online";
     const result = await postDiscordWebhook(url, {
@@ -270,7 +287,11 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (channel === "presence" || channel === "non140erDashboard") {
+    if (
+      channel === "presence" ||
+      channel === "non140erDashboard" ||
+      channel === "downwatchDashboard"
+    ) {
       await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
     }
     return NextResponse.json({
@@ -284,7 +305,11 @@ export async function POST(request: Request) {
   }
 
   if (action === "refresh_dashboard") {
-    if (!current.presenceWebhookUrl && !current.non140erDashboardWebhookUrl) {
+    if (
+      !current.presenceWebhookUrl &&
+      !current.non140erDashboardWebhookUrl &&
+      !current.downwatchDashboardWebhookUrl
+    ) {
       return NextResponse.json(
         { ok: false, error: "Save an online dashboard webhook URL first." },
         { status: 400 },
@@ -312,6 +337,8 @@ export async function POST(request: Request) {
       current.itemMovesWebhookUrl,
       current.pitpalStatusWebhookUrl,
       current.non140erDashboardWebhookUrl,
+      current.downwatchWebhookUrl,
+      current.downwatchDashboardWebhookUrl,
     ]) {
       if (url && current.onlineDashboardMessageId && url === current.presenceWebhookUrl) {
         try {
@@ -337,6 +364,20 @@ export async function POST(request: Request) {
           // ignore
         }
       }
+      if (
+        url &&
+        current.downwatchDashboardMessageId &&
+        url === current.downwatchDashboardWebhookUrl
+      ) {
+        try {
+          await fetch(`${url}/messages/${current.downwatchDashboardMessageId}`, {
+            method: "DELETE",
+            signal: AbortSignal.timeout(8_000),
+          });
+        } catch {
+          // ignore
+        }
+      }
     }
     const next = await setDiscordWebhookSettings(db, {
       ...current,
@@ -346,10 +387,14 @@ export async function POST(request: Request) {
       itemMovesWebhookUrl: null,
       pitpalStatusWebhookUrl: null,
       non140erDashboardWebhookUrl: null,
+      downwatchWebhookUrl: null,
+      downwatchDashboardWebhookUrl: null,
       onlineDashboardMessageId: null,
       onlineDashboardRosterKey: null,
       non140erDashboardMessageId: null,
       non140erDashboardRosterKey: null,
+      downwatchDashboardMessageId: null,
+      downwatchDashboardRosterKey: null,
       playerRules: [],
     });
     return NextResponse.json({
@@ -372,6 +417,10 @@ export async function POST(request: Request) {
     "Non-140er dashboard webhook",
   );
   const downwatchWebhook = parseOptionalUrl(input.downwatchWebhookUrl, "Downwatch webhook");
+  const downwatchDashboard = parseOptionalUrl(
+    input.downwatchDashboardWebhookUrl,
+    "Downwatch dashboard webhook",
+  );
   if (!presence.ok) return NextResponse.json({ ok: false, error: presence.error }, { status: 400 });
   if (!presenceAlerts.ok) {
     return NextResponse.json({ ok: false, error: presenceAlerts.error }, { status: 400 });
@@ -384,6 +433,9 @@ export async function POST(request: Request) {
   }
   if (!downwatchWebhook.ok) {
     return NextResponse.json({ ok: false, error: downwatchWebhook.error }, { status: 400 });
+  }
+  if (!downwatchDashboard.ok) {
+    return NextResponse.json({ ok: false, error: downwatchDashboard.error }, { status: 400 });
   }
 
   try {
@@ -403,6 +455,9 @@ export async function POST(request: Request) {
       downwatchWebhookUrl: downwatchWebhook.provided
         ? downwatchWebhook.url
         : current.downwatchWebhookUrl,
+      downwatchDashboardWebhookUrl: downwatchDashboard.provided
+        ? downwatchDashboard.url
+        : current.downwatchDashboardWebhookUrl,
       opsAlertDiscordUserId: (() => {
         if (typeof input.opsAlertDiscordUserId !== "string") {
           return current.opsAlertDiscordUserId;
@@ -468,13 +523,17 @@ export async function POST(request: Request) {
       onlineDashboardRosterKey: current.onlineDashboardRosterKey,
       non140erDashboardMessageId: current.non140erDashboardMessageId,
       non140erDashboardRosterKey: current.non140erDashboardRosterKey,
+      downwatchDashboardMessageId: current.downwatchDashboardMessageId,
+      downwatchDashboardRosterKey: current.downwatchDashboardRosterKey,
       playerRules:
         input.playerRules !== undefined ? parsePlayerRules(input.playerRules) : current.playerRules,
     });
 
     if (
       next.onlineDashboardEnabled &&
-      (next.presenceWebhookUrl || next.non140erDashboardWebhookUrl)
+      (next.presenceWebhookUrl ||
+        next.non140erDashboardWebhookUrl ||
+        next.downwatchDashboardWebhookUrl)
     ) {
       await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
     }

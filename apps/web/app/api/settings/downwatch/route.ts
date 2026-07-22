@@ -3,6 +3,7 @@ import {
   addDownwatch,
   getDiscordWebhookSettings,
   listDownwatch,
+  refreshDiscordOnlineDashboard,
   removeDownwatch,
 } from "@pitantir/db";
 import { getDatabase, isUsingPostgres } from "../../../../src/server/runtime";
@@ -35,6 +36,7 @@ export async function GET() {
     downwatchRoleId: settings.downwatchRoleId,
     downwatchChannelId: settings.downwatchChannelId,
     downwatchWebhookConfigured: Boolean(settings.downwatchWebhookUrl),
+    downwatchDashboardConfigured: Boolean(settings.downwatchDashboardMessageId),
     botTokenConfigured: Boolean(process.env.DISCORD_BOT_TOKEN?.trim()),
   });
 }
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
   try {
     if (action === "add") {
       const result = await addDownwatch(db, mcUsername, { addedBy: "settings" });
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
       return NextResponse.json({
         ok: true,
         message: result.created
@@ -79,6 +82,7 @@ export async function POST(request: Request) {
     }
     if (action === "remove") {
       const result = await removeDownwatch(db, mcUsername);
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
       return NextResponse.json({
         ok: true,
         message: result.removed

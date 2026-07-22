@@ -83,6 +83,18 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.non140erDashboardRosterKey).toBe("Amy\t\t\t\t");
   });
 
+  it("reads downwatch dashboard webhook settings", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      downwatchDashboardWebhookUrl:
+        "https://discord.com/api/webhooks/8/abcdefghijklmnopqrstuv",
+      downwatchDashboardMessageId: "msg-dw",
+      downwatchDashboardRosterKey: "Steve\t\t\t\t",
+    });
+    expect(settings.downwatchDashboardWebhookUrl).toContain("/webhooks/8/");
+    expect(settings.downwatchDashboardMessageId).toBe("msg-dw");
+    expect(settings.downwatchDashboardRosterKey).toBe("Steve\t\t\t\t");
+  });
+
   it("repairs legacy player rules that stored notifyPitpalStatusChanges as false", () => {
     const settings = normalizeDiscordWebhookSettings({
       notifyPitpalStatusChanges: true,

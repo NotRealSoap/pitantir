@@ -377,6 +377,7 @@ type DiscordWebhookPayload = {
   downwatchRoleId?: string | null;
   downwatchChannelId?: string | null;
   downwatchWebhookUrlMasked?: string | null;
+  downwatchDashboardWebhookUrlMasked?: string | null;
   notifyCameOnline?: boolean;
   notifyWentOffline?: boolean;
   notifyEveryOnlineScan?: boolean;
@@ -386,6 +387,7 @@ type DiscordWebhookPayload = {
   onlineDashboardEnabled?: boolean;
   onlineDashboardConfigured?: boolean;
   non140erDashboardConfigured?: boolean;
+  downwatchDashboardConfigured?: boolean;
   playerRules?: DiscordPlayerRuleState[];
   watchlist?: Array<{ id: string; mcUsername: string }>;
   ok?: boolean;
@@ -450,6 +452,7 @@ function DiscordWebhookPanel() {
   const [downwatchRoleId, setDownwatchRoleId] = useState("");
   const [downwatchChannelId, setDownwatchChannelId] = useState("");
   const [downwatchWebhookUrl, setDownwatchWebhookUrl] = useState("");
+  const [downwatchDashboardWebhookUrl, setDownwatchDashboardWebhookUrl] = useState("");
   const [notifyCameOnline, setNotifyCameOnline] = useState(true);
   const [notifyWentOffline, setNotifyWentOffline] = useState(false);
   const [notifyEveryOnlineScan, setNotifyEveryOnlineScan] = useState(true);
@@ -534,6 +537,7 @@ function DiscordWebhookPanel() {
         setPitpalStatusWebhookUrl("");
         setNon140erDashboardWebhookUrl("");
         setDownwatchWebhookUrl("");
+        setDownwatchDashboardWebhookUrl("");
       }
     } catch {
       setError("Request failed.");
@@ -569,8 +573,9 @@ function DiscordWebhookPanel() {
       <p className="muted">
         Use <strong>dedicated channels</strong>. Online dashboard = roster only (edited in place).
         Non-140er dashboard = same roster minus players whose notes contain <code>140er</code>.
-        Online/offline alerts = Hypixel came-online / went-offline / still-online index pings (also used
-        for Hypixel outage alerts that ping ops). PitPal status = lobbies changes (append-only). Leave a
+        Downwatch dashboard = effectively-online accounts on the downwatch list. Online/offline
+        alerts = Hypixel came-online / went-offline / still-online index pings (also used for
+        Hypixel outage alerts that ping ops). PitPal status = lobbies changes (append-only). Leave a
         URL blank to keep the saved value.
       </p>
       <p>
@@ -608,6 +613,16 @@ function DiscordWebhookPanel() {
             non-140er live
           </span>
         ) : null}
+        {status?.downwatchDashboardWebhookUrlMasked ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            downwatch dash saved
+          </span>
+        ) : null}
+        {status?.downwatchDashboardConfigured ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            downwatch dash live
+          </span>
+        ) : null}
       </p>
 
       <form
@@ -625,6 +640,7 @@ function DiscordWebhookPanel() {
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
             non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
             downwatchWebhookUrl: downwatchWebhookUrl.trim() || undefined,
+            downwatchDashboardWebhookUrl: downwatchDashboardWebhookUrl.trim() || undefined,
             opsAlertDiscordUserId: opsAlertDiscordUserId.trim(),
             downwatchRoleId: downwatchRoleId.trim(),
             downwatchChannelId: downwatchChannelId.trim(),
@@ -729,6 +745,21 @@ function DiscordWebhookPanel() {
               status?.downwatchWebhookUrlMasked
                 ? `Saved: ${status.downwatchWebhookUrlMasked}`
                 : "Optional — falls back to PitPal status / alerts"
+            }
+          />
+        </label>
+        <label>
+          Downwatch roster dashboard webhook (online downwatch IGNs · edited in place)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={downwatchDashboardWebhookUrl}
+            onChange={(event) => setDownwatchDashboardWebhookUrl(event.target.value)}
+            placeholder={
+              status?.downwatchDashboardWebhookUrlMasked
+                ? `Saved: ${status.downwatchDashboardWebhookUrlMasked}`
+                : "Optional — separate channel for downwatch online roster"
             }
           />
         </label>
@@ -1029,6 +1060,23 @@ function DiscordWebhookPanel() {
           </button>
           <button
             type="button"
+            disabled={
+              busy ||
+              (!status?.downwatchDashboardWebhookUrlMasked &&
+                !downwatchDashboardWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "downwatchDashboard",
+                webhookUrl: downwatchDashboardWebhookUrl.trim() || undefined,
+              })
+            }
+          >
+            Test downwatch dashboard
+          </button>
+          <button
+            type="button"
             disabled={busy || (!status?.configured && !itemMovesWebhookUrl.trim())}
             onClick={() =>
               void run({
@@ -1089,6 +1137,7 @@ function DiscordWebhookPanel() {
               !onlineDashboardEnabled ||
               (!status?.presenceWebhookUrlMasked &&
                 !status?.non140erDashboardWebhookUrlMasked &&
+                !status?.downwatchDashboardWebhookUrlMasked &&
                 !status?.configured)
             }
             onClick={() => void run({ action: "refresh_dashboard" })}

@@ -5,6 +5,7 @@ import {
   getDownwatchState,
   listDownwatch,
   parseDownwatchCommand,
+  refreshDiscordOnlineDashboard,
   removeDownwatch,
   setDownwatchCursor,
 } from "@pitantir/db";
@@ -149,6 +150,7 @@ export async function pollDownwatchDiscordCommands(db: Database): Promise<{
         );
       } else if (command.action === "add") {
         const result = await addDownwatch(db, command.mcUsername, { addedBy: who });
+        await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
         await reply(
           token,
           channelId,
@@ -160,6 +162,7 @@ export async function pollDownwatchDiscordCommands(db: Database): Promise<{
         );
       } else if (command.action === "remove") {
         const result = await removeDownwatch(db, command.mcUsername);
+        await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
         await reply(
           token,
           channelId,
