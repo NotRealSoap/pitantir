@@ -17,6 +17,7 @@ export * from "./accounts/furry-stashes.js";
 export * from "./accounts/downwatch.js";
 export * from "./accounts/presence.js";
 export * from "./accounts/pitpanda-presence.js";
+export * from "./accounts/pitpal-monitor.js";
 export * from "./jobs/index.js";
 export * from "./scanning/index.js";
 export * from "./schema/index.js";

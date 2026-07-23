@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getPitpalLobbySnapshot, ingestPitpalLobbies } from "@pitantir/db";
+import {
+  getPitpalLobbySnapshot,
+  getPitpalMonitorState,
+  ingestPitpalLobbies,
+  PITPAL_MONITOR_STALE_MS,
+} from "@pitantir/db";
 import { getDatabase, isUsingPostgres } from "../../../../src/server/runtime";
 import { InMemoryRateLimiter } from "../../../../src/server/rate-limit";
 
@@ -22,8 +27,28 @@ export async function GET() {
   if (!db) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
-  const snapshot = await getPitpalLobbySnapshot(db);
-  return NextResponse.json(snapshot);
+  const [snapshot, monitor] = await Promise.all([
+    getPitpalLobbySnapshot(db),
+    getPitpalMonitorState(db),
+  ]);
+  const nowMs = Date.now();
+  let ageMs: number | null = null;
+  if (snapshot.observedAt) {
+    const at = Date.parse(snapshot.observedAt);
+    if (Number.isFinite(at)) ageMs = Math.max(0, nowMs - at);
+  }
+  const feedFresh = ageMs != null && ageMs <= PITPAL_MONITOR_STALE_MS;
+  return NextResponse.json({
+    ...snapshot,
+    monitor: {
+      status: monitor.status === "unknown" ? (feedFresh ? "online" : "offline") : monitor.status,
+      ageMs,
+      staleMs: PITPAL_MONITOR_STALE_MS,
+      lastCheckedAt: monitor.lastCheckedAt,
+      offlineSince: monitor.offlineSince,
+      lastAlertAt: monitor.lastAlertAt,
+    },
+  });
 }
 
 /**

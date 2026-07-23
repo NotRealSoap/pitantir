@@ -66,6 +66,11 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    * Discord snowflake for ops outage pings (e.g. ambienangel).
    * Username alone cannot ping — paste User ID from Discord Developer Mode.
    */
+  /**
+   * Optional webhook for PitPal lobby-monitor up/down (Tampermonkey ingest heartbeat).
+   * Falls back to presenceAlertsWebhookUrl, then presenceWebhookUrl.
+   */
+  monitorWebhookUrl: string | null;
   opsAlertDiscordUserId: string | null;
   /**
    * Role snowflake pinged when a downwatch-listed account goes PitPal DOWN.
@@ -131,6 +136,7 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   itemMovesWebhookUrl: null,
   pitpalStatusWebhookUrl: null,
   non140erDashboardWebhookUrl: null,
+  monitorWebhookUrl: null,
   opsAlertDiscordUserId: null,
   downwatchRoleId: null,
   downwatchChannelId: null,
@@ -248,6 +254,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     itemMovesWebhookUrl,
     pitpalStatusWebhookUrl,
     non140erDashboardWebhookUrl: readUrl(row.non140erDashboardWebhookUrl),
+    monitorWebhookUrl: readUrl(row.monitorWebhookUrl),
     opsAlertDiscordUserId: (() => {
       const raw =
         typeof row.opsAlertDiscordUserId === "string" ? row.opsAlertDiscordUserId.trim() : "";
@@ -384,6 +391,7 @@ export async function setDiscordWebhookSettings(
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
     non140erDashboardWebhookUrl: settings.non140erDashboardWebhookUrl?.trim() || null,
+    monitorWebhookUrl: settings.monitorWebhookUrl?.trim() || null,
     opsAlertDiscordUserId: (() => {
       const raw = settings.opsAlertDiscordUserId?.trim() || "";
       return raw && isDiscordUserId(raw) ? raw : null;
@@ -421,6 +429,7 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
   assertOptionalWebhook(next.non140erDashboardWebhookUrl, "Non-140er dashboard webhook");
+  assertOptionalWebhook(next.monitorWebhookUrl, "Lobby monitor webhook");
   assertOptionalWebhook(next.downwatchWebhookUrl, "Downwatch webhook");
   assertOptionalWebhook(next.downwatchDashboardWebhookUrl, "Downwatch dashboard webhook");
   if (!next.presenceWebhookUrl) {
@@ -587,6 +596,7 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
       settings.itemMovesWebhookUrl ||
       settings.pitpalStatusWebhookUrl ||
       settings.non140erDashboardWebhookUrl ||
+      settings.monitorWebhookUrl ||
       settings.downwatchWebhookUrl ||
       settings.downwatchDashboardWebhookUrl,
   );
@@ -987,6 +997,101 @@ export async function notifyHypixelApiOutage(
             inline: true,
           },
         ],
+      },
+    ],
+    allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },
+  });
+  return posted.ok;
+}
+
+function formatMonitorAge(ageMs: number | null): string {
+  if (ageMs == null) return "never";
+  const totalSec = Math.max(0, Math.floor(ageMs / 1000));
+  if (totalSec < 60) return `${totalSec}s ago`;
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s ago` : `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins > 0 ? `${hours}h ${remMins}m ago` : `${hours}h ago`;
+}
+
+/**
+ * Discord alert when Tampermonkey lobby ingest goes stale or resumes.
+ * Uses monitorWebhookUrl, else online/offline alerts, else dashboard webhook.
+ * Mentions ops Discord user when configured.
+ */
+export async function notifyPitpalMonitorStatus(
+  db: Database,
+  input: {
+    kind: "went_offline" | "came_online";
+    ageMs: number | null;
+    staleMs: number;
+    offlineSince?: string | null;
+    lastIngestAt?: string | null;
+    at?: string;
+  },
+): Promise<boolean> {
+  const settings = await getDiscordWebhookSettings(db);
+  const webhookUrl =
+    settings.monitorWebhookUrl ||
+    settings.presenceAlertsWebhookUrl ||
+    settings.presenceWebhookUrl ||
+    null;
+  if (!webhookUrl) return false;
+
+  const userId = resolveOpsAlertDiscordUserId(settings);
+  const mention = userId ? `<@${userId}>` : null;
+  const staleMinutes = Math.round(input.staleMs / 60_000);
+  const ageLabel = formatMonitorAge(input.ageMs);
+  const at = input.at ?? new Date().toISOString();
+
+  if (input.kind === "went_offline") {
+    const headline = mention
+      ? `${mention} Pitantir lobby monitoring stopped`
+      : "Pitantir lobby monitoring stopped";
+    const detail =
+      input.ageMs == null
+        ? `No Tampermonkey lobby ingest has been received yet (threshold ${staleMinutes}m).`
+        : `No lobby ingest for ${ageLabel} (threshold ${staleMinutes}m). Check that the Mac is awake, web is running, and the PitPal tab + Tampermonkey script are active.`;
+    const posted = await postRawDiscordWebhook(webhookUrl, {
+      content: `${headline}\n${detail}`.slice(0, 2000),
+      embeds: [
+        {
+          title: "Lobby monitor offline",
+          description: detail,
+          color: 0xed4245,
+          timestamp: at,
+          footer: { text: "Pitantir · Tampermonkey lobby heartbeat" },
+          fields: [
+            { name: "Last ingest", value: ageLabel, inline: true },
+            {
+              name: "Stale after",
+              value: `${staleMinutes} minutes`,
+              inline: true,
+            },
+          ],
+        },
+      ],
+      allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },
+    });
+    return posted.ok;
+  }
+
+  const headline = mention
+    ? `${mention} Pitantir lobby monitoring resumed`
+    : "Pitantir lobby monitoring resumed";
+  const detail = `Lobby ingest is flowing again (last ingest ${ageLabel}).`;
+  const posted = await postRawDiscordWebhook(webhookUrl, {
+    content: `${headline}\n${detail}`.slice(0, 2000),
+    embeds: [
+      {
+        title: "Lobby monitor online",
+        description: detail,
+        color: 0x57f287,
+        timestamp: at,
+        footer: { text: "Pitantir · Tampermonkey lobby heartbeat" },
+        fields: [{ name: "Last ingest", value: ageLabel, inline: true }],
       },
     ],
     allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },

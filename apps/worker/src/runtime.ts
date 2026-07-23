@@ -266,6 +266,8 @@ export async function runWorkerMain(): Promise<void> {
 
   let lastDownwatchPollAt = 0;
   const downwatchPollMs = envInt("DOWNWATCH_DISCORD_POLL_MS", 5_000);
+  let lastMonitorCheckAt = 0;
+  const monitorCheckMs = envInt("PITPAL_MONITOR_POLL_MS", 30_000);
 
   try {
     while (!stopping) {
@@ -290,6 +292,32 @@ export async function runWorkerMain(): Promise<void> {
           console.warn(
             JSON.stringify({
               msg: "downwatch discord poll failed",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      }
+
+      if (nowMs - lastMonitorCheckAt >= monitorCheckMs) {
+        lastMonitorCheckAt = nowMs;
+        try {
+          const { checkPitpalMonitorHeartbeat } = await import("@pitantir/db");
+          const result = await checkPitpalMonitorHeartbeat(db);
+          if (result.transition) {
+            console.log(
+              JSON.stringify({
+                msg: "pitpal lobby monitor",
+                status: result.status,
+                transition: result.transition,
+                alerted: result.alerted,
+                ageMs: result.ageMs,
+              }),
+            );
+          }
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              msg: "pitpal lobby monitor check failed",
               error: error instanceof Error ? error.message : String(error),
             }),
           );

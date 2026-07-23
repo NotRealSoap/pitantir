@@ -35,6 +35,7 @@ function publicView(settings: DiscordWebhookSettings) {
         settings.itemMovesWebhookUrl ||
         settings.pitpalStatusWebhookUrl ||
         settings.non140erDashboardWebhookUrl ||
+        settings.monitorWebhookUrl ||
         settings.downwatchWebhookUrl ||
         settings.downwatchDashboardWebhookUrl,
     ),
@@ -46,6 +47,7 @@ function publicView(settings: DiscordWebhookSettings) {
     non140erDashboardWebhookUrlMasked: maskDiscordWebhookUrl(
       settings.non140erDashboardWebhookUrl,
     ),
+    monitorWebhookUrlMasked: maskDiscordWebhookUrl(settings.monitorWebhookUrl),
     opsAlertDiscordUserId: settings.opsAlertDiscordUserId,
     downwatchRoleId: settings.downwatchRoleId,
     downwatchChannelId: settings.downwatchChannelId,
@@ -208,6 +210,7 @@ export async function POST(request: Request) {
       else if (channel === "non140erDashboard") patch.non140erDashboardWebhookUrl = draft.url;
       else if (channel === "downwatch") patch.downwatchWebhookUrl = draft.url;
       else if (channel === "downwatchDashboard") patch.downwatchDashboardWebhookUrl = draft.url;
+      else if (channel === "monitor") patch.monitorWebhookUrl = draft.url;
       else patch.presenceWebhookUrl = draft.url;
       settings = await setDiscordWebhookSettings(db, patch);
     }
@@ -230,7 +233,11 @@ export async function POST(request: Request) {
                   ? settings.downwatchWebhookUrl
                   : channel === "downwatchDashboard"
                     ? settings.downwatchDashboardWebhookUrl
-                    : settings.presenceWebhookUrl;
+                    : channel === "monitor"
+                      ? settings.monitorWebhookUrl ||
+                        settings.presenceAlertsWebhookUrl ||
+                        settings.presenceWebhookUrl
+                      : settings.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
         {
@@ -246,7 +253,9 @@ export async function POST(request: Request) {
                     ? "Paste the downwatch dashboard webhook URL above, then click Test (or Save)."
                     : channel === "downwatch"
                       ? "Paste the downwatch alert webhook URL above, then click Test (or Save)."
-                      : "Save a webhook URL for that channel first.",
+                      : channel === "monitor"
+                        ? "Paste the lobby monitor webhook URL above (or alerts/dashboard), then click Test."
+                        : "Save a webhook URL for that channel first.",
         },
         { status: 400 },
       );
@@ -258,15 +267,20 @@ export async function POST(request: Request) {
           ? "item_moved"
           : channel === "pitpalStatus"
             ? "pitpal_location"
-            : channel === "presence" ||
-                channel === "non140erDashboard" ||
-                channel === "downwatchDashboard"
-              ? "online_indexed"
-              : "came_online";
+            : channel === "monitor"
+              ? "went_offline"
+              : channel === "presence" ||
+                  channel === "non140erDashboard" ||
+                  channel === "downwatchDashboard"
+                ? "online_indexed"
+                : "came_online";
     const result = await postDiscordWebhook(url, {
       kind,
       mcUsername: "Pitantir",
-      detail: `webhook test (${channel})`,
+      detail:
+        channel === "monitor"
+          ? "lobby monitor webhook test (Tampermonkey heartbeat)"
+          : `webhook test (${channel})`,
       at: new Date().toISOString(),
       changes:
         kind === "item_moved"
@@ -387,6 +401,7 @@ export async function POST(request: Request) {
       itemMovesWebhookUrl: null,
       pitpalStatusWebhookUrl: null,
       non140erDashboardWebhookUrl: null,
+      monitorWebhookUrl: null,
       downwatchWebhookUrl: null,
       downwatchDashboardWebhookUrl: null,
       onlineDashboardMessageId: null,
@@ -421,6 +436,7 @@ export async function POST(request: Request) {
     input.downwatchDashboardWebhookUrl,
     "Downwatch dashboard webhook",
   );
+  const monitor = parseOptionalUrl(input.monitorWebhookUrl, "Lobby monitor webhook");
   if (!presence.ok) return NextResponse.json({ ok: false, error: presence.error }, { status: 400 });
   if (!presenceAlerts.ok) {
     return NextResponse.json({ ok: false, error: presenceAlerts.error }, { status: 400 });
@@ -437,6 +453,9 @@ export async function POST(request: Request) {
   if (!downwatchDashboard.ok) {
     return NextResponse.json({ ok: false, error: downwatchDashboard.error }, { status: 400 });
   }
+  if (!monitor.ok) {
+    return NextResponse.json({ ok: false, error: monitor.error }, { status: 400 });
+  }
 
   try {
     const next = await setDiscordWebhookSettings(db, {
@@ -452,6 +471,7 @@ export async function POST(request: Request) {
       non140erDashboardWebhookUrl: non140erDashboard.provided
         ? non140erDashboard.url
         : current.non140erDashboardWebhookUrl,
+      monitorWebhookUrl: monitor.provided ? monitor.url : current.monitorWebhookUrl,
       downwatchWebhookUrl: downwatchWebhook.provided
         ? downwatchWebhook.url
         : current.downwatchWebhookUrl,

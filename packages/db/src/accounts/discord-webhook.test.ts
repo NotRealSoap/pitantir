@@ -69,6 +69,7 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.notifyPitpalStatusChanges).toBe(true);
     expect(settings.pitpalStatusWebhookUrl).toBeNull();
     expect(settings.non140erDashboardWebhookUrl).toBeNull();
+    expect(settings.monitorWebhookUrl).toBeNull();
   });
 
   it("reads non-140er dashboard webhook settings", () => {

@@ -373,6 +373,7 @@ type DiscordWebhookPayload = {
   itemMovesWebhookUrlMasked?: string | null;
   pitpalStatusWebhookUrlMasked?: string | null;
   non140erDashboardWebhookUrlMasked?: string | null;
+  monitorWebhookUrlMasked?: string | null;
   opsAlertDiscordUserId?: string | null;
   downwatchRoleId?: string | null;
   downwatchChannelId?: string | null;
@@ -448,6 +449,7 @@ function DiscordWebhookPanel() {
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
   const [non140erDashboardWebhookUrl, setNon140erDashboardWebhookUrl] = useState("");
+  const [monitorWebhookUrl, setMonitorWebhookUrl] = useState("");
   const [opsAlertDiscordUserId, setOpsAlertDiscordUserId] = useState("");
   const [downwatchRoleId, setDownwatchRoleId] = useState("");
   const [downwatchChannelId, setDownwatchChannelId] = useState("");
@@ -639,6 +641,7 @@ function DiscordWebhookPanel() {
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
             non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
+            monitorWebhookUrl: monitorWebhookUrl.trim() || undefined,
             downwatchWebhookUrl: downwatchWebhookUrl.trim() || undefined,
             downwatchDashboardWebhookUrl: downwatchDashboardWebhookUrl.trim() || undefined,
             opsAlertDiscordUserId: opsAlertDiscordUserId.trim(),
@@ -686,7 +689,7 @@ function DiscordWebhookPanel() {
           />
         </label>
         <label>
-          Ops alert Discord user ID (pings ambienangel on Hypixel outage)
+          Ops alert Discord user ID (pings on Hypixel outage + lobby monitor down)
           <input
             type="text"
             inputMode="numeric"
@@ -820,6 +823,21 @@ function DiscordWebhookPanel() {
               status?.pitpalStatusWebhookUrlMasked
                 ? `Saved: ${status.pitpalStatusWebhookUrlMasked}`
                 : "https://discord.com/api/webhooks/… (required for PitPal)"
+            }
+          />
+        </label>
+        <label>
+          Lobby monitor webhook (Tampermonkey heartbeat · online/offline when ingest stops)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={monitorWebhookUrl}
+            onChange={(event) => setMonitorWebhookUrl(event.target.value)}
+            placeholder={
+              status?.monitorWebhookUrlMasked
+                ? `Saved: ${status.monitorWebhookUrlMasked}`
+                : "Optional — falls back to alerts / dashboard · alerts after ~3m without ingest"
             }
           />
         </label>
@@ -1134,6 +1152,27 @@ function DiscordWebhookPanel() {
             type="button"
             disabled={
               busy ||
+              (!status?.monitorWebhookUrlMasked &&
+                !monitorWebhookUrl.trim() &&
+                !status?.presenceAlertsWebhookUrlMasked &&
+                !status?.presenceWebhookUrlMasked &&
+                !presenceAlertsWebhookUrl.trim() &&
+                !presenceWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "monitor",
+                webhookUrl: monitorWebhookUrl.trim() || undefined,
+              })
+            }
+          >
+            Test lobby monitor
+          </button>
+          <button
+            type="button"
+            disabled={
+              busy ||
               !onlineDashboardEnabled ||
               (!status?.presenceWebhookUrlMasked &&
                 !status?.non140erDashboardWebhookUrlMasked &&
@@ -1317,6 +1356,9 @@ function PitPalBridgePanel() {
     playerCount?: number;
     lobbyCount?: number;
     source?: string | null;
+    monitorStatus?: string | null;
+    monitorAgeMs?: number | null;
+    monitorStaleMs?: number | null;
     error?: string;
   } | null>(null);
 
@@ -1331,6 +1373,11 @@ function PitPalBridgePanel() {
           lobbyCount?: number;
           source?: string | null;
           players?: unknown[];
+          monitor?: {
+            status?: string | null;
+            ageMs?: number | null;
+            staleMs?: number | null;
+          };
           error?: string;
         };
         if (cancelled) return;
@@ -1343,6 +1390,9 @@ function PitPalBridgePanel() {
           playerCount: payload.playerCount ?? payload.players?.length ?? 0,
           lobbyCount: payload.lobbyCount,
           source: payload.source,
+          monitorStatus: payload.monitor?.status ?? null,
+          monitorAgeMs: payload.monitor?.ageMs ?? null,
+          monitorStaleMs: payload.monitor?.staleMs ?? null,
         });
       } catch {
         if (!cancelled) setSnapshot({ error: "Unavailable" });
@@ -1356,6 +1406,20 @@ function PitPalBridgePanel() {
     };
   }, []);
 
+  const monitorLabel = (() => {
+    if (!snapshot || snapshot.error) return null;
+    const status = snapshot.monitorStatus ?? "unknown";
+    const ageMs = snapshot.monitorAgeMs;
+    const age =
+      ageMs == null
+        ? "never"
+        : ageMs < 60_000
+          ? `${Math.round(ageMs / 1000)}s ago`
+          : `${Math.round(ageMs / 60_000)}m ago`;
+    const staleMin = Math.round((snapshot.monitorStaleMs ?? 180_000) / 60_000);
+    return `${status} · last ingest ${age} · alert after ${staleMin}m gap`;
+  })();
+
   return (
     <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "52rem" }}>
       <h2 className="section-title" style={{ marginTop: 0 }}>
@@ -1366,7 +1430,9 @@ function PitPalBridgePanel() {
         <code>/api/proxy/pitmod/players</code> and <code>/api/furry-stashes</code>, then posts into
         Pitantir. Lobby events go to the PitPal status webhook; furry-stashes IGNs are added to the
         watchlist. Notes containing <code>140er</code> get dashboard + online/offline only (no
-        inventory / item +/− / PitPal status). No admin password is shared with the worker.
+        inventory / item +/− / PitPal status). No admin password is shared with the worker. The
+        worker also Discord-alerts when lobby ingest stops for ~3 minutes (Mac sleep, tab closed,
+        web down) and when it resumes — set the lobby monitor webhook or reuse alerts/dashboard.
       </p>
       <p>
         Status:{" "}
@@ -1379,6 +1445,12 @@ function PitPalBridgePanel() {
                 ? "receiving"
                 : "waiting for first ingest"}
         </span>
+        {monitorLabel ? (
+          <>
+            {" "}
+            <span className="chip">monitor {monitorLabel}</span>
+          </>
+        ) : null}
       </p>
       {snapshot?.observedAt ? (
         <p className="muted" style={{ fontSize: "0.9rem" }}>
