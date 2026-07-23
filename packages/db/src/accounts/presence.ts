@@ -22,6 +22,11 @@ export type EffectivePresence = {
   pitpalListed: boolean;
   /** Raw Hypixel flag (may be false while apiOff). */
   hypixelOnline: boolean | null;
+  /**
+   * When true, online was decided from PitPal only (lobby feed was authoritative).
+   * Hypixel alone cannot mark someone online in this mode.
+   */
+  pitpalAuthoritative: boolean;
 };
 
 function pitpalSeenIsFresh(
@@ -35,9 +40,23 @@ function pitpalSeenIsFresh(
   return nowMs - at <= maxAgeMs;
 }
 
+export type ResolveEffectivePresenceOptions = {
+  nowMs?: number;
+  pitpalFreshMs?: number;
+  /**
+   * When true (fresh Tampermonkey lobby feed), PitPal listing is the only
+   * online signal. Hypixel API Off / false-online cannot override it.
+   * When false/omitted, fall back to PitPal OR Hypixel online.
+   */
+  pitpalAuthoritative?: boolean;
+};
+
 /**
- * PitPal lobby listing is a soft online signal while the Tampermonkey feed is fresh.
- * Hypixel may still report offline when API session is hidden → apiOff.
+ * Resolve dashboard / hotspot online-ness.
+ *
+ * Prefer PitPal lobbies as source of truth when the lobby feed is fresh
+ * (`pitpalAuthoritative`). Hypixel session flags are unreliable (API Off
+ * players look offline while in Pit).
  */
 export function resolveEffectivePresence(
   account: Pick<
@@ -47,20 +66,20 @@ export function resolveEffectivePresence(
     | "lastPitpalLocation"
     | "lastPitpalSeenAt"
   >,
-  options?: {
-    nowMs?: number;
-    pitpalFreshMs?: number;
-  },
+  options?: ResolveEffectivePresenceOptions,
 ): EffectivePresence {
   const nowMs = options?.nowMs ?? Date.now();
   const pitpalFreshMs = options?.pitpalFreshMs ?? PITPAL_PRESENCE_FRESH_MS;
+  const pitpalAuthoritative = Boolean(options?.pitpalAuthoritative);
 
   const pitpalListed =
     Boolean(account.lastPitpalLobby || account.lastPitpalLocation) &&
     pitpalSeenIsFresh(account.lastPitpalSeenAt, pitpalFreshMs, nowMs);
 
   const hypixelOnline = account.lastHypixelOnline;
-  const online = pitpalListed || hypixelOnline === true;
+  const online = pitpalAuthoritative
+    ? pitpalListed
+    : pitpalListed || hypixelOnline === true;
   const apiOff = pitpalListed && hypixelOnline !== true;
 
   return {
@@ -68,6 +87,7 @@ export function resolveEffectivePresence(
     apiOff,
     pitpalListed,
     hypixelOnline,
+    pitpalAuthoritative,
   };
 }
 
@@ -80,7 +100,7 @@ export function accountIs140er(
 export function effectiveScanIntervalSeconds(
   account: Pick<Account, "scanIntervalSeconds" | "notes"> &
     Parameters<typeof resolveEffectivePresence>[0],
-  options?: Parameters<typeof resolveEffectivePresence>[1],
+  options?: ResolveEffectivePresenceOptions,
 ): number {
   const base = Math.max(30, Math.floor(account.scanIntervalSeconds || 3600));
   // 140ers: presence dashboard still updates from PitPal, but Hypixel indexing
@@ -96,7 +116,7 @@ export function effectiveScanIntervalSeconds(
 
 export function effectiveScanPriority(
   account: Pick<Account, "priority" | "notes"> & Parameters<typeof resolveEffectivePresence>[0],
-  options?: Parameters<typeof resolveEffectivePresence>[1],
+  options?: ResolveEffectivePresenceOptions,
 ): number {
   const base = Math.floor(account.priority || 100);
   if (accountIs140er(account)) return base;

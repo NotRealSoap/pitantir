@@ -1,20 +1,23 @@
 import { eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { adminSettings } from "../schema/accounts.js";
-import { now } from "../identity/store.js";
+import { now, newId } from "../identity/store.js";
 import { AccountsRepository, type Account } from "./repository.js";
 import {
+  notifyDiscordForLiveEvents,
   notifyDownwatchWentDown,
   notifyPitpalStatusEvents,
   refreshDiscordOnlineDashboard,
   type DiscordNotifyEvent,
 } from "./discord-webhook.js";
+import { appendHypixelLiveEvents, type HypixelLiveEvent } from "./live-events.js";
 import { JobsRepository } from "../jobs/repository.js";
 import {
   accountIs140er,
   hotNextScanAt,
   PRESENCE_HOT_INTERVAL_SECONDS,
   PRESENCE_HOT_PRIORITY,
+  resolveEffectivePresence,
 } from "./presence.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
@@ -237,7 +240,10 @@ export type IngestPitpalLobbiesResult = {
  *
  * - PitPal status webhook: lobby enter/leave/SPAWN/DOWN changes (append-only).
  * - Username casing: PitPal lobby spelling is source of truth while listed.
- * - Soft online: listed accounts stay on the roster even if Hypixel says offline (API Off).
+ * - Online-ness: while this feed is fresh, PitPal listing alone decides online
+ *   (Hypixel API Off cannot hide someone; Hypixel "online" alone cannot invent them).
+ * - Presence alerts: enter/leave also emit came_online / went_offline when effective
+ *   presence flips under PitPal-authoritative rules.
  * - Hot schedule: pull nextScanAt forward for lobby-active accounts.
  */
 export async function ingestPitpalLobbies(
@@ -292,6 +298,9 @@ export async function ingestPitpalLobbies(
   };
   await savePitpalLobbySnapshot(db, snapshot);
 
+  // Fresh snapshot just saved → PitPal is the online source of truth for this ingest.
+  const presenceOpts = { pitpalAuthoritative: true as const, nowMs: observedDate.getTime() };
+
   const repo = new AccountsRepository(db);
   const jobs = new JobsRepository(db);
   const watchlist = await repo.listWatchlist();
@@ -299,6 +308,7 @@ export async function ingestPitpalLobbies(
   let cleared = 0;
   let presenceConfirmsQueued = 0;
   const statusEvents: DiscordNotifyEvent[] = [];
+  const presenceLiveEvents: HypixelLiveEvent[] = [];
 
   for (const account of watchlist) {
     const key = account.mcUsername.toLowerCase();
@@ -314,6 +324,7 @@ export async function ingestPitpalLobbies(
 
     if (hit) {
       matched += 1;
+      const previousEffective = resolveEffectivePresence(account, presenceOpts);
       const events = buildStatusEvents({
         account,
         previous,
@@ -336,7 +347,7 @@ export async function ingestPitpalLobbies(
           observedDate.getTime() + PRESENCE_HOT_INTERVAL_SECONDS * 1000
           ? hotAt
           : undefined;
-      await repo.update(account.id, {
+      const updated = await repo.update(account.id, {
         ...casingPatch,
         lastPitpalLobby: hit.lobbyName,
         lastPitpalLocation: hit.location,
@@ -349,6 +360,19 @@ export async function ingestPitpalLobbies(
           : {}),
         ...(nextScanAt ? { nextScanAt } : {}),
       });
+      const nextEffective = resolveEffectivePresence(updated, presenceOpts);
+      if (nextEffective.online && !previousEffective.online) {
+        presenceLiveEvents.push({
+          id: newId(),
+          kind: "came_online",
+          accountId: account.id,
+          mcUsername: updated.mcUsername,
+          at: observedAt,
+          detail: nextEffective.apiOff
+            ? [sessionLabel, "API Off"].filter(Boolean).join(" · ")
+            : sessionLabel,
+        });
+      }
       if (events.some((event) => event.kind === "pitpal_entered")) {
         if (await enqueueHypixelPresenceConfirm(jobs, account.id, "entered", observedAt)) {
           presenceConfirmsQueued += 1;
@@ -359,6 +383,7 @@ export async function ingestPitpalLobbies(
 
     if (previous) {
       cleared += 1;
+      const previousEffective = resolveEffectivePresence(account, presenceOpts);
       const events = buildStatusEvents({
         account,
         previous,
@@ -366,13 +391,23 @@ export async function ingestPitpalLobbies(
         at: observedAt,
       });
       statusEvents.push(...events);
-      await repo.update(account.id, {
+      const updated = await repo.update(account.id, {
         lastPitpalLobby: null,
         lastPitpalLocation: null,
         lastPitpalArmorType: null,
         lastPitpalKillstreak: null,
         lastPitpalSeenAt: null,
       });
+      const nextEffective = resolveEffectivePresence(updated, presenceOpts);
+      if (!nextEffective.online && previousEffective.online) {
+        presenceLiveEvents.push({
+          id: newId(),
+          kind: "went_offline",
+          accountId: account.id,
+          mcUsername: account.mcUsername,
+          at: observedAt,
+        });
+      }
       if (await enqueueHypixelPresenceConfirm(jobs, account.id, "left", observedAt)) {
         presenceConfirmsQueued += 1;
       }
@@ -381,6 +416,7 @@ export async function ingestPitpalLobbies(
 
     // Hypixel/watch thinks online, but fresh PitPal does not list them → confirm via Hypixel.
     // Discord mismatch only when we actually enqueue a new confirmatory scan (daily).
+    // Under PitPal-authoritative mode they are already treated as offline on dashboards.
     if (account.lastHypixelOnline === true && !previousByName.has(key)) {
       const queued = await enqueueHypixelPresenceConfirm(
         jobs,
@@ -403,6 +439,10 @@ export async function ingestPitpalLobbies(
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
   const downwatchPosted = await notifyDownwatchWentDown(db, statusEvents).catch(() => 0);
+  if (presenceLiveEvents.length > 0) {
+    await appendHypixelLiveEvents(db, presenceLiveEvents).catch(() => undefined);
+    await notifyDiscordForLiveEvents(db, presenceLiveEvents).catch(() => undefined);
+  }
   // Soft-online roster (incl. API Off) lives on the presence dashboard.
   await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
 

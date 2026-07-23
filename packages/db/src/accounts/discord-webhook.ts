@@ -1057,10 +1057,15 @@ export async function refreshDiscordOnlineDashboard(
   const downwatchNames = new Set(
     downwatch.entries.map((entry) => entry.mcUsername.toLowerCase()),
   );
+  // Dynamic import avoids a static cycle with pitpal-lobbies → discord-webhook.
+  const { isPitpalPresenceAuthoritative } = await import("./pitpal-lobbies.js");
+  const presenceOpts = {
+    pitpalAuthoritative: await isPitpalPresenceAuthoritative(db),
+  };
 
   const onlineWithNotes = (await repo.listWatchlist())
     .map((row) => {
-      const presence = resolveEffectivePresence(row);
+      const presence = resolveEffectivePresence(row, presenceOpts);
       if (!presence.online) return null;
       return {
         mcUsername: row.mcUsername,

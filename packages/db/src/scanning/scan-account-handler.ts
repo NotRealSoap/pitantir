@@ -24,6 +24,7 @@ import {
   PRESENCE_HOT_PRIORITY,
   resolveEffectivePresence,
 } from "../accounts/presence.js";
+import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
 import { probePitpandaNoncePresence } from "../accounts/pitpanda-presence.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
@@ -177,7 +178,10 @@ export class ScanAccountHandler {
       rawInventory: fetched.rawInventory,
     });
 
-    const previousEffective = resolveEffectivePresence(account);
+    const presenceOpts = {
+      pitpalAuthoritative: await isPitpalPresenceAuthoritative(this.db),
+    };
+    const previousEffective = resolveEffectivePresence(account, presenceOpts);
     const previousHash = account.lastInventoryHash;
     const presence = fetched.presence;
     const inventoryChanged =
@@ -226,8 +230,9 @@ export class ScanAccountHandler {
       // Presence metadata is best-effort; scan already succeeded.
     }
 
-    const nextEffective = resolveEffectivePresence(account);
-    // Don't flap Discord offline while PitPal still lists them (API Off).
+    const nextEffective = resolveEffectivePresence(account, presenceOpts);
+    // PitPal lobbies are SoT when the feed is fresh — Hypixel alone cannot
+    // mark someone online, and API Off cannot mark them offline.
     const cameOnline = nextEffective.online && !previousEffective.online;
     const wentOffline = !nextEffective.online && previousEffective.online;
 

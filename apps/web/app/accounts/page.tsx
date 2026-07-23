@@ -16,6 +16,7 @@ export default function AccountsPage() {
   const [scansPaused, setScansPaused] = useState(false);
   const [circuitOpen, setCircuitOpen] = useState(false);
   const [circuitDetail, setCircuitDetail] = useState<string | null>(null);
+  const [pitpalAuthoritative, setPitpalAuthoritative] = useState(false);
   const [username, setUsername] = useState("");
   const [mcUuid, setMcUuid] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export default function AccountsPage() {
         scansPaused?: boolean;
         circuitOpen?: boolean;
         lastFailureDetail?: string | null;
+        pitpalAuthoritative?: boolean;
         error?: string;
       };
       if (!accountsResponse.ok) {
@@ -48,6 +50,7 @@ export default function AccountsPage() {
       setWatchlist(payload.watchlist ?? []);
       setContacts(payload.contacts ?? []);
       setScansPaused(Boolean(payload.scansPaused));
+      setPitpalAuthoritative(Boolean(payload.pitpalAuthoritative));
       setCircuitOpen(Boolean(payload.circuitOpen));
       setCircuitDetail(payload.lastFailureDetail ?? null);
 
@@ -319,7 +322,11 @@ export default function AccountsPage() {
                       Boolean(account.lastPitpalLobby || account.lastPitpalLocation) &&
                       account.lastPitpalSeenAt &&
                       Date.now() - new Date(account.lastPitpalSeenAt).getTime() <= 90_000;
-                    const online = Boolean(pitpalFresh) || account.lastHypixelOnline === true;
+                    // Fresh PitPal feed: listing alone decides online. Otherwise
+                    // fall back to PitPal OR Hypixel (legacy soft-online).
+                    const online = pitpalAuthoritative
+                      ? Boolean(pitpalFresh)
+                      : Boolean(pitpalFresh) || account.lastHypixelOnline === true;
                     const apiOff = Boolean(pitpalFresh) && account.lastHypixelOnline !== true;
                     if (!online) {
                       return account.lastHypixelOnline === false ? "offline" : "presence ?";

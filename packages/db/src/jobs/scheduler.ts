@@ -9,6 +9,7 @@ import {
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
 } from "../accounts/presence.js";
+import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
 import { scanEnqueueAllowance } from "@pitantir/shared/inventory";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
@@ -60,9 +61,13 @@ export class ScanScheduler {
     }
 
     const due = await this.accounts.listEnabledForScan(asOf);
+    const presenceOpts = {
+      pitpalAuthoritative: await isPitpalPresenceAuthoritative(this.db),
+    };
     // Prefer hotspots first, then earliest nextScanAt.
     const ordered = [...due].sort((a, b) => {
-      const pri = effectiveScanPriority(a) - effectiveScanPriority(b);
+      const pri =
+        effectiveScanPriority(a, presenceOpts) - effectiveScanPriority(b, presenceOpts);
       if (pri !== 0) return pri;
       return a.nextScanAt.getTime() - b.nextScanAt.getTime();
     });
@@ -89,7 +94,7 @@ export class ScanScheduler {
           accountId: account.id,
           triggeredBy: "schedule",
         },
-        priority: effectiveScanPriority(account),
+        priority: effectiveScanPriority(account, presenceOpts),
         runAt: asOf,
         idempotencyKey,
       });
@@ -102,7 +107,7 @@ export class ScanScheduler {
 
       // Each account uses its own effective interval (hot / cool / 140er floor).
       const nextScanAt = new Date(
-        asOf.getTime() + effectiveScanIntervalSeconds(account) * 1000,
+        asOf.getTime() + effectiveScanIntervalSeconds(account, presenceOpts) * 1000,
       );
       await this.db
         .update(accounts)

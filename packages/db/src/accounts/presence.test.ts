@@ -33,6 +33,7 @@ describe("resolveEffectivePresence", () => {
     expect(presence.online).toBe(true);
     expect(presence.apiOff).toBe(true);
     expect(presence.pitpalListed).toBe(true);
+    expect(presence.pitpalAuthoritative).toBe(false);
   });
 
   it("is normal online when Hypixel agrees", () => {
@@ -65,6 +66,46 @@ describe("resolveEffectivePresence", () => {
     );
     expect(presence.online).toBe(false);
     expect(presence.apiOff).toBe(false);
+  });
+
+  it("when PitPal-authoritative, Hypixel online alone does not count", () => {
+    const presence = resolveEffectivePresence(
+      {
+        ...base,
+        lastHypixelOnline: true,
+        lastPitpalLobby: null,
+        lastPitpalLocation: null,
+        lastPitpalSeenAt: null,
+      },
+      { pitpalAuthoritative: true },
+    );
+    expect(presence.online).toBe(false);
+    expect(presence.pitpalAuthoritative).toBe(true);
+  });
+
+  it("when PitPal-authoritative, fresh listing is online despite Hypixel offline", () => {
+    const presence = resolveEffectivePresence(
+      {
+        ...base,
+        lastHypixelOnline: false,
+        lastPitpalLobby: "M23A",
+        lastPitpalLocation: "DOWN",
+        lastPitpalSeenAt: new Date(),
+      },
+      { pitpalAuthoritative: true, nowMs: Date.now() },
+    );
+    expect(presence.online).toBe(true);
+    expect(presence.apiOff).toBe(true);
+    expect(presence.pitpalAuthoritative).toBe(true);
+  });
+
+  it("without PitPal-authoritative, Hypixel online alone still counts", () => {
+    const presence = resolveEffectivePresence({
+      ...base,
+      lastHypixelOnline: true,
+    });
+    expect(presence.online).toBe(true);
+    expect(presence.pitpalAuthoritative).toBe(false);
   });
 });
 

@@ -3,6 +3,7 @@ import {
   getHypixelApiCalls,
   getHypixelLiveEvents,
   getHypixelRateLimitSnapshot,
+  isPitpalPresenceAuthoritative,
   resolveEffectivePresence,
 } from "@pitantir/db";
 import {
@@ -31,11 +32,12 @@ export async function GET() {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
 
-  const [snapshot, watchlist, events, recentCalls] = await Promise.all([
+  const [snapshot, watchlist, events, recentCalls, pitpalAuthoritative] = await Promise.all([
     getHypixelRateLimitSnapshot(db),
     repo.listWatchlist(),
     getHypixelLiveEvents(db),
     getHypixelApiCalls(db),
+    isPitpalPresenceAuthoritative(db),
   ]);
 
   const usage = buildHypixelUsageView({
@@ -54,9 +56,10 @@ export async function GET() {
     .sort((a, b) => a - b)
     .slice(0, 1)[0];
 
+  const presenceOpts = { pitpalAuthoritative };
   const online = watchlist
     .map((row) => {
-      const presence = resolveEffectivePresence(row);
+      const presence = resolveEffectivePresence(row, presenceOpts);
       if (!presence.online) return null;
       return {
         id: row.id,
@@ -101,6 +104,7 @@ export async function GET() {
     ...usage,
     online,
     onlineCount: online.length,
+    pitpalAuthoritative,
     recentlyChanged,
     events: noteworthy,
     allEvents: events.slice(0, 30),
