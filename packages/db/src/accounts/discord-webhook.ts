@@ -95,6 +95,10 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
   non140erDashboardRosterKey: string | null;
   downwatchDashboardMessageId: string | null;
   downwatchDashboardRosterKey: string | null;
+  /** Persistent lobby-monitor status message (edited in place). */
+  monitorDashboardMessageId: string | null;
+  /** Skip identical PATCH payloads when age/status unchanged. */
+  monitorDashboardKey: string | null;
   /** Per-watchlist-player overrides (missing player → global defaults). */
   playerRules: DiscordPlayerRule[];
 };
@@ -150,6 +154,8 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   non140erDashboardRosterKey: null,
   downwatchDashboardMessageId: null,
   downwatchDashboardRosterKey: null,
+  monitorDashboardMessageId: null,
+  monitorDashboardKey: null,
   playerRules: [],
 };
 
@@ -304,6 +310,12 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
       typeof row.downwatchDashboardRosterKey === "string"
         ? row.downwatchDashboardRosterKey
         : null,
+    monitorDashboardMessageId:
+      typeof row.monitorDashboardMessageId === "string" && row.monitorDashboardMessageId.trim()
+        ? row.monitorDashboardMessageId.trim()
+        : null,
+    monitorDashboardKey:
+      typeof row.monitorDashboardKey === "string" ? row.monitorDashboardKey : null,
     playerRules,
   };
 }
@@ -419,6 +431,8 @@ export async function setDiscordWebhookSettings(
     non140erDashboardRosterKey: settings.non140erDashboardRosterKey ?? null,
     downwatchDashboardMessageId: settings.downwatchDashboardMessageId?.trim() || null,
     downwatchDashboardRosterKey: settings.downwatchDashboardRosterKey ?? null,
+    monitorDashboardMessageId: settings.monitorDashboardMessageId?.trim() || null,
+    monitorDashboardKey: settings.monitorDashboardKey ?? null,
     playerRules: (settings.playerRules ?? [])
       .map((rule) => normalizePlayerRule(rule))
       .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
@@ -443,6 +457,11 @@ export async function setDiscordWebhookSettings(
   if (!next.downwatchDashboardWebhookUrl) {
     next.downwatchDashboardMessageId = null;
     next.downwatchDashboardRosterKey = null;
+  }
+  // Sticky monitor lives on monitorWebhookUrl, else alerts — never the roster dashboard URL.
+  if (!next.monitorWebhookUrl && !next.presenceAlertsWebhookUrl) {
+    next.monitorDashboardMessageId = null;
+    next.monitorDashboardKey = null;
   }
 
   // Merge onto existing JSON so unknown/future keys are not dropped.
@@ -503,6 +522,8 @@ export async function setDiscordOnlineDashboardMeta(
     non140erDashboardRosterKey?: string | null;
     downwatchDashboardMessageId?: string | null;
     downwatchDashboardRosterKey?: string | null;
+    monitorDashboardMessageId?: string | null;
+    monitorDashboardKey?: string | null;
   },
 ): Promise<void> {
   const current = await getDiscordWebhookSettings(db);
@@ -532,6 +553,14 @@ export async function setDiscordOnlineDashboardMeta(
       meta.downwatchDashboardRosterKey !== undefined
         ? meta.downwatchDashboardRosterKey
         : current.downwatchDashboardRosterKey,
+    monitorDashboardMessageId:
+      meta.monitorDashboardMessageId !== undefined
+        ? meta.monitorDashboardMessageId
+        : current.monitorDashboardMessageId,
+    monitorDashboardKey:
+      meta.monitorDashboardKey !== undefined
+        ? meta.monitorDashboardKey
+        : current.monitorDashboardKey,
   });
 }
 
@@ -899,7 +928,11 @@ export async function postDiscordWebhook(
 async function editDiscordWebhookMessage(
   webhookUrl: string,
   messageId: string,
-  payload: { content: string; embeds: Array<Record<string, unknown>> },
+  payload: {
+    content: string;
+    embeds: Array<Record<string, unknown>>;
+    allowed_mentions?: { parse?: string[]; users?: string[] };
+  },
 ): Promise<boolean> {
   const result = await discordFetch(`${webhookUrl}/messages/${messageId}`, {
     method: "PATCH",
@@ -1016,11 +1049,182 @@ function formatMonitorAge(ageMs: number | null): string {
   return remMins > 0 ? `${hours}h ${remMins}m ago` : `${hours}h ago`;
 }
 
+export type PitpalMonitorDashboardInput = {
+  status: "online" | "offline" | "unknown";
+  ageMs: number | null;
+  staleMs: number;
+  lastIngestAt?: string | null;
+  offlineSince?: string | null;
+  playerCount?: number | null;
+  lobbyCount?: number | null;
+  source?: string | null;
+  transition?: "went_offline" | "came_online" | null;
+  opsMention?: string | null;
+  at?: string;
+};
+
+/** Build the sticky lobby-monitor Discord message (edited in place by the worker). */
+export function buildPitpalMonitorDashboardPayload(
+  input: PitpalMonitorDashboardInput,
+): { content: string; embeds: Array<Record<string, unknown>>; key: string } {
+  const at = input.at ?? new Date().toISOString();
+  const online = input.status === "online";
+  const statusLabel =
+    input.status === "online" ? "ONLINE" : input.status === "offline" ? "OFFLINE" : "UNKNOWN";
+  const ageLabel = formatMonitorAge(input.ageMs);
+  const staleMinutes = Math.round(input.staleMs / 60_000);
+  const offlineForMs =
+    !online && input.offlineSince
+      ? Date.parse(at) - Date.parse(input.offlineSince)
+      : null;
+  const offlineFor =
+    offlineForMs != null && Number.isFinite(offlineForMs)
+      ? formatMonitorAge(Math.max(0, offlineForMs))
+      : null;
+
+  let content = `Pitantir lobby monitor · **${statusLabel}**`;
+  if (input.transition === "went_offline") {
+    content = input.opsMention
+      ? `${input.opsMention} lobby monitoring **stopped**`
+      : "Lobby monitoring **stopped**";
+  } else if (input.transition === "came_online") {
+    content = input.opsMention
+      ? `${input.opsMention} lobby monitoring **resumed**`
+      : "Lobby monitoring **resumed**";
+  }
+
+  const fields: Array<Record<string, unknown>> = [
+    { name: "Status", value: statusLabel, inline: true },
+    { name: "Last ingest", value: ageLabel, inline: true },
+    { name: "Stale after", value: `${staleMinutes}m`, inline: true },
+  ];
+  if (offlineFor) {
+    fields.push({ name: "Offline for", value: offlineFor, inline: true });
+  }
+  if (input.playerCount != null || input.lobbyCount != null) {
+    fields.push({
+      name: "Last snapshot",
+      value: `${input.playerCount ?? "?"} players · ${input.lobbyCount ?? "?"} lobbies`,
+      inline: true,
+    });
+  }
+  if (input.source) {
+    fields.push({ name: "Source", value: input.source.slice(0, 100), inline: true });
+  }
+  if (input.lastIngestAt) {
+    const ingestMs = Date.parse(input.lastIngestAt);
+    if (Number.isFinite(ingestMs)) {
+      fields.push({
+        name: "Last ingest at",
+        value: `<t:${Math.floor(ingestMs / 1000)}:R>`,
+        inline: true,
+      });
+    }
+  }
+
+  const description = online
+    ? "Tampermonkey lobby ingest is flowing."
+    : input.ageMs == null
+      ? "No Tampermonkey lobby ingest has been received yet."
+      : `No lobby ingest within the last ${staleMinutes} minutes. Check Mac awake · web · PitPal tab · Tampermonkey.`;
+
+  const key = [
+    statusLabel,
+    ageLabel,
+    offlineFor ?? "",
+    input.playerCount ?? "",
+    input.lobbyCount ?? "",
+    input.transition ?? "",
+  ].join("|");
+
+  return {
+    content: content.slice(0, 2000),
+    embeds: [
+      {
+        title: `Lobby monitor · ${statusLabel}`,
+        description,
+        color: online ? 0x57f287 : 0xed4245,
+        timestamp: at,
+        footer: { text: "Pitantir · edited in place · Tampermonkey heartbeat" },
+        fields,
+      },
+    ],
+    key,
+  };
+}
+
 /**
- * Discord alert when Tampermonkey lobby ingest goes stale or resumes.
- * Uses monitorWebhookUrl, else online/offline alerts, else dashboard webhook.
- * Mentions ops Discord user when configured.
+ * Upsert the sticky lobby-monitor Discord message (PATCH in place).
+ * Host webhook: monitorWebhookUrl, else presenceAlertsWebhookUrl.
+ * On status transitions, content includes an ops mention (when configured).
  */
+export async function refreshPitpalMonitorDashboard(
+  db: Database,
+  input: {
+    status: "online" | "offline" | "unknown";
+    ageMs: number | null;
+    staleMs: number;
+    lastIngestAt?: string | null;
+    offlineSince?: string | null;
+    playerCount?: number | null;
+    lobbyCount?: number | null;
+    source?: string | null;
+    transition?: "went_offline" | "came_online" | null;
+    at?: string;
+    force?: boolean;
+  },
+): Promise<{ ok: boolean; pinged: boolean }> {
+  const settings = await getDiscordWebhookSettings(db);
+  const webhookUrl = settings.monitorWebhookUrl || settings.presenceAlertsWebhookUrl || null;
+  if (!webhookUrl) return { ok: false, pinged: false };
+
+  const userId = resolveOpsAlertDiscordUserId(settings);
+  const opsMention = userId ? `<@${userId}>` : null;
+  const built = buildPitpalMonitorDashboardPayload({
+    ...input,
+    opsMention: input.transition ? opsMention : null,
+  });
+
+  if (
+    !input.force &&
+    !input.transition &&
+    built.key === settings.monitorDashboardKey &&
+    settings.monitorDashboardMessageId
+  ) {
+    return { ok: true, pinged: false };
+  }
+
+  const payload = {
+    content: built.content,
+    embeds: built.embeds,
+    ...(input.transition && userId
+      ? { allowed_mentions: { parse: [] as string[], users: [userId] } }
+      : { allowed_mentions: { parse: [] as string[] } }),
+  };
+
+  if (settings.monitorDashboardMessageId) {
+    const edited = await editDiscordWebhookMessage(
+      webhookUrl,
+      settings.monitorDashboardMessageId,
+      payload,
+    );
+    if (edited) {
+      await setDiscordOnlineDashboardMeta(db, { monitorDashboardKey: built.key });
+      return { ok: true, pinged: Boolean(input.transition) };
+    }
+  }
+
+  const posted = await postRawDiscordWebhook(webhookUrl, payload);
+  if (!posted.ok || !posted.messageId) return { ok: false, pinged: false };
+
+  await setDiscordOnlineDashboardMeta(db, {
+    monitorDashboardMessageId: posted.messageId,
+    monitorDashboardKey: built.key,
+  });
+  return { ok: true, pinged: Boolean(input.transition) };
+}
+
+/** @deprecated Prefer refreshPitpalMonitorDashboard — kept as a thin transition wrapper. */
 export async function notifyPitpalMonitorStatus(
   db: Database,
   input: {
@@ -1032,71 +1236,17 @@ export async function notifyPitpalMonitorStatus(
     at?: string;
   },
 ): Promise<boolean> {
-  const settings = await getDiscordWebhookSettings(db);
-  const webhookUrl =
-    settings.monitorWebhookUrl ||
-    settings.presenceAlertsWebhookUrl ||
-    settings.presenceWebhookUrl ||
-    null;
-  if (!webhookUrl) return false;
-
-  const userId = resolveOpsAlertDiscordUserId(settings);
-  const mention = userId ? `<@${userId}>` : null;
-  const staleMinutes = Math.round(input.staleMs / 60_000);
-  const ageLabel = formatMonitorAge(input.ageMs);
-  const at = input.at ?? new Date().toISOString();
-
-  if (input.kind === "went_offline") {
-    const headline = mention
-      ? `${mention} Pitantir lobby monitoring stopped`
-      : "Pitantir lobby monitoring stopped";
-    const detail =
-      input.ageMs == null
-        ? `No Tampermonkey lobby ingest has been received yet (threshold ${staleMinutes}m).`
-        : `No lobby ingest for ${ageLabel} (threshold ${staleMinutes}m). Check that the Mac is awake, web is running, and the PitPal tab + Tampermonkey script are active.`;
-    const posted = await postRawDiscordWebhook(webhookUrl, {
-      content: `${headline}\n${detail}`.slice(0, 2000),
-      embeds: [
-        {
-          title: "Lobby monitor offline",
-          description: detail,
-          color: 0xed4245,
-          timestamp: at,
-          footer: { text: "Pitantir · Tampermonkey lobby heartbeat" },
-          fields: [
-            { name: "Last ingest", value: ageLabel, inline: true },
-            {
-              name: "Stale after",
-              value: `${staleMinutes} minutes`,
-              inline: true,
-            },
-          ],
-        },
-      ],
-      allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },
-    });
-    return posted.ok;
-  }
-
-  const headline = mention
-    ? `${mention} Pitantir lobby monitoring resumed`
-    : "Pitantir lobby monitoring resumed";
-  const detail = `Lobby ingest is flowing again (last ingest ${ageLabel}).`;
-  const posted = await postRawDiscordWebhook(webhookUrl, {
-    content: `${headline}\n${detail}`.slice(0, 2000),
-    embeds: [
-      {
-        title: "Lobby monitor online",
-        description: detail,
-        color: 0x57f287,
-        timestamp: at,
-        footer: { text: "Pitantir · Tampermonkey lobby heartbeat" },
-        fields: [{ name: "Last ingest", value: ageLabel, inline: true }],
-      },
-    ],
-    allowed_mentions: userId ? { parse: [], users: [userId] } : { parse: [] },
+  const result = await refreshPitpalMonitorDashboard(db, {
+    status: input.kind === "came_online" ? "online" : "offline",
+    ageMs: input.ageMs,
+    staleMs: input.staleMs,
+    offlineSince: input.offlineSince,
+    lastIngestAt: input.lastIngestAt,
+    transition: input.kind,
+    at: input.at,
+    force: true,
   });
-  return posted.ok;
+  return result.ok;
 }
 
 async function upsertDashboardMessage(options: {

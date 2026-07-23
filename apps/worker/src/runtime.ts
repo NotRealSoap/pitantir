@@ -310,6 +310,7 @@ export async function runWorkerMain(): Promise<void> {
                 status: result.status,
                 transition: result.transition,
                 alerted: result.alerted,
+                dashboardOk: result.dashboardOk,
                 ageMs: result.ageMs,
               }),
             );

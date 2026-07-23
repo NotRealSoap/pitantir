@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiscordWebhookPayload,
   buildOnlineDashboardPayload,
+  buildPitpalMonitorDashboardPayload,
   DISCORD_PITPAL_STATUS_WEBHOOK_KEY,
   expandDiscordNotifyEvents,
   isDiscordWebhookUrl,
@@ -284,5 +285,38 @@ describe("online dashboard", () => {
     expect(payload.content).toContain("Non-140er online (1)");
     expect(payload.embeds[0]?.title).toBe("Non-140er online · 1");
     expect((payload.embeds[0]?.footer as { text: string }).text).toContain("non-140er");
+  });
+});
+
+describe("buildPitpalMonitorDashboardPayload", () => {
+  it("renders an online sticky status", () => {
+    const payload = buildPitpalMonitorDashboardPayload({
+      status: "online",
+      ageMs: 12_000,
+      staleMs: 180_000,
+      lastIngestAt: "2026-07-23T17:00:00.000Z",
+      playerCount: 40,
+      lobbyCount: 8,
+      at: "2026-07-23T17:00:12.000Z",
+    });
+    expect(payload.content).toContain("ONLINE");
+    expect(payload.embeds[0]?.title).toContain("ONLINE");
+    expect(payload.embeds[0]?.color).toBe(0x57f287);
+    expect(JSON.stringify(payload.embeds[0]?.fields)).toContain("12s ago");
+  });
+
+  it("mentions ops on offline transition", () => {
+    const payload = buildPitpalMonitorDashboardPayload({
+      status: "offline",
+      ageMs: 200_000,
+      staleMs: 180_000,
+      offlineSince: "2026-07-23T16:57:00.000Z",
+      transition: "went_offline",
+      opsMention: "<@123456789012345678>",
+      at: "2026-07-23T17:00:00.000Z",
+    });
+    expect(payload.content).toContain("<@123456789012345678>");
+    expect(payload.content).toContain("stopped");
+    expect(payload.embeds[0]?.color).toBe(0xed4245);
   });
 });

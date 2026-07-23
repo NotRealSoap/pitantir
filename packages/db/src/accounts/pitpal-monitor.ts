@@ -3,7 +3,7 @@ import type { Database } from "../client.js";
 import { adminSettings } from "../schema/accounts.js";
 import { now } from "../identity/store.js";
 import { getPitpalLobbySnapshot } from "./pitpal-lobbies.js";
-import { notifyPitpalMonitorStatus } from "./discord-webhook.js";
+import { refreshPitpalMonitorDashboard } from "./discord-webhook.js";
 
 export const PITPAL_MONITOR_STATE_KEY = "pitpal_monitor_heartbeat";
 
@@ -146,13 +146,14 @@ export type CheckPitpalMonitorResult = {
   status: PitpalMonitorStatus;
   transition: "went_offline" | "came_online" | null;
   alerted: boolean;
+  dashboardOk: boolean;
   ageMs: number | null;
   staleMs: number;
 };
 
 /**
- * Compare the latest lobby snapshot age to the stale threshold and Discord-alert
- * on online↔offline transitions. Safe to call every worker tick (throttled by caller).
+ * Compare lobby snapshot age to the stale threshold, upsert the sticky Discord
+ * status message, and ping ops on online↔offline transitions.
  */
 export async function checkPitpalMonitorHeartbeat(
   db: Database,
@@ -169,26 +170,30 @@ export async function checkPitpalMonitorHeartbeat(
     staleMs,
   });
 
-  let alerted = false;
-  if (evaluated.transition) {
-    alerted = await notifyPitpalMonitorStatus(db, {
-      kind: evaluated.transition,
-      ageMs: evaluated.ageMs,
-      staleMs,
-      offlineSince: evaluated.next.offlineSince,
-      lastIngestAt: evaluated.next.lastIngestAt,
-      at: evaluated.next.lastTransitionAt ?? new Date(nowMs).toISOString(),
-    });
-    if (alerted) {
-      evaluated.next.lastAlertAt = evaluated.next.lastTransitionAt;
-    }
+  const refreshed = await refreshPitpalMonitorDashboard(db, {
+    status: evaluated.next.status,
+    ageMs: evaluated.ageMs,
+    staleMs,
+    lastIngestAt: evaluated.next.lastIngestAt,
+    offlineSince: evaluated.next.offlineSince,
+    playerCount: snapshot.playerCount ?? snapshot.players.length,
+    lobbyCount: snapshot.lobbyCount ?? null,
+    source: snapshot.source,
+    transition: evaluated.transition,
+    at: evaluated.next.lastCheckedAt ?? new Date(nowMs).toISOString(),
+    force: Boolean(evaluated.transition),
+  });
+
+  if (evaluated.transition && refreshed.pinged) {
+    evaluated.next.lastAlertAt = evaluated.next.lastTransitionAt;
   }
 
   await writeState(db, evaluated.next);
   return {
     status: evaluated.next.status,
     transition: evaluated.transition,
-    alerted,
+    alerted: Boolean(evaluated.transition && refreshed.pinged),
+    dashboardOk: refreshed.ok,
     ageMs: evaluated.ageMs,
     staleMs,
   };

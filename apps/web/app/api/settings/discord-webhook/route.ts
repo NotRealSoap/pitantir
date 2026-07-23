@@ -5,6 +5,7 @@ import {
   maskDiscordWebhookUrl,
   postDiscordWebhook,
   refreshDiscordOnlineDashboard,
+  checkPitpalMonitorHeartbeat,
   setDiscordWebhookSettings,
   type DiscordPlayerRule,
   type DiscordWebhookSettings,
@@ -48,6 +49,7 @@ function publicView(settings: DiscordWebhookSettings) {
       settings.non140erDashboardWebhookUrl,
     ),
     monitorWebhookUrlMasked: maskDiscordWebhookUrl(settings.monitorWebhookUrl),
+    monitorDashboardConfigured: Boolean(settings.monitorDashboardMessageId),
     opsAlertDiscordUserId: settings.opsAlertDiscordUserId,
     downwatchRoleId: settings.downwatchRoleId,
     downwatchChannelId: settings.downwatchChannelId,
@@ -253,12 +255,33 @@ export async function POST(request: Request) {
                     ? "Paste the downwatch dashboard webhook URL above, then click Test (or Save)."
                     : channel === "downwatch"
                       ? "Paste the downwatch alert webhook URL above, then click Test (or Save)."
-                      : channel === "monitor"
-                        ? "Paste the lobby monitor webhook URL above (or alerts/dashboard), then click Test."
+                        : channel === "monitor"
+                        ? "Paste the lobby monitor webhook URL above (or alerts channel), then click Test."
                         : "Save a webhook URL for that channel first.",
         },
         { status: 400 },
       );
+    }
+    if (channel === "monitor") {
+      const monitor = await checkPitpalMonitorHeartbeat(db);
+      if (!monitor.dashboardOk) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Could not create/update the sticky lobby monitor message. Check the webhook URL.",
+          },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        message:
+          draft.provided && draft.url
+            ? `Saved lobby monitor webhook and upserted sticky status (${monitor.status}).`
+            : `Lobby monitor dashboard refreshed (${monitor.status}).`,
+        ...(await withWatchlist(await getDiscordWebhookSettings(db))),
+      });
     }
     const kind =
       channel === "inventory"
@@ -267,20 +290,15 @@ export async function POST(request: Request) {
           ? "item_moved"
           : channel === "pitpalStatus"
             ? "pitpal_location"
-            : channel === "monitor"
-              ? "went_offline"
-              : channel === "presence" ||
-                  channel === "non140erDashboard" ||
-                  channel === "downwatchDashboard"
-                ? "online_indexed"
-                : "came_online";
+            : channel === "presence" ||
+                channel === "non140erDashboard" ||
+                channel === "downwatchDashboard"
+              ? "online_indexed"
+              : "came_online";
     const result = await postDiscordWebhook(url, {
       kind,
       mcUsername: "Pitantir",
-      detail:
-        channel === "monitor"
-          ? "lobby monitor webhook test (Tampermonkey heartbeat)"
-          : `webhook test (${channel})`,
+      detail: `webhook test (${channel})`,
       at: new Date().toISOString(),
       changes:
         kind === "item_moved"
@@ -410,6 +428,8 @@ export async function POST(request: Request) {
       non140erDashboardRosterKey: null,
       downwatchDashboardMessageId: null,
       downwatchDashboardRosterKey: null,
+      monitorDashboardMessageId: null,
+      monitorDashboardKey: null,
       playerRules: [],
     });
     return NextResponse.json({

@@ -374,6 +374,7 @@ type DiscordWebhookPayload = {
   pitpalStatusWebhookUrlMasked?: string | null;
   non140erDashboardWebhookUrlMasked?: string | null;
   monitorWebhookUrlMasked?: string | null;
+  monitorDashboardConfigured?: boolean;
   opsAlertDiscordUserId?: string | null;
   downwatchRoleId?: string | null;
   downwatchChannelId?: string | null;
@@ -625,6 +626,11 @@ function DiscordWebhookPanel() {
             downwatch dash live
           </span>
         ) : null}
+        {status?.monitorDashboardConfigured ? (
+          <span className="chip" style={{ marginLeft: "0.35rem" }}>
+            lobby monitor live
+          </span>
+        ) : null}
       </p>
 
       <form
@@ -827,7 +833,7 @@ function DiscordWebhookPanel() {
           />
         </label>
         <label>
-          Lobby monitor webhook (Tampermonkey heartbeat · online/offline when ingest stops)
+          Lobby monitor dashboard webhook (edited in place · ONLINE/OFFLINE + time since last ingest)
           <input
             type="url"
             autoComplete="off"
@@ -837,7 +843,7 @@ function DiscordWebhookPanel() {
             placeholder={
               status?.monitorWebhookUrlMasked
                 ? `Saved: ${status.monitorWebhookUrlMasked}`
-                : "Optional — falls back to alerts / dashboard · alerts after ~3m without ingest"
+                : "Optional — falls back to alerts channel · sticky message updated ~every 30s"
             }
           />
         </label>
@@ -1431,8 +1437,8 @@ function PitPalBridgePanel() {
         Pitantir. Lobby events go to the PitPal status webhook; furry-stashes IGNs are added to the
         watchlist. Notes containing <code>140er</code> get dashboard + online/offline only (no
         inventory / item +/− / PitPal status). No admin password is shared with the worker. The
-        worker also Discord-alerts when lobby ingest stops for ~3 minutes (Mac sleep, tab closed,
-        web down) and when it resumes — set the lobby monitor webhook or reuse alerts/dashboard.
+        worker also keeps a sticky Discord lobby-monitor message (edited in place) with ONLINE/OFFLINE
+        and time since last ingest — set the lobby monitor webhook or reuse the alerts channel.
       </p>
       <p>
         Status:{" "}
