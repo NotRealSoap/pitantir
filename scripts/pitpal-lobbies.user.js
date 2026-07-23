@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pitantir ← PitPal Lobby + Furry Stashes
 // @namespace    pitantir
-// @version      1.2.0
+// @version      1.3.0
 // @description  Push PitPal lobby monitor + furry-stashes watchlist (140er = online-only) to local Pitantir.
 // @author       Pitantir
 // @match        https://pitpal.rocks/*
