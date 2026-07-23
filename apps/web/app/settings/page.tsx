@@ -555,7 +555,19 @@ function DiscordWebhookPanel() {
     value: boolean,
   ) {
     setPlayerRows((rows) =>
-      rows.map((row) => (row.accountId === accountId ? { ...row, [key]: value } : row)),
+      rows.map((row) => {
+        if (row.accountId !== accountId) return row;
+        // "Online scan" in the table means any online alerts — keep came-online in sync.
+        // Unchecking only every-scan previously left came-online on, so login pings continued.
+        if (key === "notifyEveryOnlineScan") {
+          return {
+            ...row,
+            notifyEveryOnlineScan: value,
+            notifyCameOnline: value,
+          };
+        }
+        return { ...row, [key]: value };
+      }),
     );
   }
 
@@ -913,8 +925,10 @@ function DiscordWebhookPanel() {
           Per-player overrides
         </h3>
         <p className="muted" style={{ marginTop: 0 }}>
-          Only rows that differ from the defaults above are saved. Leave someone matching defaults
-          to inherit.
+          Only rows that differ from the defaults above are saved. Uncheck <strong>Online</strong> to
+          mute both still-online and came-online alerts for that player. Leave someone matching
+          defaults to inherit. <code>zain12219</code>, <code>BuMingXiaLuo</code>, and{" "}
+          <code>sis</code> are forced mute (like 140ers) in code.
         </p>
         {playerRows.length === 0 ? (
           <p className="muted">No watchlist accounts yet.</p>
@@ -924,7 +938,7 @@ function DiscordWebhookPanel() {
               <thead>
                 <tr>
                   <th>Player</th>
-                  <th>Online scan</th>
+                  <th>Online</th>
                   <th>Offline</th>
                   <th>+/− items</th>
                   <th>Inv update</th>

@@ -315,6 +315,8 @@ export async function runWorkerMain(): Promise<void> {
               }),
             );
           }
+          const { ensureForcedDiscordDashboardOnlyRules } = await import("@pitantir/db");
+          await ensureForcedDiscordDashboardOnlyRules(db).catch(() => undefined);
         } catch (error) {
           console.warn(
             JSON.stringify({

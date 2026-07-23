@@ -6,8 +6,10 @@ import {
   DISCORD_PITPAL_STATUS_WEBHOOK_KEY,
   expandDiscordNotifyEvents,
   isDiscordWebhookUrl,
+  isForcedDiscordDashboardOnlyUsername,
   maskDiscordWebhookUrl,
   normalizeDiscordWebhookSettings,
+  resolveNotifyFlagsForEvent,
   resolvePlayerFlags,
   rosterKeyFor,
   webhookUrlForEvent,
@@ -163,6 +165,24 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.playerRules[0]?.notifyWentOffline).toBe(false);
     expect(settings.playerRules[0]?.notifyEveryOnlineScan).toBe(false);
     expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(false);
+  });
+
+  it("force-mutes zain12219 / BuMingXiaLuo / sis by username", () => {
+    expect(isForcedDiscordDashboardOnlyUsername("zain12219")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("BuMingXiaLuo")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("SIS")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("whytf")).toBe(false);
+    const flags = resolveNotifyFlagsForEvent(
+      normalizeDiscordWebhookSettings({
+        notifyCameOnline: true,
+        notifyEveryOnlineScan: true,
+        notifyPitpalStatusChanges: true,
+      }),
+      { accountId: "x", mcUsername: "zain12219" },
+    );
+    expect(flags.notifyCameOnline).toBe(false);
+    expect(flags.notifyEveryOnlineScan).toBe(false);
+    expect(flags.notifyPitpalStatusChanges).toBe(false);
   });
 
   it("does not flip 140er pitpal mute when repairing legacy all-false pitpal flags", () => {

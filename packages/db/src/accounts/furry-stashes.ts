@@ -5,6 +5,8 @@ import {
   setDiscordWebhookSettings,
   isPresenceOnlyPlayerRule,
   mutePresenceAlertsOnPresenceOnlyRules,
+  discordDashboardOnlyPlayerRule,
+  ensureForcedDiscordDashboardOnlyRules,
   type DiscordPlayerRule,
 } from "./discord-webhook.js";
 import { notesIndicate140er } from "./notes-labels.js";
@@ -51,16 +53,7 @@ export function coerceFurryStashEntry(value: unknown): FurryStashEntry | null {
 function presenceOnlyRule(accountId: string, mcUsername: string): DiscordPlayerRule {
   // 140ers stay on the online roster dashboard(s) via PitPal, but do not post
   // came_online / went_offline / still-online to the alerts channel.
-  return {
-    accountId,
-    mcUsername,
-    notifyCameOnline: false,
-    notifyWentOffline: false,
-    notifyEveryOnlineScan: false,
-    notifyItemGainedLost: false,
-    notifyInventoryUpdated: false,
-    notifyPitpalStatusChanges: false,
-  };
+  return discordDashboardOnlyPlayerRule(accountId, mcUsername);
 }
 
 export type SyncFurryStashesResult = {
@@ -156,6 +149,8 @@ export async function syncFurryStashesWatchlist(
     ...discord,
     playerRules: nextRules,
   });
+  // Forced mutes (zain12219 / BuMingXiaLuo / sis) — re-apply after stash sync.
+  await ensureForcedDiscordDashboardOnlyRules(db).catch(() => undefined);
 
   return {
     entryCount: byName.size,

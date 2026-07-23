@@ -6,6 +6,7 @@ import {
   postDiscordWebhook,
   refreshDiscordOnlineDashboard,
   checkPitpalMonitorHeartbeat,
+  ensureForcedDiscordDashboardOnlyRules,
   setDiscordWebhookSettings,
   type DiscordPlayerRule,
   type DiscordWebhookSettings,
@@ -140,6 +141,7 @@ export async function GET() {
   if (!db || !repo) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
+  await ensureForcedDiscordDashboardOnlyRules(db).catch(() => undefined);
   const [settings, watchlist] = await Promise.all([
     getDiscordWebhookSettings(db),
     repo.listWatchlist(),

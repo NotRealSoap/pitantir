@@ -632,6 +632,101 @@ export function resolvePlayerFlags(
   };
 }
 
+/**
+ * Forced mute list — same Discord silence as 140er dashboard-only rules
+ * (no online/offline alerts, inventory, or PitPal status). Roster dashboards still update.
+ */
+export const DISCORD_DASHBOARD_ONLY_USERNAMES = [
+  "zain12219",
+  "BuMingXiaLuo",
+  "sis",
+] as const;
+
+const DISCORD_DASHBOARD_ONLY_USERNAME_SET = new Set(
+  DISCORD_DASHBOARD_ONLY_USERNAMES.map((name) => name.toLowerCase()),
+);
+
+export function isForcedDiscordDashboardOnlyUsername(mcUsername: string): boolean {
+  return DISCORD_DASHBOARD_ONLY_USERNAME_SET.has(mcUsername.trim().toLowerCase());
+}
+
+/** All Discord alert channels off; dashboards still include the player when online. */
+export function discordDashboardOnlyPlayerRule(
+  accountId: string,
+  mcUsername: string,
+): DiscordPlayerRule {
+  return {
+    accountId,
+    mcUsername,
+    notifyCameOnline: false,
+    notifyWentOffline: false,
+    notifyEveryOnlineScan: false,
+    notifyItemGainedLost: false,
+    notifyInventoryUpdated: false,
+    notifyPitpalStatusChanges: false,
+  };
+}
+
+const MUTED_DISCORD_FLAGS: DiscordPlayerNotifyFlags = {
+  notifyCameOnline: false,
+  notifyWentOffline: false,
+  notifyEveryOnlineScan: false,
+  notifyItemGainedLost: false,
+  notifyInventoryUpdated: false,
+  notifyPitpalStatusChanges: false,
+};
+
+export function resolveNotifyFlagsForEvent(
+  settings: DiscordWebhookSettings,
+  event: Pick<DiscordNotifyEvent, "accountId" | "mcUsername">,
+): DiscordPlayerNotifyFlags {
+  if (isForcedDiscordDashboardOnlyUsername(event.mcUsername)) {
+    return MUTED_DISCORD_FLAGS;
+  }
+  return resolvePlayerFlags(settings, event.accountId);
+}
+
+/**
+ * Ensure forced mute IGNs (and any already on the watchlist) have dashboard-only
+ * playerRules persisted so the Settings UI shows custom mutes.
+ */
+export async function ensureForcedDiscordDashboardOnlyRules(
+  db: Database,
+): Promise<{ updated: number }> {
+  const repo = new AccountsRepository(db);
+  const settings = await getDiscordWebhookSettings(db);
+  const rulesById = new Map(settings.playerRules.map((rule) => [rule.accountId, rule]));
+  const watchlist = await repo.listWatchlist();
+  let updated = 0;
+
+  for (const account of watchlist) {
+    if (!isForcedDiscordDashboardOnlyUsername(account.mcUsername)) continue;
+    const next = discordDashboardOnlyPlayerRule(account.id, account.mcUsername);
+    const existing = rulesById.get(account.id);
+    const same =
+      existing &&
+      existing.notifyCameOnline === next.notifyCameOnline &&
+      existing.notifyWentOffline === next.notifyWentOffline &&
+      existing.notifyEveryOnlineScan === next.notifyEveryOnlineScan &&
+      existing.notifyItemGainedLost === next.notifyItemGainedLost &&
+      existing.notifyInventoryUpdated === next.notifyInventoryUpdated &&
+      existing.notifyPitpalStatusChanges === next.notifyPitpalStatusChanges;
+    if (same) continue;
+    rulesById.set(account.id, next);
+    updated += 1;
+  }
+
+  if (updated === 0) return { updated: 0 };
+
+  const nextRules = mutePresenceAlertsOnPresenceOnlyRules(
+    [...rulesById.values()].sort((a, b) =>
+      a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" }),
+    ),
+  );
+  await setDiscordWebhookSettings(db, { ...settings, playerRules: nextRules });
+  return { updated };
+}
+
 export function webhookUrlForEvent(
   settings: DiscordWebhookSettings,
   kind: string,
@@ -1462,17 +1557,19 @@ export async function notifyDiscordForLiveEvents(
     const settings = await getDiscordWebhookSettings(db);
     if (!anyWebhookConfigured(settings)) return { postedCount: 0 };
 
-    const accountId = context?.accountId ?? events[0]?.accountId ?? null;
-    const flags = resolvePlayerFlags(settings, accountId);
     const expanded = expandDiscordNotifyEvents(events);
 
     const toSend: DiscordNotifyEvent[] = expanded.filter((event) =>
-      shouldNotify(flags, event.kind),
+      shouldNotify(resolveNotifyFlagsForEvent(settings, event), event.kind),
     );
 
     if (
       context?.presenceOnline === true &&
-      flags.notifyEveryOnlineScan &&
+      !isForcedDiscordDashboardOnlyUsername(context.mcUsername) &&
+      resolveNotifyFlagsForEvent(settings, {
+        accountId: context.accountId,
+        mcUsername: context.mcUsername,
+      }).notifyEveryOnlineScan &&
       !toSend.some((event) => event.kind === "online_indexed")
     ) {
       toSend.push({
@@ -1525,8 +1622,9 @@ export async function notifyPitpalStatusEvents(
     if (!url) return 0;
     let posted = 0;
     for (const event of events) {
-      const rule = settings.playerRules.find((row) => row.accountId === event.accountId);
-      if (rule && rule.notifyPitpalStatusChanges === false) continue;
+      if (isForcedDiscordDashboardOnlyUsername(event.mcUsername)) continue;
+      const flags = resolveNotifyFlagsForEvent(settings, event);
+      if (!flags.notifyPitpalStatusChanges) continue;
       const result = await postDiscordWebhook(url, event);
       if (result.ok) posted += 1;
     }
