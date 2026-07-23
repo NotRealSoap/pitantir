@@ -21,7 +21,8 @@
   const PITANTIR_STASHES = PITANTIR_BASE + "/api/pitpal/furry-stashes";
   const PITPAL_PLAYERS = "/api/proxy/pitmod/players";
   const PITPAL_STASHES = "/api/furry-stashes";
-  const LOBBY_POLL_MS = 15_000;
+  /** Lobby roster — keep this snappy; Pitantir ingest allows 60 posts/min. */
+  const LOBBY_POLL_MS = 3_000;
   const STASH_POLL_MS = 60_000;
 
   let lobbyInFlight = false;
