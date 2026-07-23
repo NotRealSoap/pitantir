@@ -142,6 +142,60 @@ describe("normalizeDiscordWebhookSettings", () => {
     });
     expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(true);
   });
+
+  it("mutes online/offline alerts on 140er dashboard-only player rules", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      notifyPitpalStatusChanges: true,
+      playerRules: [
+        {
+          accountId: "acc-140",
+          mcUsername: "Fourteen",
+          notifyCameOnline: true,
+          notifyWentOffline: true,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: false,
+          notifyInventoryUpdated: false,
+          notifyPitpalStatusChanges: false,
+        },
+      ],
+    });
+    expect(settings.playerRules[0]?.notifyCameOnline).toBe(false);
+    expect(settings.playerRules[0]?.notifyWentOffline).toBe(false);
+    expect(settings.playerRules[0]?.notifyEveryOnlineScan).toBe(false);
+    expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(false);
+  });
+
+  it("does not flip 140er pitpal mute when repairing legacy all-false pitpal flags", () => {
+    const settings = normalizeDiscordWebhookSettings({
+      notifyPitpalStatusChanges: true,
+      playerRules: [
+        {
+          accountId: "a1",
+          mcUsername: "Alice",
+          notifyCameOnline: true,
+          notifyWentOffline: false,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: true,
+          notifyInventoryUpdated: false,
+          notifyPitpalStatusChanges: false,
+        },
+        {
+          accountId: "a2",
+          mcUsername: "Fourteen",
+          notifyCameOnline: true,
+          notifyWentOffline: true,
+          notifyEveryOnlineScan: true,
+          notifyItemGainedLost: false,
+          notifyInventoryUpdated: false,
+          notifyPitpalStatusChanges: false,
+        },
+      ],
+    });
+    expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(true);
+    expect(settings.playerRules[1]?.notifyPitpalStatusChanges).toBe(false);
+    expect(settings.playerRules[1]?.notifyCameOnline).toBe(false);
+    expect(settings.playerRules[1]?.notifyEveryOnlineScan).toBe(false);
+  });
 });
 
 describe("channel routing + player rules", () => {

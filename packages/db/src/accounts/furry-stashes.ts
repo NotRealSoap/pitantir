@@ -3,8 +3,9 @@ import { AccountsRepository } from "./repository.js";
 import {
   getDiscordWebhookSettings,
   setDiscordWebhookSettings,
+  isPresenceOnlyPlayerRule,
+  mutePresenceAlertsOnPresenceOnlyRules,
   type DiscordPlayerRule,
-  type DiscordWebhookSettings,
 } from "./discord-webhook.js";
 import { notesIndicate140er } from "./notes-labels.js";
 import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
@@ -47,29 +48,19 @@ export function coerceFurryStashEntry(value: unknown): FurryStashEntry | null {
   };
 }
 
-function presenceOnlyRule(
-  accountId: string,
-  mcUsername: string,
-  defaults: DiscordWebhookSettings,
-): DiscordPlayerRule {
+function presenceOnlyRule(accountId: string, mcUsername: string): DiscordPlayerRule {
+  // 140ers stay on the online roster dashboard(s) via PitPal, but do not post
+  // came_online / went_offline / still-online to the alerts channel.
   return {
     accountId,
     mcUsername,
-    notifyCameOnline: defaults.notifyCameOnline,
-    notifyWentOffline: true,
-    notifyEveryOnlineScan: defaults.notifyEveryOnlineScan,
+    notifyCameOnline: false,
+    notifyWentOffline: false,
+    notifyEveryOnlineScan: false,
     notifyItemGainedLost: false,
     notifyInventoryUpdated: false,
     notifyPitpalStatusChanges: false,
   };
-}
-
-function isPresenceOnlyRule(rule: DiscordPlayerRule): boolean {
-  return (
-    rule.notifyItemGainedLost === false &&
-    rule.notifyInventoryUpdated === false &&
-    rule.notifyPitpalStatusChanges === false
-  );
 }
 
 export type SyncFurryStashesResult = {
@@ -84,8 +75,8 @@ export type SyncFurryStashesResult = {
 
 /**
  * Ensure every PitPal furry-stash IGN is on the Hypixel watchlist.
- * Accounts whose notes contain "140er" get Discord rules for dashboard +
- * online/offline only (no inventory updates or item +/−, no PitPal status).
+ * Accounts whose notes contain "140er" get Discord rules for dashboard only
+ * (no online/offline alerts, no inventory / item +/−, no PitPal status).
  */
 export async function syncFurryStashesWatchlist(
   db: Database,
@@ -146,18 +137,20 @@ export async function syncFurryStashesWatchlist(
 
     const existing = rulesById.get(account.id);
     if (entry.is140er) {
-      const next = presenceOnlyRule(account.id, account.mcUsername, discord);
+      const next = presenceOnlyRule(account.id, account.mcUsername);
       rulesById.set(account.id, next);
       marked140er += 1;
-    } else if (existing && isPresenceOnlyRule(existing)) {
+    } else if (existing && isPresenceOnlyPlayerRule(existing)) {
       // Was a 140er-only rule; drop override so global defaults apply again.
       rulesById.delete(account.id);
       cleared140er += 1;
     }
   }
 
-  const nextRules = [...rulesById.values()].sort((a, b) =>
-    a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" }),
+  const nextRules = mutePresenceAlertsOnPresenceOnlyRules(
+    [...rulesById.values()].sort((a, b) =>
+      a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" }),
+    ),
   );
   await setDiscordWebhookSettings(db, {
     ...discord,

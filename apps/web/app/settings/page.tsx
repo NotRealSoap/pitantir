@@ -1435,8 +1435,8 @@ function PitPalBridgePanel() {
         A Tampermonkey script (while you&apos;re logged into PitPal admin) reads{" "}
         <code>/api/proxy/pitmod/players</code> and <code>/api/furry-stashes</code>, then posts into
         Pitantir. Lobby events go to the PitPal status webhook; furry-stashes IGNs are added to the
-        watchlist. Notes containing <code>140er</code> get dashboard + online/offline only (no
-        inventory / item +/− / PitPal status). No admin password is shared with the worker. The
+        watchlist. Notes containing <code>140er</code> get the online roster dashboard only (no
+        online/offline alerts, no inventory / item +/− / PitPal status). No admin password is shared with the worker. The
         worker also keeps a sticky Discord lobby-monitor message (edited in place) with ONLINE/OFFLINE
         and time since last ingest — set the lobby monitor webhook or reuse the alerts channel.
       </p>
@@ -1483,7 +1483,7 @@ function PitPalBridgePanel() {
         <li>
           Open <code>https://pitpal.rocks/admin/lobbies</code> (and ideally{" "}
           <code>/admin/furry-stashes</code>) while logged in as admin. The badge shows lobby + stash
-          sync; <code>140er</code> notes → online/dashboard only.
+          sync; <code>140er</code> notes → roster dashboard only (no online/offline alerts).
         </li>
         <li>
           Run <code>npx pnpm@10.11.0 db:migrate</code> once for PitPal columns, then restart web.

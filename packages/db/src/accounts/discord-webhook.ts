@@ -245,12 +245,18 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     DEFAULT_FLAGS.notifyPitpalStatusChanges,
   );
   // Older saves used Boolean(undefined) → false on every custom rule; repair that.
+  // Leave intentional 140er dashboard-only rules alone (inventory + PitPal already muted).
   if (
     notifyPitpalStatusChanges &&
     playerRules.length > 0 &&
     playerRules.every((rule) => rule.notifyPitpalStatusChanges === false)
   ) {
-    playerRules = playerRules.map((rule) => ({ ...rule, notifyPitpalStatusChanges: true }));
+    playerRules = playerRules.map((rule) => {
+      if (rule.notifyItemGainedLost === false && rule.notifyInventoryUpdated === false) {
+        return rule;
+      }
+      return { ...rule, notifyPitpalStatusChanges: true };
+    });
   }
 
   return {
@@ -316,8 +322,43 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
         : null,
     monitorDashboardKey:
       typeof row.monitorDashboardKey === "string" ? row.monitorDashboardKey : null,
-    playerRules,
+    // 140er “dashboard only” overrides: never post online/offline alerts.
+    playerRules: mutePresenceAlertsOnPresenceOnlyRules(playerRules),
   };
+}
+
+/** True when a rule is the 140er dashboard-only override (no inventory / PitPal status). */
+export function isPresenceOnlyPlayerRule(rule: DiscordPlayerRule): boolean {
+  return (
+    rule.notifyItemGainedLost === false &&
+    rule.notifyInventoryUpdated === false &&
+    rule.notifyPitpalStatusChanges === false
+  );
+}
+
+/**
+ * Force 140er dashboard-only rules to mute came_online / went_offline / still-online.
+ * Applied on settings normalize so older saved checkmarks take effect immediately.
+ */
+export function mutePresenceAlertsOnPresenceOnlyRules(
+  rules: DiscordPlayerRule[],
+): DiscordPlayerRule[] {
+  return rules.map((rule) => {
+    if (!isPresenceOnlyPlayerRule(rule)) return rule;
+    if (
+      !rule.notifyCameOnline &&
+      !rule.notifyWentOffline &&
+      !rule.notifyEveryOnlineScan
+    ) {
+      return rule;
+    }
+    return {
+      ...rule,
+      notifyCameOnline: false,
+      notifyWentOffline: false,
+      notifyEveryOnlineScan: false,
+    };
+  });
 }
 
 export async function getDiscordWebhookSettings(
@@ -433,9 +474,11 @@ export async function setDiscordWebhookSettings(
     downwatchDashboardRosterKey: settings.downwatchDashboardRosterKey ?? null,
     monitorDashboardMessageId: settings.monitorDashboardMessageId?.trim() || null,
     monitorDashboardKey: settings.monitorDashboardKey ?? null,
-    playerRules: (settings.playerRules ?? [])
-      .map((rule) => normalizePlayerRule(rule))
-      .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
+    playerRules: mutePresenceAlertsOnPresenceOnlyRules(
+      (settings.playerRules ?? [])
+        .map((rule) => normalizePlayerRule(rule))
+        .filter((rule): rule is DiscordPlayerRule => Boolean(rule)),
+    ),
   };
   assertOptionalWebhook(next.presenceWebhookUrl, "Online dashboard webhook");
   assertOptionalWebhook(next.presenceAlertsWebhookUrl, "Online/offline alerts webhook");
