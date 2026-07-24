@@ -181,6 +181,8 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(isForcedDiscordDashboardOnlyUsername("Kadeacon")).toBe(true);
     expect(isForcedDiscordDashboardOnlyUsername("YMXCE")).toBe(true);
     expect(isForcedDiscordDashboardOnlyUsername("CURLSFORGIRLSS")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("DynamicStopper04")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("HarryPotterJr")).toBe(true);
     expect(isForcedDiscordDashboardOnlyUsername("someoneelse")).toBe(false);
     const flags = resolveNotifyFlagsForEvent(
       normalizeDiscordWebhookSettings({

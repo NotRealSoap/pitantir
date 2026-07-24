@@ -650,6 +650,8 @@ export const DISCORD_DASHBOARD_ONLY_USERNAMES = [
   "Kadeacon",
   "YMXCE",
   "CURLSFORGIRLSS",
+  "DynamicStopper04",
+  "HarryPotterJr",
 ] as const;
 
 const DISCORD_DASHBOARD_ONLY_USERNAME_SET = new Set(

@@ -932,7 +932,8 @@ function DiscordWebhookPanel() {
           <code>L3nnY2B4k3D</code>, <code>TuffTuffTuffTuff</code>, <code>mhm</code>,{" "}
           <code>inoriginal2</code>, <code>crazy</code>, <code>whytf</code>,{" "}
           <code>volleydrain</code>, <code>Kadeacon</code>, <code>YMXCE</code>,{" "}
-          <code>CURLSFORGIRLSS</code>.
+          <code>CURLSFORGIRLSS</code>, <code>DynamicStopper04</code>,{" "}
+          <code>HarryPotterJr</code>.
         </p>
         {playerRows.length === 0 ? (
           <p className="muted">No watchlist accounts yet.</p>
