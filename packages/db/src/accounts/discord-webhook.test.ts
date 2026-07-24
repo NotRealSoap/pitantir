@@ -357,6 +357,43 @@ describe("online dashboard", () => {
     expect(payload.content).toContain("API Off");
   });
 
+  it("marks nicked accounts on the roster and in event payloads", () => {
+    const roster = buildOnlineDashboardPayload(
+      [
+        {
+          mcUsername: "NickGuy",
+          lobby: "M1A",
+          location: "DOWN",
+          isNicked: true,
+        },
+      ],
+      "2026-07-21T12:00:00.000Z",
+    );
+    expect(roster.content).toContain("Nicked");
+    const event = buildDiscordWebhookPayload({
+      kind: "pitpal_entered",
+      mcUsername: "NickGuy",
+      detail: "M1A · DOWN",
+      isNicked: true,
+      at: "2026-07-21T12:00:00.000Z",
+    });
+    expect(event.content).toBe("NickGuy entered Pit · M1A · DOWN · Nicked");
+    expect(JSON.stringify(event.embeds)).toContain('"name":"Nick"');
+    expect(JSON.stringify(event.embeds)).toContain('"value":"Nicked"');
+  });
+
+  it("does not double-append Nicked when detail already says it", () => {
+    const event = buildDiscordWebhookPayload({
+      kind: "came_online",
+      mcUsername: "NickGuy",
+      detail: "M1A · SPAWN · Nicked",
+      isNicked: true,
+      at: "2026-07-21T12:00:00.000Z",
+    });
+    expect(event.content).toBe("NickGuy came online · M1A · SPAWN · Nicked");
+    expect(event.content.match(/Nicked/g)?.length).toBe(1);
+  });
+
   it("supports non-140er dashboard labeling", () => {
     const payload = buildOnlineDashboardPayload(
       [{ mcUsername: "Trader" }],

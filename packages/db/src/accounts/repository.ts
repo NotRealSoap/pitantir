@@ -37,6 +37,7 @@ export interface Account {
   lastPitpalArmorType: string | null;
   lastPitpalKillstreak: number | null;
   lastPitpalSeenAt: Date | null;
+  lastPitpalIsNicked: boolean | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -75,6 +76,7 @@ export interface UpdateAccountInput {
   lastPitpalArmorType?: string | null;
   lastPitpalKillstreak?: number | null;
   lastPitpalSeenAt?: Date | null;
+  lastPitpalIsNicked?: boolean | null;
 }
 
 function mapAccount(row: AccountRow): Account {
@@ -101,6 +103,7 @@ function mapAccount(row: AccountRow): Account {
     lastPitpalArmorType: row.lastPitpalArmorType ?? null,
     lastPitpalKillstreak: row.lastPitpalKillstreak ?? null,
     lastPitpalSeenAt: row.lastPitpalSeenAt ?? null,
+    lastPitpalIsNicked: row.lastPitpalIsNicked ?? null,
     notes: row.notes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -346,6 +349,9 @@ export class AccountsRepository {
       updated.lastPitpalKillstreak = input.lastPitpalKillstreak;
     }
     if (input.lastPitpalSeenAt !== undefined) updated.lastPitpalSeenAt = input.lastPitpalSeenAt;
+    if (input.lastPitpalIsNicked !== undefined) {
+      updated.lastPitpalIsNicked = input.lastPitpalIsNicked;
+    }
 
     if (!/^[A-Za-z0-9_]{3,16}$/.test(String(updated.mcUsername))) {
       throw new Error("Invalid Minecraft username");

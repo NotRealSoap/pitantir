@@ -72,6 +72,7 @@ export async function GET() {
         armorType: row.lastPitpalArmorType,
         killStreak: row.lastPitpalKillstreak,
         apiOff: presence.apiOff,
+        isNicked: row.lastPitpalIsNicked === true,
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));

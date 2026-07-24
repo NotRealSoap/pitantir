@@ -176,6 +176,7 @@ function buildStatusEvents(input: {
   const events: DiscordNotifyEvent[] = [];
   const wasIn = Boolean(previous?.lobby || previous?.location);
   const nowIn = Boolean(next);
+  const nicked = next?.isNicked === true ? true : null;
 
   if (!wasIn && nowIn && next) {
     events.push({
@@ -183,7 +184,10 @@ function buildStatusEvents(input: {
       accountId: account.id,
       mcUsername: account.mcUsername,
       at,
-      detail: [next.lobbyName, next.location, next.armorType].filter(Boolean).join(" · "),
+      isNicked: nicked,
+      detail: [next.lobbyName, next.location, next.armorType, nicked ? "Nicked" : null]
+        .filter(Boolean)
+        .join(" · "),
     });
     return events;
   }
@@ -193,6 +197,7 @@ function buildStatusEvents(input: {
       accountId: account.id,
       mcUsername: account.mcUsername,
       at,
+      isNicked: account.lastPitpalIsNicked === true ? true : null,
       detail: [previous?.lobby, previous?.location].filter(Boolean).join(" · ") || null,
     });
     return events;
@@ -204,9 +209,10 @@ function buildStatusEvents(input: {
         accountId: account.id,
         mcUsername: account.mcUsername,
         at,
+        isNicked: nicked,
         detail: `${previous.location ?? "?"} → ${next.location ?? "?"}${
           next.lobbyName ? ` · ${next.lobbyName}` : ""
-        }`,
+        }${nicked ? " · Nicked" : ""}`,
       });
     }
     if ((previous.lobby ?? null) !== (next.lobbyName ?? null)) {
@@ -215,9 +221,10 @@ function buildStatusEvents(input: {
         accountId: account.id,
         mcUsername: account.mcUsername,
         at,
+        isNicked: nicked,
         detail: `${previous.lobby ?? "?"} → ${next.lobbyName ?? "?"}${
           next.location ? ` · ${next.location}` : ""
-        }`,
+        }${nicked ? " · Nicked" : ""}`,
       });
     }
   }
@@ -354,6 +361,7 @@ export async function ingestPitpalLobbies(
         lastPitpalArmorType: hit.armorType ?? null,
         lastPitpalKillstreak: hit.killStreak ?? null,
         lastPitpalSeenAt: observedDate,
+        lastPitpalIsNicked: hit.isNicked === true ? true : hit.isNicked === false ? false : null,
         lastSessionGame: sessionLabel,
         ...(allowHotPull
           ? { priority: Math.min(account.priority, PRESENCE_HOT_PRIORITY) }
@@ -368,9 +376,13 @@ export async function ingestPitpalLobbies(
           accountId: account.id,
           mcUsername: updated.mcUsername,
           at: observedAt,
+          isNicked: hit.isNicked === true ? true : null,
           detail: nextEffective.apiOff
-            ? [sessionLabel, "API Off"].filter(Boolean).join(" · ")
-            : sessionLabel,
+            ? [sessionLabel, "API Off", hit.isNicked === true ? "Nicked" : null]
+                .filter(Boolean)
+                .join(" · ")
+            : [sessionLabel, hit.isNicked === true ? "Nicked" : null].filter(Boolean).join(" · ") ||
+              null,
         });
       }
       if (events.some((event) => event.kind === "pitpal_entered")) {
@@ -397,6 +409,7 @@ export async function ingestPitpalLobbies(
         lastPitpalArmorType: null,
         lastPitpalKillstreak: null,
         lastPitpalSeenAt: null,
+        lastPitpalIsNicked: null,
       });
       const nextEffective = resolveEffectivePresence(updated, presenceOpts);
       if (!nextEffective.online && previousEffective.online) {
@@ -406,6 +419,11 @@ export async function ingestPitpalLobbies(
           accountId: account.id,
           mcUsername: account.mcUsername,
           at: observedAt,
+          isNicked: account.lastPitpalIsNicked === true ? true : null,
+          detail:
+            account.lastPitpalIsNicked === true
+              ? [previous?.lobby, previous?.location, "Nicked"].filter(Boolean).join(" · ")
+              : [previous?.lobby, previous?.location].filter(Boolean).join(" · ") || null,
         });
       }
       if (await enqueueHypixelPresenceConfirm(jobs, account.id, "left", observedAt)) {
@@ -464,11 +482,13 @@ export function formatPitpalPresenceLine(input: {
   location?: string | null;
   armorType?: string | null;
   killStreak?: number | null;
+  isNicked?: boolean | null;
 }): string {
   const parts = [input.mcUsername];
   if (input.lobby) parts.push(input.lobby);
   if (input.location) parts.push(input.location);
   if (input.armorType) parts.push(input.armorType);
   if (input.killStreak && input.killStreak > 0) parts.push(`${input.killStreak} ks`);
+  if (input.isNicked === true) parts.push("Nicked");
   return parts.join(" · ");
 }

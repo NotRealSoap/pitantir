@@ -339,6 +339,7 @@ export default function AccountsPage() {
                         ? account.lastSessionGame
                         : null,
                       apiOff ? "API Off" : null,
+                      account.lastPitpalIsNicked === true ? "Nicked" : null,
                     ]
                       .filter(Boolean)
                       .join(" · ");

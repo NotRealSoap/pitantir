@@ -196,8 +196,13 @@ export class ScanAccountHandler {
     // Prefer live PitPal lobby/status on the roster when we have it; else Hypixel session.
     const sessionGame =
       account.lastPitpalLobby || account.lastPitpalLocation
-        ? [account.lastPitpalLobby, account.lastPitpalLocation].filter(Boolean).join(" · ") ||
-          hypixelSession
+        ? [
+            account.lastPitpalLobby,
+            account.lastPitpalLocation,
+            account.lastPitpalIsNicked === true ? "Nicked" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || hypixelSession
         : hypixelSession;
 
     // Optional weak PitPanda nonce hint when Hypixel looks offline.
@@ -265,6 +270,7 @@ export class ScanAccountHandler {
         accountId: account.id,
         mcUsername: account.mcUsername,
         at,
+        isNicked: account.lastPitpalIsNicked === true ? true : null,
         detail: nextEffective.apiOff
           ? [sessionGame, "API Off"].filter(Boolean).join(" · ")
           : sessionGame,
@@ -276,6 +282,7 @@ export class ScanAccountHandler {
         accountId: account.id,
         mcUsername: account.mcUsername,
         at,
+        isNicked: account.lastPitpalIsNicked === true ? true : null,
       });
     }
     if (inventoryChanged) {
@@ -308,6 +315,7 @@ export class ScanAccountHandler {
         at,
         detail,
         changes,
+        isNicked: account.lastPitpalIsNicked === true ? true : null,
       });
     }
     liveEvents.push({
@@ -316,6 +324,7 @@ export class ScanAccountHandler {
       accountId: account.id,
       mcUsername: account.mcUsername,
       at,
+      isNicked: account.lastPitpalIsNicked === true ? true : null,
       detail: nextEffective.apiOff
         ? [sessionGame, "API Off", pitpandaHintDetail].filter(Boolean).join(" · ") || "API Off"
         : presence?.online === true
@@ -338,6 +347,7 @@ export class ScanAccountHandler {
         ? [sessionGame, "API Off"].filter(Boolean).join(" · ")
         : sessionGame,
       at,
+      isNicked: account.lastPitpalIsNicked === true ? true : null,
     }).catch(() => undefined);
 
     const enqueued = await this.enqueueProcessScan(success.id);

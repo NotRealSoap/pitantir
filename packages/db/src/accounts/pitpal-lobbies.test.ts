@@ -29,4 +29,15 @@ describe("formatPitpalPresenceLine", () => {
       }),
     ).toBe("Crazy · M23A · DOWN · GOLD · 40 ks");
   });
+
+  it("includes Nicked when flagged", () => {
+    expect(
+      formatPitpalPresenceLine({
+        mcUsername: "NickGuy",
+        lobby: "M1A",
+        location: "SPAWN",
+        isNicked: true,
+      }),
+    ).toBe("NickGuy · M1A · SPAWN · Nicked");
+  });
 });

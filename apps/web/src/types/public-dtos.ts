@@ -23,6 +23,7 @@ export type PublicAccountDto = {
   lastPitpalArmorType?: string | null;
   lastPitpalKillstreak?: number | null;
   lastPitpalSeenAt?: string | Date | null;
+  lastPitpalIsNicked?: boolean | null;
   notes: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;

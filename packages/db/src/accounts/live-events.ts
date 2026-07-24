@@ -19,6 +19,8 @@ export interface HypixelLiveEvent {
   detail?: string | null;
   /** Concrete mystic gains/losses/updates for inventory_changed. */
   changes?: InventoryChangeItem[] | null;
+  /** PitPal nicked flag when known. */
+  isNicked?: boolean | null;
 }
 
 function isChangeItem(value: unknown): value is InventoryChangeItem {

@@ -48,6 +48,7 @@ export const accounts = pgTable(
     lastPitpalArmorType: text("last_pitpal_armor_type"),
     lastPitpalKillstreak: integer("last_pitpal_killstreak"),
     lastPitpalSeenAt: timestamp("last_pitpal_seen_at", { withTimezone: true }),
+    lastPitpalIsNicked: boolean("last_pitpal_is_nicked"),
     credentialsEncrypted: text("credentials_encrypted"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

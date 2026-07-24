@@ -57,6 +57,13 @@
       "when": 1784667000000,
       "tag": "0007_pitpal_lobbies",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784928000000,
+      "tag": "0008_pitpal_is_nicked",
+      "breakpoints": true
     }
   ]
 }

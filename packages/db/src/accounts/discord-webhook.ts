@@ -110,6 +110,8 @@ export type DiscordNotifyEvent = {
   detail?: string | null;
   changes?: InventoryChangeItem[] | null;
   at?: string | null;
+  /** PitPal nicked flag when known for this event. */
+  isNicked?: boolean | null;
 };
 
 export type OnlineRosterEntry = {
@@ -122,6 +124,8 @@ export type OnlineRosterEntry = {
   killStreak?: number | null;
   /** PitPal-listed but Hypixel reports offline/unknown. */
   apiOff?: boolean;
+  /** PitPal reports this IGN as nicked. */
+  isNicked?: boolean;
 };
 
 const DEFAULT_FLAGS: DiscordPlayerNotifyFlags = {
@@ -881,62 +885,79 @@ function embedColor(kind: string): number {
   }
 }
 
+export function appendNickedLabel(
+  detail: string | null | undefined,
+  isNicked: boolean | null | undefined,
+): string | null {
+  if (isNicked !== true) return detail ?? null;
+  if (!detail) return "Nicked";
+  if (/\bnicked\b/i.test(detail)) return detail;
+  return `${detail} · Nicked`;
+}
+
 export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
   content: string;
   embeds: Array<Record<string, unknown>>;
 } {
+  const detail = appendNickedLabel(event.detail, event.isNicked);
+  const nickedEvent = { ...event, detail };
   const headline =
-    event.kind === "online_indexed"
-      ? event.detail
-        ? `${event.mcUsername} still online · ${event.detail}`
-        : `${event.mcUsername} still online`
-      : event.kind === "pitpal_entered"
-        ? event.detail
-          ? `${event.mcUsername} entered Pit · ${event.detail}`
-          : `${event.mcUsername} entered Pit`
-        : event.kind === "pitpal_left"
-          ? `${event.mcUsername} left Pit lobbies`
-          : event.kind === "pitpal_location"
-            ? event.detail
-              ? `${event.mcUsername} ${event.detail}`
-              : `${event.mcUsername} status changed`
-            : event.kind === "pitpal_lobby"
-              ? event.detail
-                ? `${event.mcUsername} lobby · ${event.detail}`
-                : `${event.mcUsername} changed lobby`
-              : event.kind === "pitpal_mismatch"
-                ? event.detail
-                  ? `${event.mcUsername} presence mismatch · ${event.detail}`
-                  : `${event.mcUsername} presence mismatch`
-                : event.kind === "item_moved" || event.kind === "inventory_updated"
+    nickedEvent.kind === "online_indexed"
+      ? detail
+        ? `${nickedEvent.mcUsername} still online · ${detail}`
+        : `${nickedEvent.mcUsername} still online`
+      : nickedEvent.kind === "pitpal_entered"
+        ? detail
+          ? `${nickedEvent.mcUsername} entered Pit · ${detail}`
+          : `${nickedEvent.mcUsername} entered Pit`
+        : nickedEvent.kind === "pitpal_left"
+          ? detail
+            ? `${nickedEvent.mcUsername} left Pit lobbies · ${detail}`
+            : `${nickedEvent.mcUsername} left Pit lobbies`
+          : nickedEvent.kind === "pitpal_location"
+            ? detail
+              ? `${nickedEvent.mcUsername} ${detail}`
+              : `${nickedEvent.mcUsername} status changed`
+            : nickedEvent.kind === "pitpal_lobby"
+              ? detail
+                ? `${nickedEvent.mcUsername} lobby · ${detail}`
+                : `${nickedEvent.mcUsername} changed lobby`
+              : nickedEvent.kind === "pitpal_mismatch"
+                ? detail
+                  ? `${nickedEvent.mcUsername} presence mismatch · ${detail}`
+                  : `${nickedEvent.mcUsername} presence mismatch`
+                : nickedEvent.kind === "item_moved" || nickedEvent.kind === "inventory_updated"
                   ? describeLiveSignal({
                       kind: "inventory_changed",
-                      mcUsername: event.mcUsername,
-                      detail: event.detail,
-                      changes: event.changes,
+                      mcUsername: nickedEvent.mcUsername,
+                      detail,
+                      changes: nickedEvent.changes,
                     })
                   : describeLiveSignal({
-                      kind: event.kind,
-                      mcUsername: event.mcUsername,
-                      detail: event.detail,
-                      changes: event.changes,
+                      kind: nickedEvent.kind,
+                      mcUsername: nickedEvent.mcUsername,
+                      detail,
+                      changes: nickedEvent.changes,
                     });
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-    { name: "Player", value: event.mcUsername || "Unknown", inline: true },
-    { name: "Event", value: event.kind, inline: true },
+    { name: "Player", value: nickedEvent.mcUsername || "Unknown", inline: true },
+    { name: "Event", value: nickedEvent.kind, inline: true },
   ];
-  if (event.detail) {
-    fields.push({ name: "Detail", value: event.detail.slice(0, 1000) });
+  if (nickedEvent.isNicked === true) {
+    fields.push({ name: "Nick", value: "Nicked", inline: true });
   }
-  if (event.changes && event.changes.length > 0) {
-    const lines = event.changes.slice(0, 8).map((change) => {
+  if (detail) {
+    fields.push({ name: "Detail", value: detail.slice(0, 1000) });
+  }
+  if (nickedEvent.changes && nickedEvent.changes.length > 0) {
+    const lines = nickedEvent.changes.slice(0, 8).map((change) => {
       return `• **${change.direction}** ${change.title}${
         change.nonce ? ` (\`${change.nonce}\`)` : ""
       }${change.summary ? ` — ${change.summary}` : ""}`;
     });
-    if (event.changes.length > 8) {
-      lines.push(`• +${event.changes.length - 8} more`);
+    if (nickedEvent.changes.length > 8) {
+      lines.push(`• +${nickedEvent.changes.length - 8} more`);
     }
     fields.push({ name: "Items", value: lines.join("\n").slice(0, 1000) });
   }
@@ -946,9 +967,9 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
     embeds: [
       {
         title: headline.slice(0, 256),
-        color: embedColor(event.kind),
+        color: embedColor(nickedEvent.kind),
         fields,
-        timestamp: event.at ?? new Date().toISOString(),
+        timestamp: nickedEvent.at ?? new Date().toISOString(),
         footer: { text: "Pitantir watch" },
       },
     ],
@@ -959,7 +980,7 @@ export function rosterKeyFor(entries: OnlineRosterEntry[]): string {
   return entries
     .map(
       (entry) =>
-        `${entry.mcUsername}\t${entry.lobby ?? ""}\t${entry.location ?? ""}\t${entry.sessionGame ?? ""}\t${entry.apiOff ? "apiOff" : ""}`,
+        `${entry.mcUsername}\t${entry.lobby ?? ""}\t${entry.location ?? ""}\t${entry.sessionGame ?? ""}\t${entry.apiOff ? "apiOff" : ""}\t${entry.isNicked ? "nicked" : ""}`,
     )
     .sort((a, b) => a.localeCompare(b))
     .join("\n");
@@ -997,6 +1018,7 @@ export function buildOnlineDashboardPayload(
             entry.killStreak && entry.killStreak > 0 ? `${entry.killStreak} ks` : null,
             !entry.lobby && entry.sessionGame ? entry.sessionGame : null,
             entry.apiOff ? "API Off" : null,
+            entry.isNicked ? "Nicked" : null,
           ].filter(Boolean);
           const suffix = bits.length ? ` — ${bits.map((bit) => `\`${bit}\``).join(" · ")}` : "";
           return `• **${entry.mcUsername}**${suffix}`;
@@ -1481,6 +1503,7 @@ export async function refreshDiscordOnlineDashboard(
         armorType: row.lastPitpalArmorType,
         killStreak: row.lastPitpalKillstreak,
         apiOff: presence.apiOff,
+        isNicked: row.lastPitpalIsNicked === true,
         notes: row.notes,
       };
     })
@@ -1557,6 +1580,7 @@ export type DiscordScanNotifyContext = {
   mcUsername: string;
   sessionGame?: string | null;
   at?: string | null;
+  isNicked?: boolean | null;
 };
 
 /** Best-effort notify with channel routing + per-player rules. */
@@ -1588,8 +1612,9 @@ export async function notifyDiscordForLiveEvents(
         kind: "online_indexed",
         accountId: context.accountId,
         mcUsername: context.mcUsername,
-        detail: context.sessionGame ?? "online",
+        detail: appendNickedLabel(context.sessionGame ?? "online", context.isNicked),
         at: context.at ?? new Date().toISOString(),
+        isNicked: context.isNicked === true ? true : null,
       });
     }
 
@@ -1681,7 +1706,7 @@ export async function notifyDownwatchWentDown(
     for (const event of downEvents) {
       if (!isOnDownwatch(state, event.mcUsername)) continue;
       const mention = `<@&${roleId}>`;
-      const detail = event.detail?.trim() || "DOWN";
+      const detail = appendNickedLabel(event.detail?.trim() || "DOWN", event.isNicked) || "DOWN";
       const content =
         `${mention} **${event.mcUsername}** went DOWN · ${detail}`.slice(0, 2000);
       const result = await postRawDiscordWebhook(webhookUrl, {
