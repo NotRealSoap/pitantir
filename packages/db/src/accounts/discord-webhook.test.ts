@@ -167,18 +167,28 @@ describe("normalizeDiscordWebhookSettings", () => {
     expect(settings.playerRules[0]?.notifyPitpalStatusChanges).toBe(false);
   });
 
-  it("force-mutes zain12219 / BuMingXiaLuo / sis by username", () => {
+  it("force-mutes configured dashboard-only usernames", () => {
     expect(isForcedDiscordDashboardOnlyUsername("zain12219")).toBe(true);
     expect(isForcedDiscordDashboardOnlyUsername("BuMingXiaLuo")).toBe(true);
     expect(isForcedDiscordDashboardOnlyUsername("SIS")).toBe(true);
-    expect(isForcedDiscordDashboardOnlyUsername("whytf")).toBe(false);
+    expect(isForcedDiscordDashboardOnlyUsername("L3nnY2B4k3D")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("TuffTuffTuffTuff")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("mhm")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("inoriginal2")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("Crazy")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("whytf")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("volleydrain")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("Kadeacon")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("YMXCE")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("CURLSFORGIRLSS")).toBe(true);
+    expect(isForcedDiscordDashboardOnlyUsername("someoneelse")).toBe(false);
     const flags = resolveNotifyFlagsForEvent(
       normalizeDiscordWebhookSettings({
         notifyCameOnline: true,
         notifyEveryOnlineScan: true,
         notifyPitpalStatusChanges: true,
       }),
-      { accountId: "x", mcUsername: "zain12219" },
+      { accountId: "x", mcUsername: "Kadeacon" },
     );
     expect(flags.notifyCameOnline).toBe(false);
     expect(flags.notifyEveryOnlineScan).toBe(false);

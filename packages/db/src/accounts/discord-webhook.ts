@@ -640,6 +640,16 @@ export const DISCORD_DASHBOARD_ONLY_USERNAMES = [
   "zain12219",
   "BuMingXiaLuo",
   "sis",
+  "L3nnY2B4k3D",
+  "TuffTuffTuffTuff",
+  "mhm",
+  "inoriginal2",
+  "crazy",
+  "whytf",
+  "volleydrain",
+  "Kadeacon",
+  "YMXCE",
+  "CURLSFORGIRLSS",
 ] as const;
 
 const DISCORD_DASHBOARD_ONLY_USERNAME_SET = new Set(

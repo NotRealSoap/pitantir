@@ -927,8 +927,12 @@ function DiscordWebhookPanel() {
         <p className="muted" style={{ marginTop: 0 }}>
           Only rows that differ from the defaults above are saved. Uncheck <strong>Online</strong> to
           mute both still-online and came-online alerts for that player. Leave someone matching
-          defaults to inherit. <code>zain12219</code>, <code>BuMingXiaLuo</code>, and{" "}
-          <code>sis</code> are forced mute (like 140ers) in code.
+          defaults to inherit. Forced mute (like 140ers) in code:{" "}
+          <code>zain12219</code>, <code>BuMingXiaLuo</code>, <code>sis</code>,{" "}
+          <code>L3nnY2B4k3D</code>, <code>TuffTuffTuffTuff</code>, <code>mhm</code>,{" "}
+          <code>inoriginal2</code>, <code>crazy</code>, <code>whytf</code>,{" "}
+          <code>volleydrain</code>, <code>Kadeacon</code>, <code>YMXCE</code>,{" "}
+          <code>CURLSFORGIRLSS</code>.
         </p>
         {playerRows.length === 0 ? (
           <p className="muted">No watchlist accounts yet.</p>

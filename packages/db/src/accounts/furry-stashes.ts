@@ -149,7 +149,7 @@ export async function syncFurryStashesWatchlist(
     ...discord,
     playerRules: nextRules,
   });
-  // Forced mutes (zain12219 / BuMingXiaLuo / sis) — re-apply after stash sync.
+  // Forced dashboard-only mutes — re-apply after stash sync.
   await ensureForcedDiscordDashboardOnlyRules(db).catch(() => undefined);
 
   return {
