@@ -509,7 +509,7 @@ export async function POST(request: Request) {
         : current.lobbyMatesWebhookUrl,
       non140erDashboardWebhookUrl: non140erDashboard.provided
         ? non140erDashboard.url
-        : current.non140erDashboardWebhookUrl
+        : current.non140erDashboardWebhookUrl,
       monitorWebhookUrl: monitor.provided ? monitor.url : current.monitorWebhookUrl,
       downwatchWebhookUrl: downwatchWebhook.provided
         ? downwatchWebhook.url
