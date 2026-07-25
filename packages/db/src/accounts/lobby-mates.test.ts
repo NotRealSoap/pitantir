@@ -7,6 +7,7 @@ import {
   listLobbyMateNames,
   paginateLobbyMateContent,
   shouldTrackLobbyMates,
+  wrapDiscordMessageInCode,
   type LobbyMateLobbySection,
 } from "./lobby-mates.js";
 
@@ -110,8 +111,21 @@ describe("paginateLobbyMateContent", () => {
   });
 });
 
+describe("wrapDiscordMessageInCode", () => {
+  it("wraps the message and flattens Discord timestamps", () => {
+    const wrapped = wrapDiscordMessageInCode(
+      `jc_treepuncher\n• alpha — ${formatTouchClock("2026-07-25T01:00:00.000Z")}`,
+    );
+    expect(wrapped.startsWith("```\n")).toBe(true);
+    expect(wrapped.endsWith("\n```")).toBe(true);
+    expect(wrapped).toContain("jc_treepuncher");
+    expect(wrapped).toContain("01:00:00 UTC");
+    expect(wrapped).not.toContain("<t:");
+  });
+});
+
 describe("buildLobbyMateSessionPayload", () => {
-  it("lists touches under lobby headings", () => {
+  it("lists touches under lobby headings inside a code block", () => {
     const session = {
       accountId: "a1",
       mcUsername: "jc_treepuncher",
@@ -127,10 +141,13 @@ describe("buildLobbyMateSessionPayload", () => {
       lastPostedKey: null,
     };
     const payload = buildLobbyMateSessionPayload(session);
+    expect(payload.content.startsWith("```\n")).toBe(true);
     expect(payload.content).toContain("jc_treepuncher entered Pit · M1B · SPAWN");
     expect(payload.content).toContain("**M1B (2)**");
     expect(payload.content).toContain("alpha");
-    expect(payload.content).toContain(formatTouchClock("2026-07-25T01:00:00.000Z"));
+    expect(payload.content).toContain("01:00:00 UTC");
+    // Embed keeps rich timestamps.
+    expect(JSON.stringify(payload.embeds)).toContain(formatTouchClock("2026-07-25T01:00:00.000Z"));
 
     const pages = buildLobbyMateSessionPages(session);
     expect(pages.pages).toHaveLength(1);

@@ -111,6 +111,24 @@ export function formatTouchClock(at: string): string {
   return `<t:${Math.floor(ms / 1000)}:t>`;
 }
 
+/** Inline code so Discord markdown won't italicize underscores in IGNs/lobbies. */
+export function discordInlineCode(value: string): string {
+  const safe = value.replace(/`/g, "'");
+  return `\`${safe}\``;
+}
+
+/** Wrap a full Discord message body in a code block (protects underscores). */
+export function wrapDiscordMessageInCode(content: string): string {
+  const safe = content.replace(/```/g, "``\u200b`");
+  // Discord timestamps don't render inside code blocks — convert to plain UTC clock.
+  const withPlainTimes = safe.replace(/<t:(\d+):t>/g, (_match, seconds: string) => {
+    const ms = Number(seconds) * 1000;
+    if (!Number.isFinite(ms)) return seconds;
+    return new Date(ms).toISOString().slice(11, 19) + " UTC";
+  });
+  return "```\n" + withPlainTimes + "\n```";
+}
+
 export type LobbyMateLobbySection = {
   lobby: string;
   total: number;
@@ -368,29 +386,38 @@ export function buildLobbyMateSessionPages(
       : `${session.mcUsername} entered Pit`;
 
   const sections = buildLobbyMateLobbySections(session);
-  const contents = paginateLobbyMateContent(headline, sections, { maxChars: 1900 });
+  // Leave headroom for the wrapping ``` fences.
+  const plainPages = paginateLobbyMateContent(headline, sections, { maxChars: 1800 });
   const color = ended ? 0x99aab5 : 0x57f287;
   const footer = ended
     ? "Pitantir lobby mates · session closed"
     : "Pitantir lobby mates · updated while in Pit";
 
-  const pages = contents.map((content, index) => ({
-    content,
-    embeds: [
-      {
-        title: (index === 0 ? headline : `${session.mcUsername} · lobby mates`).slice(0, 256),
-        description: content.slice(0, 4096),
-        color,
-        timestamp: at,
-        footer: {
-          text:
-            contents.length > 1
-              ? `${footer} · page ${index + 1}/${contents.length}`
-              : footer,
+  const pages = plainPages.map((plain, index) => {
+    // Code-block the message body so underscores in IGNs aren't markdown-italicized.
+    const content = wrapDiscordMessageInCode(plain);
+    return {
+      content,
+      embeds: [
+        {
+          title: (index === 0 ? headline : `${session.mcUsername} · lobby mates`).slice(
+            0,
+            256,
+          ),
+          // Plain description keeps Discord <t:> timestamps clickable in the embed.
+          description: plain.slice(0, 4096),
+          color,
+          timestamp: at,
+          footer: {
+            text:
+              plainPages.length > 1
+                ? `${footer} · page ${index + 1}/${plainPages.length}`
+                : footer,
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 
   return {
     pages,
