@@ -5,7 +5,6 @@ import {
   normalizePitpalLobbySnapshot,
   shouldAttachLobbyMatesOnEnter,
 } from "./pitpal-lobbies.js";
-import type { DownwatchState } from "./downwatch.js";
 
 describe("normalizePitpalLobbySnapshot", () => {
   it("counts lobbies and players", () => {
@@ -65,42 +64,36 @@ describe("listLobbyMateNames", () => {
 });
 
 describe("shouldAttachLobbyMatesOnEnter", () => {
-  const downwatch: DownwatchState = {
-    entries: [
-      {
-        mcUsername: "jc_treepuncher",
-        accountId: "a1",
-        addedAt: "2026-07-24T00:00:00.000Z",
-        addedBy: null,
-      },
-    ],
-    lastProcessedMessageId: null,
-  };
-
-  it("allows downwatch non-furry non-140er accounts", () => {
+  it("allows non-140er furry-stash accounts", () => {
     expect(
-      shouldAttachLobbyMatesOnEnter(
-        { mcUsername: "jc_treepuncher", notes: "trader" },
-        downwatch,
-      ),
+      shouldAttachLobbyMatesOnEnter({
+        mcUsername: "jc_treepuncher",
+        notes: "furry-stashes",
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttachLobbyMatesOnEnter({
+        mcUsername: "jc_treepuncher",
+        notes: "furry-stashes: trader",
+      }),
     ).toBe(true);
   });
 
-  it("rejects furry-stashes, 140ers, and non-downwatch accounts", () => {
+  it("rejects non-furry, 140er, and blank-notes accounts", () => {
     expect(
-      shouldAttachLobbyMatesOnEnter(
-        { mcUsername: "jc_treepuncher", notes: "furry-stashes" },
-        downwatch,
-      ),
+      shouldAttachLobbyMatesOnEnter({
+        mcUsername: "DownwatchOnly",
+        notes: "trader",
+      }),
     ).toBe(false);
     expect(
-      shouldAttachLobbyMatesOnEnter(
-        { mcUsername: "jc_treepuncher", notes: "140er" },
-        downwatch,
-      ),
+      shouldAttachLobbyMatesOnEnter({
+        mcUsername: "jc_treepuncher",
+        notes: "furry-stashes: 140er",
+      }),
     ).toBe(false);
     expect(
-      shouldAttachLobbyMatesOnEnter({ mcUsername: "RandomGuy", notes: null }, downwatch),
+      shouldAttachLobbyMatesOnEnter({ mcUsername: "RandomGuy", notes: null }),
     ).toBe(false);
   });
 });

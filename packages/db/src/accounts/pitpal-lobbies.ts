@@ -19,7 +19,6 @@ import {
   PRESENCE_HOT_PRIORITY,
   resolveEffectivePresence,
 } from "./presence.js";
-import { getDownwatchState, isOnDownwatch, type DownwatchState } from "./downwatch.js";
 import { notesIndicateFurryStash } from "./notes-labels.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
@@ -169,16 +168,15 @@ async function enqueueHypixelPresenceConfirm(
 }
 
 /**
- * Downwatch enter alerts with full lobby roster:
- * on downwatch, not furry-stashes, not 140er.
+ * Furry-stash enter alerts with full lobby roster:
+ * furry-stashes notes, not 140er.
+ * Downwatch-only (not on furry-stashes) accounts are excluded.
  * PitPal mute / forced-mute still apply at Discord notify time.
  */
 export function shouldAttachLobbyMatesOnEnter(
   account: Pick<Account, "mcUsername" | "notes">,
-  downwatch: DownwatchState,
 ): boolean {
-  if (!isOnDownwatch(downwatch, account.mcUsername)) return false;
-  if (notesIndicateFurryStash(account.notes)) return false;
+  if (!notesIndicateFurryStash(account.notes)) return false;
   if (accountIs140er(account)) return false;
   return true;
 }
@@ -347,10 +345,6 @@ export async function ingestPitpalLobbies(
   const repo = new AccountsRepository(db);
   const jobs = new JobsRepository(db);
   const watchlist = await repo.listWatchlist();
-  const downwatch = await getDownwatchState(db).catch(() => ({
-    entries: [],
-    lastProcessedMessageId: null,
-  }));
   let matched = 0;
   let cleared = 0;
   let presenceConfirmsQueued = 0;
@@ -373,7 +367,7 @@ export async function ingestPitpalLobbies(
       matched += 1;
       const previousEffective = resolveEffectivePresence(account, presenceOpts);
       const lobbyMates =
-        shouldAttachLobbyMatesOnEnter(account, downwatch) && hit.lobbyName
+        shouldAttachLobbyMatesOnEnter(account) && hit.lobbyName
           ? listLobbyMateNames(snapshot.players, hit.lobbyName)
           : null;
       const events = buildStatusEvents({
