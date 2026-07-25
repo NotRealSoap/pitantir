@@ -19,7 +19,7 @@ import {
   PRESENCE_HOT_PRIORITY,
   resolveEffectivePresence,
 } from "./presence.js";
-import { notesIndicateFurryStash } from "./notes-labels.js";
+import { syncLobbyMateSessions } from "./lobby-mates.js";
 
 export const PITPAL_LOBBY_SNAPSHOT_KEY = "pitpal_lobby_snapshot";
 
@@ -167,43 +167,13 @@ async function enqueueHypixelPresenceConfirm(
   }
 }
 
-/**
- * Furry-stash enter alerts with full lobby roster:
- * furry-stashes notes, not 140er.
- * Downwatch-only (not on furry-stashes) accounts are excluded.
- * PitPal mute / forced-mute still apply at Discord notify time.
- */
-export function shouldAttachLobbyMatesOnEnter(
-  account: Pick<Account, "mcUsername" | "notes">,
-): boolean {
-  if (!notesIndicateFurryStash(account.notes)) return false;
-  if (accountIs140er(account)) return false;
-  return true;
-}
-
-/** Every IGN currently in a PitPal lobby (sorted), including the watched player. */
-export function listLobbyMateNames(
-  players: PitpalLobbyPlayer[],
-  lobbyName: string | null | undefined,
-): string[] {
-  const lobby = lobbyName?.trim();
-  if (!lobby) return [];
-  const names = players
-    .filter((player) => (player.lobbyName ?? "").trim() === lobby)
-    .map((player) => player.name)
-    .filter(Boolean);
-  const unique = [...new Map(names.map((name) => [name.toLowerCase(), name])).values()];
-  return unique.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-}
-
 function buildStatusEvents(input: {
   account: Account;
   previous: { lobby: string | null; location: string | null } | null;
   next: PitpalLobbyPlayer | null;
   at: string;
-  lobbyMates?: string[] | null;
 }): DiscordNotifyEvent[] {
-  const { account, previous, next, at, lobbyMates } = input;
+  const { account, previous, next, at } = input;
   const events: DiscordNotifyEvent[] = [];
   const wasIn = Boolean(previous?.lobby || previous?.location);
   const nowIn = Boolean(next);
@@ -219,9 +189,6 @@ function buildStatusEvents(input: {
       detail: [next.lobbyName, next.location, next.armorType, nicked ? "Nicked" : null]
         .filter(Boolean)
         .join(" · "),
-      ...(lobbyMates && lobbyMates.length > 0
-        ? { lobbyName: next.lobbyName, lobbyMates }
-        : {}),
     });
     return events;
   }
@@ -366,16 +333,11 @@ export async function ingestPitpalLobbies(
     if (hit) {
       matched += 1;
       const previousEffective = resolveEffectivePresence(account, presenceOpts);
-      const lobbyMates =
-        shouldAttachLobbyMatesOnEnter(account) && hit.lobbyName
-          ? listLobbyMateNames(snapshot.players, hit.lobbyName)
-          : null;
       const events = buildStatusEvents({
         account,
         previous,
         next: hit,
         at: observedAt,
-        lobbyMates,
       });
       statusEvents.push(...events);
       const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
@@ -496,6 +458,12 @@ export async function ingestPitpalLobbies(
 
   const statusEventsPosted = await notifyPitpalStatusEvents(db, statusEvents);
   const downwatchPosted = await notifyDownwatchWentDown(db, statusEvents).catch(() => 0);
+  // Cumulative lobby-touch sessions for furry-stash accounts (dedicated webhook).
+  await syncLobbyMateSessions(db, {
+    observedAt,
+    players: snapshot.players,
+    watchlist,
+  }).catch(() => undefined);
   if (presenceLiveEvents.length > 0) {
     await appendHypixelLiveEvents(db, presenceLiveEvents).catch(() => undefined);
     await notifyDiscordForLiveEvents(db, presenceLiveEvents).catch(() => undefined);

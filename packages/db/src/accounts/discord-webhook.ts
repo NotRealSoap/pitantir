@@ -58,6 +58,11 @@ export type DiscordWebhookSettings = DiscordPlayerNotifyFlags & {
    */
   pitpalStatusWebhookUrl: string | null;
   /**
+   * Furry-stash lobby-mates sessions (everyone who shared a lobby while in Pit).
+   * Edited in place per watched account. Falls back to pitpalStatusWebhookUrl.
+   */
+  lobbyMatesWebhookUrl: string | null;
+  /**
    * Optional second roster dashboard: effectively-online accounts that are NOT 140er-labelled.
    * Edited in place like the main online dashboard.
    */
@@ -147,6 +152,7 @@ const DEFAULT_SETTINGS: DiscordWebhookSettings = {
   inventoryWebhookUrl: null,
   itemMovesWebhookUrl: null,
   pitpalStatusWebhookUrl: null,
+  lobbyMatesWebhookUrl: null,
   non140erDashboardWebhookUrl: null,
   monitorWebhookUrl: null,
   opsAlertDiscordUserId: null,
@@ -273,6 +279,7 @@ export function normalizeDiscordWebhookSettings(value: unknown): DiscordWebhookS
     inventoryWebhookUrl,
     itemMovesWebhookUrl,
     pitpalStatusWebhookUrl,
+    lobbyMatesWebhookUrl: readUrl(row.lobbyMatesWebhookUrl),
     non140erDashboardWebhookUrl: readUrl(row.non140erDashboardWebhookUrl),
     monitorWebhookUrl: readUrl(row.monitorWebhookUrl),
     opsAlertDiscordUserId: (() => {
@@ -451,6 +458,7 @@ export async function setDiscordWebhookSettings(
     inventoryWebhookUrl: settings.inventoryWebhookUrl?.trim() || null,
     itemMovesWebhookUrl: settings.itemMovesWebhookUrl?.trim() || null,
     pitpalStatusWebhookUrl: settings.pitpalStatusWebhookUrl?.trim() || null,
+    lobbyMatesWebhookUrl: settings.lobbyMatesWebhookUrl?.trim() || null,
     non140erDashboardWebhookUrl: settings.non140erDashboardWebhookUrl?.trim() || null,
     monitorWebhookUrl: settings.monitorWebhookUrl?.trim() || null,
     opsAlertDiscordUserId: (() => {
@@ -493,6 +501,7 @@ export async function setDiscordWebhookSettings(
   assertOptionalWebhook(next.inventoryWebhookUrl, "Inventory webhook");
   assertOptionalWebhook(next.itemMovesWebhookUrl, "Item moves webhook");
   assertOptionalWebhook(next.pitpalStatusWebhookUrl, "PitPal status webhook");
+  assertOptionalWebhook(next.lobbyMatesWebhookUrl, "Lobby mates webhook");
   assertOptionalWebhook(next.non140erDashboardWebhookUrl, "Non-140er dashboard webhook");
   assertOptionalWebhook(next.monitorWebhookUrl, "Lobby monitor webhook");
   assertOptionalWebhook(next.downwatchWebhookUrl, "Downwatch webhook");
@@ -533,6 +542,7 @@ export async function setDiscordWebhookSettings(
       !next.presenceAlertsWebhookUrl &&
       !next.inventoryWebhookUrl &&
       !next.itemMovesWebhookUrl &&
+      !next.lobbyMatesWebhookUrl &&
       !next.non140erDashboardWebhookUrl &&
       !next.downwatchWebhookUrl &&
       !next.downwatchDashboardWebhookUrl;
@@ -782,6 +792,7 @@ function anyWebhookConfigured(settings: DiscordWebhookSettings): boolean {
       settings.inventoryWebhookUrl ||
       settings.itemMovesWebhookUrl ||
       settings.pitpalStatusWebhookUrl ||
+      settings.lobbyMatesWebhookUrl ||
       settings.non140erDashboardWebhookUrl ||
       settings.monitorWebhookUrl ||
       settings.downwatchWebhookUrl ||

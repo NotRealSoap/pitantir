@@ -36,6 +36,7 @@ function publicView(settings: DiscordWebhookSettings) {
         settings.inventoryWebhookUrl ||
         settings.itemMovesWebhookUrl ||
         settings.pitpalStatusWebhookUrl ||
+        settings.lobbyMatesWebhookUrl ||
         settings.non140erDashboardWebhookUrl ||
         settings.monitorWebhookUrl ||
         settings.downwatchWebhookUrl ||
@@ -46,6 +47,7 @@ function publicView(settings: DiscordWebhookSettings) {
     inventoryWebhookUrlMasked: maskDiscordWebhookUrl(settings.inventoryWebhookUrl),
     itemMovesWebhookUrlMasked: maskDiscordWebhookUrl(settings.itemMovesWebhookUrl),
     pitpalStatusWebhookUrlMasked: maskDiscordWebhookUrl(settings.pitpalStatusWebhookUrl),
+    lobbyMatesWebhookUrlMasked: maskDiscordWebhookUrl(settings.lobbyMatesWebhookUrl),
     non140erDashboardWebhookUrlMasked: maskDiscordWebhookUrl(
       settings.non140erDashboardWebhookUrl,
     ),
@@ -210,6 +212,7 @@ export async function POST(request: Request) {
       if (channel === "inventory") patch.inventoryWebhookUrl = draft.url;
       else if (channel === "itemMoves") patch.itemMovesWebhookUrl = draft.url;
       else if (channel === "pitpalStatus") patch.pitpalStatusWebhookUrl = draft.url;
+      else if (channel === "lobbyMates") patch.lobbyMatesWebhookUrl = draft.url;
       else if (channel === "presenceAlerts") patch.presenceAlertsWebhookUrl = draft.url;
       else if (channel === "non140erDashboard") patch.non140erDashboardWebhookUrl = draft.url;
       else if (channel === "downwatch") patch.downwatchWebhookUrl = draft.url;
@@ -229,19 +232,21 @@ export async function POST(request: Request) {
             settings.presenceWebhookUrl
           : channel === "pitpalStatus"
             ? settings.pitpalStatusWebhookUrl
-            : channel === "presenceAlerts"
-              ? settings.presenceAlertsWebhookUrl || settings.presenceWebhookUrl
-              : channel === "non140erDashboard"
-                ? settings.non140erDashboardWebhookUrl
-                : channel === "downwatch"
-                  ? settings.downwatchWebhookUrl
-                  : channel === "downwatchDashboard"
-                    ? settings.downwatchDashboardWebhookUrl
-                    : channel === "monitor"
-                      ? settings.monitorWebhookUrl ||
-                        settings.presenceAlertsWebhookUrl ||
-                        settings.presenceWebhookUrl
-                      : settings.presenceWebhookUrl;
+            : channel === "lobbyMates"
+              ? settings.lobbyMatesWebhookUrl || settings.pitpalStatusWebhookUrl
+              : channel === "presenceAlerts"
+                ? settings.presenceAlertsWebhookUrl || settings.presenceWebhookUrl
+                : channel === "non140erDashboard"
+                  ? settings.non140erDashboardWebhookUrl
+                  : channel === "downwatch"
+                    ? settings.downwatchWebhookUrl
+                    : channel === "downwatchDashboard"
+                      ? settings.downwatchDashboardWebhookUrl
+                      : channel === "monitor"
+                        ? settings.monitorWebhookUrl ||
+                          settings.presenceAlertsWebhookUrl ||
+                          settings.presenceWebhookUrl
+                        : settings.presenceWebhookUrl;
     if (!url) {
       return NextResponse.json(
         {
@@ -249,17 +254,19 @@ export async function POST(request: Request) {
           error:
             channel === "pitpalStatus"
               ? "Paste the PitPal status webhook URL above, then click Test (or Save)."
-              : channel === "presenceAlerts"
-                ? "Paste the online/offline alerts webhook URL above, then click Test (or Save)."
-                : channel === "non140erDashboard"
-                  ? "Paste the non-140er dashboard webhook URL above, then click Test (or Save)."
-                  : channel === "downwatchDashboard"
-                    ? "Paste the downwatch dashboard webhook URL above, then click Test (or Save)."
-                    : channel === "downwatch"
-                      ? "Paste the downwatch alert webhook URL above, then click Test (or Save)."
+              : channel === "lobbyMates"
+                ? "Paste the lobby mates webhook URL above (or PitPal status), then click Test (or Save)."
+                : channel === "presenceAlerts"
+                  ? "Paste the online/offline alerts webhook URL above, then click Test (or Save)."
+                  : channel === "non140erDashboard"
+                    ? "Paste the non-140er dashboard webhook URL above, then click Test (or Save)."
+                    : channel === "downwatchDashboard"
+                      ? "Paste the downwatch dashboard webhook URL above, then click Test (or Save)."
+                      : channel === "downwatch"
+                        ? "Paste the downwatch alert webhook URL above, then click Test (or Save)."
                         : channel === "monitor"
-                        ? "Paste the lobby monitor webhook URL above (or alerts channel), then click Test."
-                        : "Save a webhook URL for that channel first.",
+                          ? "Paste the lobby monitor webhook URL above (or alerts channel), then click Test."
+                          : "Save a webhook URL for that channel first.",
         },
         { status: 400 },
       );
@@ -292,11 +299,13 @@ export async function POST(request: Request) {
           ? "item_moved"
           : channel === "pitpalStatus"
             ? "pitpal_location"
-            : channel === "presence" ||
-                channel === "non140erDashboard" ||
-                channel === "downwatchDashboard"
-              ? "online_indexed"
-              : "came_online";
+            : channel === "lobbyMates"
+              ? "pitpal_entered"
+              : channel === "presence" ||
+                  channel === "non140erDashboard" ||
+                  channel === "downwatchDashboard"
+                ? "online_indexed"
+                : "came_online";
     const result = await postDiscordWebhook(url, {
       kind,
       mcUsername: "Pitantir",
@@ -420,6 +429,7 @@ export async function POST(request: Request) {
       inventoryWebhookUrl: null,
       itemMovesWebhookUrl: null,
       pitpalStatusWebhookUrl: null,
+      lobbyMatesWebhookUrl: null,
       non140erDashboardWebhookUrl: null,
       monitorWebhookUrl: null,
       downwatchWebhookUrl: null,
@@ -449,6 +459,7 @@ export async function POST(request: Request) {
   const inventory = parseOptionalUrl(input.inventoryWebhookUrl, "Inventory webhook");
   const itemMoves = parseOptionalUrl(input.itemMovesWebhookUrl, "Item moves webhook");
   const pitpalStatus = parseOptionalUrl(input.pitpalStatusWebhookUrl, "PitPal status webhook");
+  const lobbyMates = parseOptionalUrl(input.lobbyMatesWebhookUrl, "Lobby mates webhook");
   const non140erDashboard = parseOptionalUrl(
     input.non140erDashboardWebhookUrl,
     "Non-140er dashboard webhook",
@@ -466,6 +477,9 @@ export async function POST(request: Request) {
   if (!inventory.ok) return NextResponse.json({ ok: false, error: inventory.error }, { status: 400 });
   if (!itemMoves.ok) return NextResponse.json({ ok: false, error: itemMoves.error }, { status: 400 });
   if (!pitpalStatus.ok) return NextResponse.json({ ok: false, error: pitpalStatus.error }, { status: 400 });
+  if (!lobbyMates.ok) {
+    return NextResponse.json({ ok: false, error: lobbyMates.error }, { status: 400 });
+  }
   if (!non140erDashboard.ok) {
     return NextResponse.json({ ok: false, error: non140erDashboard.error }, { status: 400 });
   }
@@ -490,9 +504,12 @@ export async function POST(request: Request) {
       pitpalStatusWebhookUrl: pitpalStatus.provided
         ? pitpalStatus.url
         : current.pitpalStatusWebhookUrl,
+      lobbyMatesWebhookUrl: lobbyMates.provided
+        ? lobbyMates.url
+        : current.lobbyMatesWebhookUrl,
       non140erDashboardWebhookUrl: non140erDashboard.provided
         ? non140erDashboard.url
-        : current.non140erDashboardWebhookUrl,
+        : current.non140erDashboardWebhookUrl
       monitorWebhookUrl: monitor.provided ? monitor.url : current.monitorWebhookUrl,
       downwatchWebhookUrl: downwatchWebhook.provided
         ? downwatchWebhook.url

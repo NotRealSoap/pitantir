@@ -372,6 +372,7 @@ type DiscordWebhookPayload = {
   inventoryWebhookUrlMasked?: string | null;
   itemMovesWebhookUrlMasked?: string | null;
   pitpalStatusWebhookUrlMasked?: string | null;
+  lobbyMatesWebhookUrlMasked?: string | null;
   non140erDashboardWebhookUrlMasked?: string | null;
   monitorWebhookUrlMasked?: string | null;
   monitorDashboardConfigured?: boolean;
@@ -449,6 +450,7 @@ function DiscordWebhookPanel() {
   const [inventoryWebhookUrl, setInventoryWebhookUrl] = useState("");
   const [itemMovesWebhookUrl, setItemMovesWebhookUrl] = useState("");
   const [pitpalStatusWebhookUrl, setPitpalStatusWebhookUrl] = useState("");
+  const [lobbyMatesWebhookUrl, setLobbyMatesWebhookUrl] = useState("");
   const [non140erDashboardWebhookUrl, setNon140erDashboardWebhookUrl] = useState("");
   const [monitorWebhookUrl, setMonitorWebhookUrl] = useState("");
   const [opsAlertDiscordUserId, setOpsAlertDiscordUserId] = useState("");
@@ -658,6 +660,7 @@ function DiscordWebhookPanel() {
             inventoryWebhookUrl: inventoryWebhookUrl.trim() || undefined,
             itemMovesWebhookUrl: itemMovesWebhookUrl.trim() || undefined,
             pitpalStatusWebhookUrl: pitpalStatusWebhookUrl.trim() || undefined,
+            lobbyMatesWebhookUrl: lobbyMatesWebhookUrl.trim() || undefined,
             non140erDashboardWebhookUrl: non140erDashboardWebhookUrl.trim() || undefined,
             monitorWebhookUrl: monitorWebhookUrl.trim() || undefined,
             downwatchWebhookUrl: downwatchWebhookUrl.trim() || undefined,
@@ -841,6 +844,21 @@ function DiscordWebhookPanel() {
               status?.pitpalStatusWebhookUrlMasked
                 ? `Saved: ${status.pitpalStatusWebhookUrlMasked}`
                 : "https://discord.com/api/webhooks/… (required for PitPal)"
+            }
+          />
+        </label>
+        <label>
+          Lobby mates webhook (furry-stash Pit sessions · everyone who shared a lobby · edited in place)
+          <input
+            type="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={lobbyMatesWebhookUrl}
+            onChange={(event) => setLobbyMatesWebhookUrl(event.target.value)}
+            placeholder={
+              status?.lobbyMatesWebhookUrlMasked
+                ? `Saved: ${status.lobbyMatesWebhookUrlMasked}`
+                : "Optional — falls back to PitPal status webhook"
             }
           />
         </label>
@@ -1172,6 +1190,25 @@ function DiscordWebhookPanel() {
             }
           >
             Test PitPal status
+          </button>
+          <button
+            type="button"
+            disabled={
+              busy ||
+              (!status?.lobbyMatesWebhookUrlMasked &&
+                !lobbyMatesWebhookUrl.trim() &&
+                !status?.pitpalStatusWebhookUrlMasked &&
+                !pitpalStatusWebhookUrl.trim())
+            }
+            onClick={() =>
+              void run({
+                action: "test",
+                channel: "lobbyMates",
+                webhookUrl: lobbyMatesWebhookUrl.trim() || undefined,
+              })
+            }
+          >
+            Test lobby mates
           </button>
           <button
             type="button"
