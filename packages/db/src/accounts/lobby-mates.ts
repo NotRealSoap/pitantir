@@ -111,12 +111,6 @@ export function formatTouchClock(at: string): string {
   return `<t:${Math.floor(ms / 1000)}:t>`;
 }
 
-/** Inline code so Discord markdown won't italicize underscores in IGNs/lobbies. */
-export function discordInlineCode(value: string): string {
-  const safe = value.replace(/`/g, "'");
-  return `\`${safe}\``;
-}
-
 /** Wrap a full Discord message body in a code block (protects underscores). */
 export function wrapDiscordMessageInCode(content: string): string {
   const safe = content.replace(/```/g, "``\u200b`");
