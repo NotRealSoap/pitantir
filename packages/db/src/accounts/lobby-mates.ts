@@ -64,7 +64,8 @@ export type LobbyMateSession = {
   lobbies: string[];
   /** Per IGN×lobby first-touch records for this session. */
   touches: LobbyMateTouch[];
-  discordMessageId: string | null;
+  /** Sticky Discord message chain (page 1, page 2, …). */
+  discordMessageIds: string[];
   lastPostedKey: string | null;
 };
 
@@ -110,13 +111,17 @@ export function formatTouchClock(at: string): string {
   return `<t:${Math.floor(ms / 1000)}:t>`;
 }
 
+export type LobbyMateLobbySection = {
+  lobby: string;
+  total: number;
+  lines: string[];
+};
+
 /** Group touches by lobby (session order), players by first-seen time then name. */
-export function formatLobbyMateTouchesBlock(
+export function buildLobbyMateLobbySections(
   session: Pick<LobbyMateSession, "lobbies" | "touches">,
-  options?: { maxChars?: number },
-): string | null {
-  if (session.touches.length === 0) return null;
-  const maxChars = options?.maxChars ?? 1800;
+): LobbyMateLobbySection[] {
+  if (session.touches.length === 0) return [];
   const lobbyOrder = [...session.lobbies];
   for (const touch of session.touches) {
     if (!lobbyOrder.some((lobby) => lobby.toLowerCase() === touch.lobby.toLowerCase())) {
@@ -124,10 +129,7 @@ export function formatLobbyMateTouchesBlock(
     }
   }
 
-  const chunks: string[] = [];
-  let used = 0;
-  let omitted = 0;
-
+  const sections: LobbyMateLobbySection[] = [];
   for (const lobby of lobbyOrder) {
     const touches = session.touches
       .filter((touch) => touch.lobby.toLowerCase() === lobby.toLowerCase())
@@ -137,27 +139,131 @@ export function formatLobbyMateTouchesBlock(
         return a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" });
       });
     if (touches.length === 0) continue;
+    sections.push({
+      lobby,
+      total: touches.length,
+      lines: touches.map(
+        (touch) => `• ${touch.mcUsername} — ${formatTouchClock(touch.at)}`,
+      ),
+    });
+  }
+  return sections;
+}
 
-    const header = `**${lobby} (${touches.length})**`;
-    const lines = touches.map(
-      (touch) => `• ${touch.mcUsername} — ${formatTouchClock(touch.at)}`,
-    );
-    const block = [header, ...lines].join("\n");
-    const next = used === 0 ? block.length : used + 2 + block.length;
-    if (next > maxChars) {
-      omitted += touches.length;
-      continue;
+/**
+ * Split lobby sections into Discord-sized content pages.
+ * Never drops touches — overflow becomes page 2+, page 3+, etc.
+ */
+export function paginateLobbyMateContent(
+  headline: string,
+  sections: LobbyMateLobbySection[],
+  options?: { maxChars?: number },
+): string[] {
+  const maxChars = options?.maxChars ?? 1900;
+  const pages: string[] = [];
+  let currentParts: string[] = [];
+  let used = 0;
+
+  const pageBudget = (pageIndex: number): { prefix: string; budget: number } => {
+    // Reserve room for "page X/Y" once we know Y; use a conservative placeholder.
+    const prefix =
+      pageIndex === 0
+        ? headline
+        : `${headline.split(" · ")[0] ?? headline} · lobby mates (cont.)`;
+    const reserve = 24; // "\n\n_page 12/12_"
+    return { prefix, budget: Math.max(200, maxChars - prefix.length - reserve) };
+  };
+
+  const flush = () => {
+    if (currentParts.length === 0 && pages.length > 0) return;
+    const pageIndex = pages.length;
+    const { prefix } = pageBudget(pageIndex);
+    const body = currentParts.join("\n\n");
+    pages.push(body ? `${prefix}\n\n${body}` : prefix);
+    currentParts = [];
+    used = 0;
+  };
+
+  let pageIndex = 0;
+  let { budget } = pageBudget(pageIndex);
+
+  for (const section of sections) {
+    let lineOffset = 0;
+    while (lineOffset < section.lines.length) {
+      const continued = lineOffset > 0;
+      const header = continued
+        ? `**${section.lobby} (${section.total}) · cont.**`
+        : `**${section.lobby} (${section.total})**`;
+      const available = budget - used - (used > 0 ? 2 : 0) - header.length - 1;
+      if (available < 20) {
+        flush();
+        pageIndex = pages.length;
+        budget = pageBudget(pageIndex).budget;
+        used = 0;
+        continue;
+      }
+
+      const chunkLines: string[] = [];
+      let chunkUsed = 0;
+      while (lineOffset + chunkLines.length < section.lines.length) {
+        const line = section.lines[lineOffset + chunkLines.length]!;
+        const next = chunkUsed === 0 ? line.length : chunkUsed + 1 + line.length;
+        if (next > available) break;
+        chunkLines.push(line);
+        chunkUsed = next;
+      }
+
+      if (chunkLines.length === 0) {
+        // Line alone exceeds remaining budget — start a fresh page.
+        if (used > 0) {
+          flush();
+          pageIndex = pages.length;
+          budget = pageBudget(pageIndex).budget;
+          used = 0;
+          continue;
+        }
+        // Page is empty and still too tight — take the line anyway (Discord max).
+        chunkLines.push(section.lines[lineOffset]!);
+        lineOffset += 1;
+      } else {
+        lineOffset += chunkLines.length;
+      }
+
+      const block = [header, ...chunkLines].join("\n");
+      if (used === 0) {
+        currentParts = [block];
+        used = block.length;
+      } else {
+        currentParts.push(block);
+        used += 2 + block.length;
+      }
+
+      if (lineOffset < section.lines.length) {
+        flush();
+        pageIndex = pages.length;
+        budget = pageBudget(pageIndex).budget;
+        used = 0;
+      }
     }
-    chunks.push(block);
-    used = next;
   }
 
-  if (chunks.length === 0) return null;
-  if (omitted > 0) {
-    const more = `_+${omitted} more touch(es)_`;
-    if (used + 2 + more.length <= maxChars) chunks.push(more);
-  }
-  return chunks.join("\n\n");
+  if (currentParts.length > 0 || pages.length === 0) flush();
+
+  if (pages.length <= 1) return pages;
+  return pages.map((page, index) =>
+    `${page}\n\n_page ${index + 1}/${pages.length}_`.slice(0, maxChars),
+  );
+}
+
+/** @deprecated Prefer paginateLobbyMateContent — kept for older call sites/tests. */
+export function formatLobbyMateTouchesBlock(
+  session: Pick<LobbyMateSession, "lobbies" | "touches">,
+  options?: { maxChars?: number },
+): string | null {
+  const sections = buildLobbyMateLobbySections(session);
+  if (sections.length === 0) return null;
+  const pages = paginateLobbyMateContent("Session", sections, options);
+  return pages[0] ?? null;
 }
 
 export function sessionPostKey(session: LobbyMateSession): string {
@@ -208,7 +314,7 @@ export function applyLobbyMateTouch(input: {
       currentLocation: location,
       lobbies: lobby ? [lobby] : [],
       touches: incomingTouches,
-      discordMessageId: null,
+      discordMessageIds: [],
       lastPostedKey: null,
     };
     return { session, shouldPost: true, reason: "started" };
@@ -245,10 +351,13 @@ export function applyLobbyMateTouch(input: {
   return { session, shouldPost: false, reason: "noop" };
 }
 
-export function buildLobbyMateSessionPayload(
+export function buildLobbyMateSessionPages(
   session: LobbyMateSession,
   options?: { ended?: boolean; at?: string },
-): { content: string; embeds: Array<Record<string, unknown>>; key: string } {
+): {
+  pages: Array<{ content: string; embeds: Array<Record<string, unknown>> }>;
+  key: string;
+} {
   const ended = options?.ended === true;
   const at = options?.at ?? new Date().toISOString();
   const currentBits = [session.currentLobby, session.currentLocation].filter(Boolean).join(" · ");
@@ -258,81 +367,48 @@ export function buildLobbyMateSessionPayload(
       ? `${session.mcUsername} entered Pit · ${currentBits}`
       : `${session.mcUsername} entered Pit`;
 
-  const touchesBlock = formatLobbyMateTouchesBlock(session, {
-    maxChars: Math.max(200, 2000 - headline.length - 2),
-  });
-  const content = [headline, touchesBlock].filter(Boolean).join("\n\n").slice(0, 2000);
+  const sections = buildLobbyMateLobbySections(session);
+  const contents = paginateLobbyMateContent(headline, sections, { maxChars: 1900 });
+  const color = ended ? 0x99aab5 : 0x57f287;
+  const footer = ended
+    ? "Pitantir lobby mates · session closed"
+    : "Pitantir lobby mates · updated while in Pit";
 
-  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-    { name: "Player", value: session.mcUsername, inline: true },
-    {
-      name: "Current",
-      value: currentBits || (ended ? "left" : "—"),
-      inline: true,
-    },
-    {
-      name: "Touches",
-      value: String(session.touches.length),
-      inline: true,
-    },
-  ];
-
-  // One embed field per lobby (Discord field limit 25; keep headroom).
-  const lobbyOrder = [...session.lobbies];
-  for (const touch of session.touches) {
-    if (!lobbyOrder.some((lobby) => lobby.toLowerCase() === touch.lobby.toLowerCase())) {
-      lobbyOrder.push(touch.lobby);
-    }
-  }
-  for (const lobby of lobbyOrder.slice(0, 20)) {
-    const touches = session.touches
-      .filter((touch) => touch.lobby.toLowerCase() === lobby.toLowerCase())
-      .sort((a, b) => {
-        const time = Date.parse(a.at) - Date.parse(b.at);
-        if (time !== 0) return time;
-        return a.mcUsername.localeCompare(b.mcUsername, undefined, { sensitivity: "base" });
-      });
-    if (touches.length === 0) continue;
-    const lines = touches.map(
-      (touch) => `• ${touch.mcUsername} — ${formatTouchClock(touch.at)}`,
-    );
-    let value = "";
-    let omitted = 0;
-    for (const line of lines) {
-      const next = value ? `${value}\n${line}` : line;
-      if (next.length > 1000) {
-        omitted = lines.length - value.split("\n").filter(Boolean).length;
-        break;
-      }
-      value = next;
-    }
-    if (omitted > 0) {
-      const more = `• +${omitted} more`;
-      if (`${value}\n${more}`.length <= 1000) value = `${value}\n${more}`;
-    }
-    fields.push({
-      name: `${lobby} (${touches.length})`,
-      value: value || "_empty_",
-    });
-  }
-
-  return {
+  const pages = contents.map((content, index) => ({
     content,
     embeds: [
       {
-        title: headline.slice(0, 256),
-        color: ended ? 0x99aab5 : 0x57f287,
-        fields,
+        title: (index === 0 ? headline : `${session.mcUsername} · lobby mates`).slice(0, 256),
+        description: content.slice(0, 4096),
+        color,
         timestamp: at,
         footer: {
-          text: ended
-            ? "Pitantir lobby mates · session closed"
-            : "Pitantir lobby mates · updated while in Pit",
+          text:
+            contents.length > 1
+              ? `${footer} · page ${index + 1}/${contents.length}`
+              : footer,
         },
       },
     ],
+  }));
+
+  return {
+    pages,
     key: `${ended ? "ended|" : ""}${sessionPostKey(session)}`,
   };
+}
+
+/** First page only — useful for tests / simple previews. */
+export function buildLobbyMateSessionPayload(
+  session: LobbyMateSession,
+  options?: { ended?: boolean; at?: string },
+): { content: string; embeds: Array<Record<string, unknown>>; key: string } {
+  const built = buildLobbyMateSessionPages(session, options);
+  const first = built.pages[0] ?? {
+    content: session.mcUsername,
+    embeds: [],
+  };
+  return { ...first, key: built.key };
 }
 
 function coerceTouch(value: unknown, fallbackAt: string, fallbackLobby: string | null): LobbyMateTouch | null {
@@ -394,6 +470,18 @@ function normalizeSessions(value: unknown): LobbyMateSessionsState {
       }
       touches = mergeLobbyMateTouches([], touches);
 
+      const messageIds: string[] = [];
+      if (Array.isArray(entry.discordMessageIds)) {
+        for (const id of entry.discordMessageIds) {
+          if (typeof id === "string" && id.trim()) messageIds.push(id.trim());
+        }
+      } else if (
+        typeof entry.discordMessageId === "string" &&
+        entry.discordMessageId.trim()
+      ) {
+        messageIds.push(entry.discordMessageId.trim());
+      }
+
       sessions.push({
         accountId: entry.accountId.trim(),
         mcUsername: entry.mcUsername.trim(),
@@ -403,10 +491,7 @@ function normalizeSessions(value: unknown): LobbyMateSessionsState {
           typeof entry.currentLocation === "string" ? entry.currentLocation : null,
         lobbies,
         touches,
-        discordMessageId:
-          typeof entry.discordMessageId === "string" && entry.discordMessageId.trim()
-            ? entry.discordMessageId.trim()
-            : null,
+        discordMessageIds: messageIds,
         lastPostedKey:
           typeof entry.lastPostedKey === "string" ? entry.lastPostedKey : null,
       });
@@ -469,49 +554,79 @@ async function discordFetch(
   return { ok: response.ok, status: response.status, json, text };
 }
 
-async function upsertSessionMessage(
+async function deleteDiscordMessage(webhookUrl: string, messageId: string): Promise<void> {
+  await discordFetch(`${webhookUrl}/messages/${messageId}`, {
+    method: "DELETE",
+  }).catch(() => undefined);
+}
+
+async function upsertSessionPages(
   webhookUrl: string,
   session: LobbyMateSession,
-  payload: { content: string; embeds: Array<Record<string, unknown>>; key: string },
+  built: {
+    pages: Array<{ content: string; embeds: Array<Record<string, unknown>> }>;
+    key: string;
+  },
 ): Promise<LobbyMateSession> {
-  if (session.lastPostedKey === payload.key && session.discordMessageId) {
+  if (
+    session.lastPostedKey === built.key &&
+    session.discordMessageIds.length === built.pages.length &&
+    session.discordMessageIds.length > 0
+  ) {
     return session;
   }
-  if (session.discordMessageId) {
-    const edited = await discordFetch(
-      `${webhookUrl}/messages/${session.discordMessageId}`,
-      {
+
+  const nextIds: string[] = [];
+  for (let index = 0; index < built.pages.length; index += 1) {
+    const page = built.pages[index]!;
+    const existingId = session.discordMessageIds[index] ?? null;
+    if (existingId) {
+      const edited = await discordFetch(`${webhookUrl}/messages/${existingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: payload.content,
-          embeds: payload.embeds,
+          content: page.content,
+          embeds: page.embeds,
         }),
-      },
-    );
-    if (edited.ok) {
-      return { ...session, lastPostedKey: payload.key };
+      });
+      if (edited.ok) {
+        nextIds.push(existingId);
+        continue;
+      }
     }
+    const posted = await discordFetch(`${webhookUrl}?wait=true`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: page.content,
+        embeds: page.embeds,
+      }),
+    });
+    if (!posted.ok) {
+      // Keep whatever we have so far; don't wipe older pages.
+      return {
+        ...session,
+        discordMessageIds: nextIds.length > 0 ? nextIds : session.discordMessageIds,
+      };
+    }
+    const messageId =
+      posted.json &&
+      typeof posted.json === "object" &&
+      typeof (posted.json as { id?: unknown }).id === "string"
+        ? (posted.json as { id: string }).id
+        : null;
+    if (messageId) nextIds.push(messageId);
   }
-  const posted = await discordFetch(`${webhookUrl}?wait=true`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      content: payload.content,
-      embeds: payload.embeds,
-    }),
-  });
-  if (!posted.ok) return session;
-  const messageId =
-    posted.json &&
-    typeof posted.json === "object" &&
-    typeof (posted.json as { id?: unknown }).id === "string"
-      ? (posted.json as { id: string }).id
-      : null;
+
+  // Drop surplus continuation messages when the list shrinks.
+  for (const leftover of session.discordMessageIds.slice(nextIds.length)) {
+    await deleteDiscordMessage(webhookUrl, leftover);
+  }
+
   return {
     ...session,
-    discordMessageId: messageId,
-    lastPostedKey: payload.key,
+    discordMessageIds: nextIds,
+    lastPostedKey: built.key,
   };
 }
 
@@ -575,11 +690,11 @@ export async function syncLobbyMateSessions(
 
     if (!hit) {
       if (previous) {
-        const payload = buildLobbyMateSessionPayload(previous, {
+        const built = buildLobbyMateSessionPages(previous, {
           ended: true,
           at: input.observedAt,
         });
-        await upsertSessionMessage(webhookUrl, previous, payload).catch(() => previous);
+        await upsertSessionPages(webhookUrl, previous, built).catch(() => previous);
         closed += 1;
         posted += 1;
       }
@@ -599,8 +714,8 @@ export async function syncLobbyMateSessions(
 
     let session = applied.session;
     if (applied.shouldPost) {
-      const payload = buildLobbyMateSessionPayload(session, { at: input.observedAt });
-      session = await upsertSessionMessage(webhookUrl, session, payload);
+      const built = buildLobbyMateSessionPages(session, { at: input.observedAt });
+      session = await upsertSessionPages(webhookUrl, session, built);
       posted += 1;
     }
     nextSessions.push(session);
@@ -609,11 +724,11 @@ export async function syncLobbyMateSessions(
   for (const leftover of previousById.values()) {
     if (nextSessions.some((session) => session.accountId === leftover.accountId)) continue;
     if (input.watchlist.some((account) => account.id === leftover.accountId)) continue;
-    const payload = buildLobbyMateSessionPayload(leftover, {
+    const built = buildLobbyMateSessionPages(leftover, {
       ended: true,
       at: input.observedAt,
     });
-    await upsertSessionMessage(webhookUrl, leftover, payload).catch(() => leftover);
+    await upsertSessionPages(webhookUrl, leftover, built).catch(() => leftover);
     closed += 1;
     posted += 1;
   }
