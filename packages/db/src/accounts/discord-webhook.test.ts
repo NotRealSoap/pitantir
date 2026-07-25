@@ -5,6 +5,7 @@ import {
   buildPitpalMonitorDashboardPayload,
   DISCORD_PITPAL_STATUS_WEBHOOK_KEY,
   expandDiscordNotifyEvents,
+  formatLobbyMatesBlock,
   isDiscordWebhookUrl,
   isForcedDiscordDashboardOnlyUsername,
   maskDiscordWebhookUrl,
@@ -327,6 +328,29 @@ describe("buildDiscordWebhookPayload", () => {
       detail: "PIT/pit",
     });
     expect(payload.content).toBe("Crazy still online · PIT/pit");
+  });
+
+  it("appends same-lobby IGNs on pitpal_entered", () => {
+    const payload = buildDiscordWebhookPayload({
+      kind: "pitpal_entered",
+      mcUsername: "jc_treepuncher",
+      detail: "M1B · SPAWN",
+      lobbyName: "M1B",
+      lobbyMates: ["alpha", "jc_treepuncher", "zeta"],
+      at: "2026-07-24T12:00:00.000Z",
+    });
+    expect(payload.content).toContain("jc_treepuncher entered Pit · M1B · SPAWN");
+    expect(payload.content).toContain("**M1B (3)**");
+    expect(payload.content).toContain("• alpha");
+    expect(payload.content).toContain("• jc_treepuncher");
+    expect(payload.content).toContain("• zeta");
+    expect(JSON.stringify(payload.embeds)).toContain("Lobby M1B (3)");
+  });
+});
+
+describe("formatLobbyMatesBlock", () => {
+  it("includes count header and bullets", () => {
+    expect(formatLobbyMatesBlock("M1B", ["a", "b"])).toBe("**M1B (2)**\n• a\n• b");
   });
 });
 

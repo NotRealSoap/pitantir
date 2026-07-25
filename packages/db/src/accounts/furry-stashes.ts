@@ -18,7 +18,7 @@ export type FurryStashEntry = {
   is140er: boolean;
 };
 
-export { notesIndicate140er } from "./notes-labels.js";
+export { notesIndicate140er, notesIndicateFurryStash } from "./notes-labels.js";
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,16}$/;
 

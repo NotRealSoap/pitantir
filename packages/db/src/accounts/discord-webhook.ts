@@ -112,6 +112,10 @@ export type DiscordNotifyEvent = {
   at?: string | null;
   /** PitPal nicked flag when known for this event. */
   isNicked?: boolean | null;
+  /** Pit lobby name when attaching a same-lobby roster (enter alerts). */
+  lobbyName?: string | null;
+  /** Every IGN in the same PitPal lobby at event time (eligible enter alerts). */
+  lobbyMates?: string[] | null;
 };
 
 export type OnlineRosterEntry = {
@@ -895,6 +899,51 @@ export function appendNickedLabel(
   return `${detail} · Nicked`;
 }
 
+/** Bullet list of lobby IGNs, truncated to fit Discord limits. */
+export function formatLobbyMateBullets(
+  lobbyMates: string[] | null | undefined,
+  options?: { maxChars?: number },
+): string | null {
+  if (!lobbyMates || lobbyMates.length === 0) return null;
+  const maxChars = options?.maxChars ?? 1000;
+  const lines: string[] = [];
+  let used = 0;
+  for (const name of lobbyMates) {
+    const line = `• ${name}`;
+    const next = used === 0 ? line.length : used + 1 + line.length;
+    if (next > maxChars) {
+      const omitted = lobbyMates.length - lines.length;
+      if (omitted > 0) {
+        const more = `• +${omitted} more`;
+        if ((used === 0 ? more.length : used + 1 + more.length) <= maxChars) {
+          lines.push(more);
+        }
+      }
+      break;
+    }
+    lines.push(line);
+    used = next;
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+
+/** Content block: bold lobby header + bullet IGNs. */
+export function formatLobbyMatesBlock(
+  lobbyName: string | null | undefined,
+  lobbyMates: string[] | null | undefined,
+  options?: { maxChars?: number },
+): string | null {
+  if (!lobbyMates || lobbyMates.length === 0) return null;
+  const maxChars = options?.maxChars ?? 1800;
+  const label = lobbyName?.trim() || "Lobby";
+  const header = `**${label} (${lobbyMates.length})**`;
+  const bullets = formatLobbyMateBullets(lobbyMates, {
+    maxChars: Math.max(0, maxChars - header.length - 1),
+  });
+  if (!bullets) return header;
+  return `${header}\n${bullets}`;
+}
+
 export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
   content: string;
   embeds: Array<Record<string, unknown>>;
@@ -950,6 +999,18 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
   if (detail) {
     fields.push({ name: "Detail", value: detail.slice(0, 1000) });
   }
+  const lobbyMateBullets = formatLobbyMateBullets(nickedEvent.lobbyMates, {
+    maxChars: 1000,
+  });
+  if (lobbyMateBullets) {
+    const lobbyLabel = nickedEvent.lobbyName?.trim();
+    fields.push({
+      name: lobbyLabel
+        ? `Lobby ${lobbyLabel} (${nickedEvent.lobbyMates?.length ?? 0})`
+        : `Lobby mates (${nickedEvent.lobbyMates?.length ?? 0})`,
+      value: lobbyMateBullets,
+    });
+  }
   if (nickedEvent.changes && nickedEvent.changes.length > 0) {
     const lines = nickedEvent.changes.slice(0, 8).map((change) => {
       return `• **${change.direction}** ${change.title}${
@@ -962,8 +1023,17 @@ export function buildDiscordWebhookPayload(event: DiscordNotifyEvent): {
     fields.push({ name: "Items", value: lines.join("\n").slice(0, 1000) });
   }
 
+  const contentLobbyBlock = formatLobbyMatesBlock(
+    nickedEvent.lobbyName,
+    nickedEvent.lobbyMates,
+    { maxChars: Math.max(200, 2000 - headline.length - 2) },
+  );
+  const content = contentLobbyBlock
+    ? `${headline}\n\n${contentLobbyBlock}`.slice(0, 2000)
+    : headline.slice(0, 2000);
+
   return {
-    content: headline.slice(0, 2000),
+    content,
     embeds: [
       {
         title: headline.slice(0, 256),

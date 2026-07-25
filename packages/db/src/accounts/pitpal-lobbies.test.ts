@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatPitpalPresenceLine, normalizePitpalLobbySnapshot } from "./pitpal-lobbies.js";
+import {
+  formatPitpalPresenceLine,
+  listLobbyMateNames,
+  normalizePitpalLobbySnapshot,
+  shouldAttachLobbyMatesOnEnter,
+} from "./pitpal-lobbies.js";
+import type { DownwatchState } from "./downwatch.js";
 
 describe("normalizePitpalLobbySnapshot", () => {
   it("counts lobbies and players", () => {
@@ -39,5 +45,62 @@ describe("formatPitpalPresenceLine", () => {
         isNicked: true,
       }),
     ).toBe("NickGuy · M1A · SPAWN · Nicked");
+  });
+});
+
+describe("listLobbyMateNames", () => {
+  it("returns every IGN in the lobby, sorted", () => {
+    expect(
+      listLobbyMateNames(
+        [
+          { name: "zeta", lobbyName: "M1B", location: "DOWN" },
+          { name: "jc_treepuncher", lobbyName: "M1B", location: "SPAWN" },
+          { name: "alpha", lobbyName: "M1B", location: "OTHER" },
+          { name: "otherlobby", lobbyName: "M2A", location: "SPAWN" },
+        ],
+        "M1B",
+      ),
+    ).toEqual(["alpha", "jc_treepuncher", "zeta"]);
+  });
+});
+
+describe("shouldAttachLobbyMatesOnEnter", () => {
+  const downwatch: DownwatchState = {
+    entries: [
+      {
+        mcUsername: "jc_treepuncher",
+        accountId: "a1",
+        addedAt: "2026-07-24T00:00:00.000Z",
+        addedBy: null,
+      },
+    ],
+    lastProcessedMessageId: null,
+  };
+
+  it("allows downwatch non-furry non-140er accounts", () => {
+    expect(
+      shouldAttachLobbyMatesOnEnter(
+        { mcUsername: "jc_treepuncher", notes: "trader" },
+        downwatch,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects furry-stashes, 140ers, and non-downwatch accounts", () => {
+    expect(
+      shouldAttachLobbyMatesOnEnter(
+        { mcUsername: "jc_treepuncher", notes: "furry-stashes" },
+        downwatch,
+      ),
+    ).toBe(false);
+    expect(
+      shouldAttachLobbyMatesOnEnter(
+        { mcUsername: "jc_treepuncher", notes: "140er" },
+        downwatch,
+      ),
+    ).toBe(false);
+    expect(
+      shouldAttachLobbyMatesOnEnter({ mcUsername: "RandomGuy", notes: null }, downwatch),
+    ).toBe(false);
   });
 });

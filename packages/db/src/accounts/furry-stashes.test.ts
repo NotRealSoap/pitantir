@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceFurryStashEntry,
   notesIndicate140er,
+  notesIndicateFurryStash,
 } from "./furry-stashes.js";
 
 describe("notesIndicate140er", () => {
@@ -11,6 +12,15 @@ describe("notesIndicate140er", () => {
     expect(notesIndicate140er("140ers")).toBe(true);
     expect(notesIndicate140er("normal trader")).toBe(false);
     expect(notesIndicate140er(null)).toBe(false);
+  });
+});
+
+describe("notesIndicateFurryStash", () => {
+  it("detects furry-stashes notes labels", () => {
+    expect(notesIndicateFurryStash("furry-stashes")).toBe(true);
+    expect(notesIndicateFurryStash("furry-stashes: trader")).toBe(true);
+    expect(notesIndicateFurryStash("normal trader")).toBe(false);
+    expect(notesIndicateFurryStash(null)).toBe(false);
   });
 });
 
