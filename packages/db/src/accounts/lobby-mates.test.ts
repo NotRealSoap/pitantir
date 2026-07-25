@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyLobbyMateTouch,
   buildLobbyMateSessionPayload,
+  formatLobbyMateTouchesBlock,
+  formatTouchClock,
   listLobbyMateNames,
   shouldTrackLobbyMates,
 } from "./lobby-mates.js";
@@ -41,7 +43,7 @@ describe("listLobbyMateNames", () => {
 });
 
 describe("applyLobbyMateTouch", () => {
-  it("starts a session and accumulates mates across lobby hops", () => {
+  it("records per-lobby timestamps and keeps prior lobby touches", () => {
     const started = applyLobbyMateTouch({
       previous: null,
       accountId: "a1",
@@ -52,8 +54,10 @@ describe("applyLobbyMateTouch", () => {
       at: "2026-07-25T01:00:00.000Z",
     });
     expect(started.reason).toBe("started");
-    expect(started.shouldPost).toBe(true);
-    expect(started.session.touchedIgns).toEqual(["alpha", "jc_treepuncher"]);
+    expect(started.session.touches).toEqual([
+      { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+      { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+    ]);
 
     const hopped = applyLobbyMateTouch({
       previous: started.session,
@@ -66,7 +70,12 @@ describe("applyLobbyMateTouch", () => {
     });
     expect(hopped.reason).toBe("lobby");
     expect(hopped.session.lobbies).toEqual(["M1B", "M2A"]);
-    expect(hopped.session.touchedIgns).toEqual(["alpha", "bravo", "jc_treepuncher"]);
+    expect(hopped.session.touches).toEqual([
+      { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+      { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+      { mcUsername: "bravo", lobby: "M2A", at: "2026-07-25T01:01:00.000Z" },
+      { mcUsername: "jc_treepuncher", lobby: "M2A", at: "2026-07-25T01:01:00.000Z" },
+    ]);
 
     const grew = applyLobbyMateTouch({
       previous: hopped.session,
@@ -78,12 +87,31 @@ describe("applyLobbyMateTouch", () => {
       at: "2026-07-25T01:02:00.000Z",
     });
     expect(grew.reason).toBe("mates");
-    expect(grew.session.touchedIgns).toEqual(["alpha", "bravo", "charlie", "jc_treepuncher"]);
+    expect(grew.session.touches.some((touch) => touch.mcUsername === "charlie")).toBe(true);
+    expect(
+      grew.session.touches.find((touch) => touch.mcUsername === "charlie")?.at,
+    ).toBe("2026-07-25T01:02:00.000Z");
+  });
+});
+
+describe("formatLobbyMateTouchesBlock", () => {
+  it("groups by lobby with timestamps", () => {
+    const block = formatLobbyMateTouchesBlock({
+      lobbies: ["M1B", "M2A"],
+      touches: [
+        { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+        { mcUsername: "bravo", lobby: "M2A", at: "2026-07-25T01:01:00.000Z" },
+      ],
+    });
+    expect(block).toContain("**M1B (1)**");
+    expect(block).toContain("**M2A (1)**");
+    expect(block).toContain(`alpha — ${formatTouchClock("2026-07-25T01:00:00.000Z")}`);
+    expect(block).toContain(`bravo — ${formatTouchClock("2026-07-25T01:01:00.000Z")}`);
   });
 });
 
 describe("buildLobbyMateSessionPayload", () => {
-  it("lists cumulative touched IGNs", () => {
+  it("lists touches under lobby headings", () => {
     const payload = buildLobbyMateSessionPayload({
       accountId: "a1",
       mcUsername: "jc_treepuncher",
@@ -91,12 +119,16 @@ describe("buildLobbyMateSessionPayload", () => {
       currentLobby: "M1B",
       currentLocation: "SPAWN",
       lobbies: ["M1B"],
-      touchedIgns: ["alpha", "jc_treepuncher"],
+      touches: [
+        { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+        { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+      ],
       discordMessageId: null,
       lastPostedKey: null,
     });
     expect(payload.content).toContain("jc_treepuncher entered Pit · M1B · SPAWN");
+    expect(payload.content).toContain("**M1B (2)**");
     expect(payload.content).toContain("alpha");
-    expect(payload.content).toContain("Touched");
+    expect(JSON.stringify(payload.embeds)).toContain("M1B (2)");
   });
 });
