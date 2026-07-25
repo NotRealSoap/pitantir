@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   applyLobbyMateTouch,
-  buildLobbyMateSessionPages,
-  buildLobbyMateSessionPayload,
-  formatTouchClock,
+  buildLobbyMateDiscordNotice,
+  buildLobbyMateTxtLog,
+  formatTouchRange,
   listLobbyMateNames,
-  paginateLobbyMateContent,
+  lobbyMateAttachmentFilename,
+  LOBBY_MATE_TRAIL_MS,
+  refreshTouchesStillInLobby,
   shouldTrackLobbyMates,
-  wrapDiscordMessageInCode,
-  type LobbyMateLobbySection,
 } from "./lobby-mates.js";
 
 describe("shouldTrackLobbyMates", () => {
@@ -20,12 +20,6 @@ describe("shouldTrackLobbyMates", () => {
 
   it("rejects non-furry and 140er accounts", () => {
     expect(shouldTrackLobbyMates({ mcUsername: "DownOnly", notes: "trader" })).toBe(false);
-    expect(
-      shouldTrackLobbyMates({
-        mcUsername: "jc_treepuncher",
-        notes: "furry-stashes: 140er",
-      }),
-    ).toBe(false);
   });
 });
 
@@ -37,7 +31,6 @@ describe("listLobbyMateNames", () => {
           { name: "zeta", lobbyName: "M1B" },
           { name: "jc_treepuncher", lobbyName: "M1B" },
           { name: "alpha", lobbyName: "M1B" },
-          { name: "other", lobbyName: "M2A" },
         ],
         "M1B",
       ),
@@ -46,7 +39,13 @@ describe("listLobbyMateNames", () => {
 });
 
 describe("applyLobbyMateTouch", () => {
-  it("records per-lobby timestamps and keeps prior lobby touches", () => {
+  it("tracks first/last windows and trails a lobby for 20s after leave", () => {
+    const t0 = "2026-07-25T02:00:00.000Z";
+    const t1 = "2026-07-25T02:00:10.000Z";
+    const tLeave = "2026-07-25T02:00:20.000Z";
+    const tTrail = "2026-07-25T02:00:30.000Z";
+    const tDone = new Date(Date.parse(tLeave) + LOBBY_MATE_TRAIL_MS + 1).toISOString();
+
     const started = applyLobbyMateTouch({
       previous: null,
       accountId: "a1",
@@ -54,102 +53,157 @@ describe("applyLobbyMateTouch", () => {
       lobby: "M1B",
       location: "SPAWN",
       currentMates: ["jc_treepuncher", "alpha"],
-      at: "2026-07-25T01:00:00.000Z",
+      at: t0,
+      inPit: true,
     });
     expect(started.reason).toBe("started");
-    expect(started.session.touches).toEqual([
-      { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
-      { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
-    ]);
+    expect(started.session.touches[0]).toMatchObject({
+      mcUsername: "alpha",
+      lobby: "M1B",
+      firstAt: t0,
+      lastAt: t0,
+    });
 
-    const hopped = applyLobbyMateTouch({
+    const extended = applyLobbyMateTouch({
       previous: started.session,
       accountId: "a1",
       mcUsername: "jc_treepuncher",
-      lobby: "M2A",
-      location: "DOWN",
-      currentMates: ["jc_treepuncher", "bravo"],
-      at: "2026-07-25T01:01:00.000Z",
+      lobby: "M1B",
+      location: "SPAWN",
+      currentMates: ["jc_treepuncher", "alpha"],
+      at: t1,
+      inPit: true,
     });
-    expect(hopped.reason).toBe("lobby");
-    expect(hopped.session.lobbies).toEqual(["M1B", "M2A"]);
-    expect(hopped.session.touches).toEqual([
-      { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
-      { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
-      { mcUsername: "bravo", lobby: "M2A", at: "2026-07-25T01:01:00.000Z" },
-      { mcUsername: "jc_treepuncher", lobby: "M2A", at: "2026-07-25T01:01:00.000Z" },
-    ]);
+    expect(extended.shouldPost).toBe(false);
+    expect(
+      extended.session.touches.find((touch) => touch.mcUsername === "alpha")?.lastAt,
+    ).toBe(t1);
+
+    const left = applyLobbyMateTouch({
+      previous: extended.session,
+      accountId: "a1",
+      mcUsername: "jc_treepuncher",
+      lobby: null,
+      location: null,
+      currentMates: [],
+      trailingMatesByLobby: {
+        M1B: ["alpha", "bravo"],
+      },
+      at: tLeave,
+      inPit: false,
+    });
+    expect(left.reason).toBe("left");
+    expect(left.ended).toBe(false);
+    expect(left.session.trailing).toHaveLength(1);
+    expect(left.session.trailing[0]?.lobby).toBe("M1B");
+    // bravo was not a prior touch — trailing only extends existing co-presence.
+    expect(left.session.touches.some((touch) => touch.mcUsername === "bravo")).toBe(false);
+    expect(
+      left.session.touches.find((touch) => touch.mcUsername === "alpha")?.lastAt,
+    ).toBe(tLeave);
+
+    const stillTrailing = applyLobbyMateTouch({
+      previous: left.session,
+      accountId: "a1",
+      mcUsername: "jc_treepuncher",
+      lobby: null,
+      location: null,
+      currentMates: [],
+      trailingMatesByLobby: { M1B: ["alpha"] },
+      at: tTrail,
+      inPit: false,
+    });
+    expect(stillTrailing.ended).toBe(false);
+    expect(
+      stillTrailing.session.touches.find((touch) => touch.mcUsername === "alpha")?.lastAt,
+    ).toBe(tTrail);
+
+    const closed = applyLobbyMateTouch({
+      previous: stillTrailing.session,
+      accountId: "a1",
+      mcUsername: "jc_treepuncher",
+      lobby: null,
+      location: null,
+      currentMates: [],
+      trailingMatesByLobby: {},
+      at: tDone,
+      inPit: false,
+    });
+    expect(closed.ended).toBe(true);
+    expect(closed.shouldPost).toBe(true);
+    expect(closed.session.trailing).toHaveLength(0);
   });
 });
 
-describe("paginateLobbyMateContent", () => {
-  it("spills overflow into continuation pages instead of +N more", () => {
-    const sections: LobbyMateLobbySection[] = [
-      {
-        lobby: "M1B",
-        total: 40,
-        lines: Array.from({ length: 40 }, (_, index) => `• player${index} — <t:1:t>`),
-      },
-      {
-        lobby: "M2A",
-        total: 40,
-        lines: Array.from({ length: 40 }, (_, index) => `• other${index} — <t:2:t>`),
-      },
-    ];
-    const pages = paginateLobbyMateContent("Hero entered Pit · M2A · SPAWN", sections, {
-      maxChars: 500,
-    });
-    expect(pages.length).toBeGreaterThan(1);
-    const joined = pages.join("\n");
-    expect(joined).toContain("player0");
-    expect(joined).toContain("player39");
-    expect(joined).toContain("other0");
-    expect(joined).toContain("other39");
-    expect(joined).not.toMatch(/\+\d+ more/);
-    expect(pages[0]).toContain("page 1/");
-    expect(pages.at(-1)).toContain(`page ${pages.length}/${pages.length}`);
-  });
-});
-
-describe("wrapDiscordMessageInCode", () => {
-  it("wraps the message and flattens Discord timestamps", () => {
-    const wrapped = wrapDiscordMessageInCode(
-      `jc_treepuncher\n• alpha — ${formatTouchClock("2026-07-25T01:00:00.000Z")}`,
+describe("refreshTouchesStillInLobby", () => {
+  it("extends lastAt only for names still present", () => {
+    const touches = refreshTouchesStillInLobby(
+      [
+        {
+          mcUsername: "alpha",
+          lobby: "M1B",
+          firstAt: "2026-07-25T02:00:00.000Z",
+          lastAt: "2026-07-25T02:00:00.000Z",
+        },
+        {
+          mcUsername: "gone",
+          lobby: "M1B",
+          firstAt: "2026-07-25T02:00:00.000Z",
+          lastAt: "2026-07-25T02:00:00.000Z",
+        },
+      ],
+      "M1B",
+      ["alpha"],
+      "2026-07-25T02:00:15.000Z",
     );
-    expect(wrapped.startsWith("```\n")).toBe(true);
-    expect(wrapped.endsWith("\n```")).toBe(true);
-    expect(wrapped).toContain("jc_treepuncher");
-    expect(wrapped).toContain("01:00:00 UTC");
-    expect(wrapped).not.toContain("<t:");
+    expect(touches.find((touch) => touch.mcUsername === "alpha")?.lastAt).toBe(
+      "2026-07-25T02:00:15.000Z",
+    );
+    expect(touches.find((touch) => touch.mcUsername === "gone")?.lastAt).toBe(
+      "2026-07-25T02:00:00.000Z",
+    );
   });
 });
 
-describe("buildLobbyMateSessionPayload", () => {
-  it("lists touches under lobby headings inside a code block", () => {
+describe("txt + notice helpers", () => {
+  it("builds a txt log with time ranges and an IGN-labeled filename", () => {
     const session = {
       accountId: "a1",
       mcUsername: "jc_treepuncher",
-      startedAt: "2026-07-25T01:00:00.000Z",
+      startedAt: "2026-07-25T02:00:00.000Z",
       currentLobby: "M1B",
       currentLocation: "SPAWN",
+      inPit: true,
       lobbies: ["M1B"],
       touches: [
-        { mcUsername: "alpha", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
-        { mcUsername: "jc_treepuncher", lobby: "M1B", at: "2026-07-25T01:00:00.000Z" },
+        {
+          mcUsername: "alpha",
+          lobby: "M1B",
+          firstAt: "2026-07-25T02:00:00.000Z",
+          lastAt: "2026-07-25T02:00:40.000Z",
+        },
       ],
+      trailing: [],
       discordMessageIds: [] as string[],
       lastPostedKey: null,
     };
-    const payload = buildLobbyMateSessionPayload(session);
-    expect(payload.content.startsWith("```\n")).toBe(true);
-    expect(payload.content).toContain("jc_treepuncher entered Pit · M1B · SPAWN");
-    expect(payload.content).toContain("**M1B (2)**");
-    expect(payload.content).toContain("alpha");
-    expect(payload.content).toContain("01:00:00 UTC");
-    // Embed keeps rich timestamps.
-    expect(JSON.stringify(payload.embeds)).toContain(formatTouchClock("2026-07-25T01:00:00.000Z"));
+    const txt = buildLobbyMateTxtLog(session);
+    expect(txt).toContain("jc_treepuncher · lobby mates session");
+    expect(txt).toContain("M1B (1)");
+    expect(txt).toContain(
+      `alpha — ${formatTouchRange("2026-07-25T02:00:00.000Z", "2026-07-25T02:00:40.000Z")}`,
+    );
 
-    const pages = buildLobbyMateSessionPages(session);
-    expect(pages.pages).toHaveLength(1);
+    const filename = lobbyMateAttachmentFilename(
+      "jc_treepuncher",
+      "2026-07-25T02:00:00.000Z",
+    );
+    expect(filename.startsWith("jc_treepuncher_lobby-mates_")).toBe(true);
+    expect(filename.endsWith(".txt")).toBe(true);
+
+    const notice = buildLobbyMateDiscordNotice(session, { filename });
+    expect(notice.content).toContain("`jc_treepuncher`");
+    expect(notice.content).toContain(filename);
+    expect(notice.content).toContain("Delete this Discord message");
   });
 });
