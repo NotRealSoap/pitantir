@@ -9,6 +9,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function looksLikeTrackedItem(item: Record<string, unknown>): boolean {
   const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
   const id = typeof item.id === "string" ? item.id.toLowerCase() : "";
+  if (item.kind === "material" || typeof item.materialKey === "string") {
+    return true;
+  }
   if (
     type.includes("book") ||
     id.includes("book") ||
@@ -65,12 +68,18 @@ function normalizeRawItem(item: Record<string, unknown>): Record<string, unknown
     lore,
     customEnchants,
     kind: typeof item.kind === "string" ? item.kind : undefined,
+    materialKey: typeof item.materialKey === "string" ? item.materialKey : undefined,
+    count:
+      typeof item.count === "number" && Number.isFinite(item.count)
+        ? Math.max(0, Math.trunc(item.count))
+        : undefined,
     nonce: ids.nonce ?? undefined,
     itemUuid: ids.itemUuid ?? undefined,
     lives: livesResolved.lives ?? undefined,
     maxLives: livesResolved.maxLives ?? undefined,
     generation: typeof item.generation === "string" ? item.generation : undefined,
     type: typeof item.type === "string" ? item.type : typeof item.id === "string" ? item.id : undefined,
+    id: typeof item.id === "string" ? item.id : undefined,
     hypixelExtraAttributes,
   };
 }
@@ -127,6 +136,12 @@ export function extractBookSlots(rawInventory: Record<string, unknown>): Extract
   }
   if (Array.isArray(rawInventory.enderChest)) {
     extractFromContainer("echest", rawInventory.enderChest, out);
+  }
+  if (Array.isArray(rawInventory.stash)) {
+    extractFromContainer("stash", rawInventory.stash, out);
+  }
+  if (Array.isArray(rawInventory.item_stash)) {
+    extractFromContainer("stash", rawInventory.item_stash, out);
   }
   if (Array.isArray(rawInventory.slots)) {
     extractFromContainer("inv", rawInventory.slots, out);

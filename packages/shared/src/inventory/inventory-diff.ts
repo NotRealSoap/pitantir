@@ -5,10 +5,11 @@ import {
   isGemmed,
   resolveMysticLives,
 } from "./mystic-display.js";
+import { pitMaterialDef, type PitMaterialKey } from "./pit-materials.js";
 
 export type InventoryChangeDirection = "gained" | "lost" | "updated";
 
-/** One concrete mystic move/update within an inventory change signal. */
+/** One concrete mystic/material move/update within an inventory change signal. */
 export interface InventoryChangeItem {
   direction: InventoryChangeDirection;
   nonce: string | null;
@@ -17,6 +18,9 @@ export interface InventoryChangeItem {
   slotKey: string | null;
   previousSummary?: string | null;
   previousSlotKey?: string | null;
+  /** Absolute quantity delta for stackable Pit materials (e.g. +12 / -3). */
+  quantityDelta?: number | null;
+  materialKey?: PitMaterialKey | null;
 }
 
 export interface InventoryDiff {
@@ -83,13 +87,99 @@ function signature(slot: { slotKey: string; rawItem: Record<string, unknown> }):
   ].join("|");
 }
 
-/** Diff mystic slots by nonce across two raw Hypixel inventory payloads. */
+function isMaterialSlot(rawItem: Record<string, unknown>): boolean {
+  return rawItem.kind === "material" || typeof rawItem.materialKey === "string";
+}
+
+function materialKeyOf(rawItem: Record<string, unknown>): PitMaterialKey | null {
+  if (typeof rawItem.materialKey === "string") {
+    return rawItem.materialKey as PitMaterialKey;
+  }
+  return null;
+}
+
+function countOf(rawItem: Record<string, unknown>): number {
+  if (typeof rawItem.count === "number" && Number.isFinite(rawItem.count)) {
+    return Math.max(0, Math.trunc(rawItem.count));
+  }
+  return 1;
+}
+
+/** Aggregate stackable Pit materials across all containers. */
+export function aggregateMaterialCounts(
+  rawInventory: Record<string, unknown>,
+): Map<PitMaterialKey, { title: string; count: number }> {
+  const totals = new Map<PitMaterialKey, { title: string; count: number }>();
+  for (const slot of extractBookSlots(rawInventory)) {
+    if (!isMaterialSlot(slot.rawItem)) continue;
+    const key = materialKeyOf(slot.rawItem);
+    if (!key) continue;
+    const title =
+      typeof slot.rawItem.title === "string" && slot.rawItem.title.trim()
+        ? cleanTitle(slot.rawItem.title)
+        : pitMaterialDef(key).title;
+    const prev = totals.get(key);
+    const nextCount = (prev?.count ?? 0) + countOf(slot.rawItem);
+    totals.set(key, { title: prev?.title ?? title, count: nextCount });
+  }
+  return totals;
+}
+
+function diffMaterialStacks(
+  previousRaw: Record<string, unknown>,
+  currentRaw: Record<string, unknown>,
+): { gained: InventoryChangeItem[]; lost: InventoryChangeItem[] } {
+  const prev = aggregateMaterialCounts(previousRaw);
+  const curr = aggregateMaterialCounts(currentRaw);
+  const keys = new Set<PitMaterialKey>([...prev.keys(), ...curr.keys()]);
+  const gained: InventoryChangeItem[] = [];
+  const lost: InventoryChangeItem[] = [];
+
+  for (const key of keys) {
+    const before = prev.get(key)?.count ?? 0;
+    const after = curr.get(key)?.count ?? 0;
+    if (before === after) continue;
+    const title =
+      curr.get(key)?.title ?? prev.get(key)?.title ?? pitMaterialDef(key).title;
+    const delta = after - before;
+    const summary = `${delta > 0 ? "+" : ""}${delta} (${before} → ${after})`;
+    const item: InventoryChangeItem = {
+      direction: delta > 0 ? "gained" : "lost",
+      nonce: null,
+      title,
+      summary,
+      slotKey: null,
+      quantityDelta: delta,
+      materialKey: key,
+    };
+    if (delta > 0) gained.push(item);
+    else lost.push(item);
+  }
+
+  return { gained, lost };
+}
+
+/**
+ * Same-nonce but different max lives = fundamentally different mystic.
+ * Treat as lost(previous) + gained(current), not a quiet "updated".
+ */
+function maxLivesChanged(
+  previous: { rawItem: Record<string, unknown> },
+  current: { rawItem: Record<string, unknown> },
+): boolean {
+  const prevMax = resolveMysticLives(previous.rawItem).maxLives;
+  const currMax = resolveMysticLives(current.rawItem).maxLives;
+  if (prevMax === null || currMax === null) return false;
+  return prevMax !== currMax;
+}
+
+/** Diff mystic slots by nonce + stackable Pit materials across two raw inventories. */
 export function diffInventoriesByNonce(
   previousRaw: Record<string, unknown>,
   currentRaw: Record<string, unknown>,
 ): InventoryDiff {
-  const prevSlots = extractBookSlots(previousRaw);
-  const currSlots = extractBookSlots(currentRaw);
+  const prevSlots = extractBookSlots(previousRaw).filter((slot) => !isMaterialSlot(slot.rawItem));
+  const currSlots = extractBookSlots(currentRaw).filter((slot) => !isMaterialSlot(slot.rawItem));
 
   const prevByNonce = new Map<string, { slotKey: string; rawItem: Record<string, unknown> }>();
   const currByNonce = new Map<string, { slotKey: string; rawItem: Record<string, unknown> }>();
@@ -113,6 +203,12 @@ export function diffInventoriesByNonce(
       gained.push(itemFromSlot("gained", slot));
       continue;
     }
+    if (maxLivesChanged(previous, slot)) {
+      // Max lives cannot change on the same physical mystic — treat as replace.
+      lost.push(itemFromSlot("lost", previous));
+      gained.push(itemFromSlot("gained", slot));
+      continue;
+    }
     if (signature(previous) !== signature(slot)) {
       updated.push(itemFromSlot("updated", slot, previous));
     }
@@ -122,6 +218,10 @@ export function diffInventoriesByNonce(
       lost.push(itemFromSlot("lost", slot));
     }
   }
+
+  const materials = diffMaterialStacks(previousRaw, currentRaw);
+  gained.push(...materials.gained);
+  lost.push(...materials.lost);
 
   return {
     gained,
@@ -156,7 +256,10 @@ export function formatInventoryChangeLabel(change: InventoryChangeItem): string 
 }
 
 /** Human detail for live events / signal pills. */
-export function formatInventoryChangeDetail(diff: InventoryDiff, options?: { maxItems?: number }): string {
+export function formatInventoryChangeDetail(
+  diff: InventoryDiff,
+  options?: { maxItems?: number },
+): string {
   const maxItems = options?.maxItems ?? 6;
   if (diff.changes.length === 0) {
     return "same mystic nonces — slot/meta changed";

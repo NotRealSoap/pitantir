@@ -1,6 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import nbt from "prismarine-nbt";
 import { coerceInventoryUuid, pickInventoryNonce } from "./nonce.js";
+import { resolvePitMaterialKey, pitMaterialDef } from "./pit-materials.js";
 
 export interface DecodedInventoryItem {
   slot: number | null;
@@ -152,6 +153,20 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     author !== null ||
     pages !== null;
 
+  const materialKey = resolvePitMaterialKey({ id: item.id, title });
+  if (materialKey) {
+    const def = pitMaterialDef(materialKey);
+    return {
+      id: item.id,
+      type: item.id,
+      kind: "material",
+      materialKey,
+      title: title ?? def.title,
+      count: Math.max(1, Math.trunc(item.count || 1)),
+      hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,
+    };
+  }
+
   // Pitantir tracks nonce-bearing mystics (and books). Skip vanilla junk without a nonce.
   if (!isBook && nonce === null) {
     return null;
@@ -173,6 +188,7 @@ export function bookFieldsFromNbtItem(item: DecodedInventoryItem): Record<string
     maxLives: coerceLives(extra.MaxLives ?? extra.maxLives) ?? undefined,
     generation: typeof tag.generation === "number" ? String(tag.generation) : undefined,
     hypixelExtraAttributes: Object.keys(extra).length > 0 ? extra : undefined,
+    count: Math.max(1, Math.trunc(item.count || 1)),
   };
 }
 

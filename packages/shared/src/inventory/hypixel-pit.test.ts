@@ -94,6 +94,27 @@ describe("pit nbt decode", () => {
     });
   });
 
+  it("keeps Chunk of Vile (coal) stacks as tracked materials with counts", () => {
+    const material = bookFieldsFromNbtItem({
+      slot: 2,
+      id: "263",
+      count: 41,
+      raw: {
+        id: 263,
+        Count: 41,
+        tag: {
+          display: { Name: "§5Chunk of Vile" },
+        },
+      },
+    });
+    expect(material).toMatchObject({
+      kind: "material",
+      materialKey: "vile",
+      title: "Chunk of Vile",
+      count: 41,
+    });
+  });
+
   it("coerces integer ExtraAttributes.Nonce to string", async () => {
     const data = makePitInventoryBytes("Mystic Book", "Author", ["hello"], 421337, {
       nonceKey: "Nonce",
