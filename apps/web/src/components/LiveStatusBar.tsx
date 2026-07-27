@@ -32,6 +32,12 @@ type LiveStatusPayload = {
   secondsUntilReset?: number | null;
   stale?: boolean;
   currentIntervalSeconds?: number | null;
+  estimatedBudgetPerWindow?: number | null;
+  estimatedRequestsPerWindow?: number | null;
+  budgetUtilization?: number;
+  normalRefreshingCount?: number;
+  skipped140erCount?: number;
+  slowRefreshingCount?: number;
   onlineCount?: number;
   online?: Array<{
     mcUsername: string;
@@ -39,11 +45,18 @@ type LiveStatusPayload = {
     lobby?: string | null;
     location?: string | null;
     apiOff?: boolean;
+    is140er?: boolean;
   }>;
   events?: LiveEvent[];
   recentCalls?: ApiCall[];
   latestCall?: ApiCall | null;
   dueNowCount?: number;
+  scansPaused?: boolean;
+  circuitOpen?: boolean;
+  circuitDetail?: string | null;
+  callsLastMinute?: number;
+  rateLimitedRecent?: number;
+  failedRecent?: number;
 };
 
 function formatDuration(seconds: number | null | undefined): string {
@@ -162,22 +175,38 @@ export function LiveStatusBar() {
   const online = status?.online ?? [];
   const recentCalls = status?.recentCalls ?? [];
   const fillTone = pct >= 90 ? "hot" : pct >= 70 ? "warm" : "cool";
+  const budgetPct = Math.round((status?.budgetUtilization ?? 0.45) * 100);
+  const skipped140er = status?.skipped140erCount ?? status?.slowRefreshingCount ?? 0;
+  const pacingBlocked = Boolean(status?.scansPaused || status?.circuitOpen);
+  const hitRateLimit = (status?.rateLimitedRecent ?? 0) > 0;
+
+  let subhead = "Waiting for quota sample";
+  if (status?.circuitOpen) {
+    subhead = status.circuitDetail
+      ? `Circuit open — ${status.circuitDetail}`
+      : "Circuit open — Resume from Accounts";
+  } else if (status?.scansPaused) {
+    subhead = "Scans paused — Resume from Accounts";
+  } else if (hitRateLimit) {
+    subhead = `Rate limited recently (${status?.rateLimitedRecent}× in call log)`;
+  } else if (status?.stale) {
+    subhead = "Window reset — waiting for next sample";
+  } else if (localReset != null) {
+    subhead = `Resets in ${formatDuration(localReset)} · target ~${budgetPct}%`;
+  }
 
   return (
-    <aside className="live-status" aria-live="polite">
+    <aside className={`live-status${hitRateLimit ? " is-rate-limited" : ""}`} aria-live="polite">
       <div className="live-status-grid">
         <section className="live-quota-panel">
           <header className="live-status-head">
-            <span className="live-dot" aria-hidden="true" />
+            <span
+              className={`live-dot${pacingBlocked ? " is-paused" : ""}${hitRateLimit ? " is-hot" : ""}`}
+              aria-hidden="true"
+            />
             <div className="live-status-titles">
               <div className="live-kicker">Live Hypixel</div>
-              <div className="live-subhead">
-                {status?.stale
-                  ? "Window reset — waiting for next sample"
-                  : localReset != null
-                    ? `Resets in ${formatDuration(localReset)}`
-                    : "Waiting for quota sample"}
-              </div>
+              <div className="live-subhead">{subhead}</div>
             </div>
             <Link href="/settings" className="live-settings-link">
               Settings
@@ -199,9 +228,24 @@ export function LiveStatusBar() {
           <div
             className={`live-status-bar is-${fillTone}`}
             aria-hidden="true"
-            title={snapshot ? `${used}/${limit} requests used this window` : "No quota sample"}
+            title={
+              snapshot
+                ? `${used}/${limit} used · budget ~${status?.estimatedBudgetPerWindow ?? "—"} · est load ~${status?.estimatedRequestsPerWindow ?? "—"} / window`
+                : "No quota sample"
+            }
           >
             <div className="live-status-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+
+          <div className="live-quota-meta">
+            <span>
+              {status?.callsLastMinute ?? 0}/min · budget ~{status?.estimatedBudgetPerWindow ?? "—"}{" "}
+              · est ~{status?.estimatedRequestsPerWindow ?? "—"}
+            </span>
+            <span>
+              scanning {status?.normalRefreshingCount ?? "—"}
+              {skipped140er > 0 ? ` · ${skipped140er} 140er skipped` : null}
+            </span>
           </div>
         </section>
 
@@ -215,7 +259,11 @@ export function LiveStatusBar() {
                 <>
                   <span className="live-mono">{latestCall.mcUsername ?? "probe"}</span>
                   <span className="live-dim">/{latestCall.endpoint}</span>
-                  {!latestCall.ok ? <span className="live-fail"> failed</span> : null}
+                  {latestCall.statusCode === 429 ? (
+                    <span className="live-fail"> 429</span>
+                  ) : !latestCall.ok ? (
+                    <span className="live-fail"> failed</span>
+                  ) : null}
                 </>
               ) : (
                 <span className="live-dim">—</span>
@@ -229,6 +277,7 @@ export function LiveStatusBar() {
             <span className="live-stat-value">{status?.dueNowCount ?? 0}</span>
             <span className="live-stat-note">
               every {formatDuration(status?.currentIntervalSeconds)}
+              {pacingBlocked ? " · paused" : ""}
             </span>
           </div>
 
@@ -244,6 +293,7 @@ export function LiveStatusBar() {
                         row.lobby,
                         row.location,
                         row.apiOff ? "API Off" : null,
+                        row.is140er ? "140er" : null,
                       ]
                         .filter(Boolean)
                         .join(" ");
@@ -311,11 +361,17 @@ export function LiveStatusBar() {
             <span
               key={call.id}
               className={`live-call-pill${call.ok ? "" : " is-fail"}${
-                flashId === call.id ? " is-flash" : ""
-              }`}
+                call.statusCode === 429 ? " is-429" : ""
+              }${flashId === call.id ? " is-flash" : ""}`}
+              title={
+                call.statusCode != null
+                  ? `${call.endpoint} · HTTP ${call.statusCode}${call.detail ? ` · ${call.detail}` : ""}`
+                  : call.endpoint
+              }
             >
               <span className="live-mono">{call.mcUsername ?? "probe"}</span>
               <span className="live-dim">/{call.endpoint}</span>
+              {call.statusCode === 429 ? <span className="live-fail"> 429</span> : null}
             </span>
           ))
         ) : (

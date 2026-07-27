@@ -53,9 +53,9 @@ describe("recommendScanIntervalSeconds", () => {
     expect(interval).toBeLessThanOrEqual(300);
   });
 
-  it("defaults to 80% utilization", () => {
-    expect(DEFAULT_HYPIXEL_BUDGET_UTILIZATION).toBe(0.8);
-    expect(hypixelBudgetPerWindow(300)).toBe(240);
+  it("defaults to 45% utilization", () => {
+    expect(DEFAULT_HYPIXEL_BUDGET_UTILIZATION).toBe(0.45);
+    expect(hypixelBudgetPerWindow(300)).toBe(135);
   });
 
   it("allows faster refresh for a small watch list", () => {
@@ -89,11 +89,11 @@ describe("scanEnqueueAllowance", () => {
     expect(scanEnqueueAllowance({ snapshot: null, dueCount: 10 })).toBe(1);
   });
 
-  it("opens the tap when behind the 80% curve", () => {
+  it("opens the tap when behind the 45% curve", () => {
     const allowance = scanEnqueueAllowance({
       dueCount: 20,
-      maxPerTick: 4,
-      lead: 3,
+      maxPerTick: 2,
+      lead: 1,
       now: new Date("2026-07-14T03:02:00.000Z"),
       snapshot: {
         limit: 300,
@@ -104,15 +104,15 @@ describe("scanEnqueueAllowance", () => {
         observedAt: "2026-07-14T03:00:00.000Z",
       },
     });
-    // elapsed 120s, timeLeft 180, fractionDone 0.4, targetUsed 96, deficit 96+3-10 → allow max 4
-    expect(allowance).toBe(4);
+    // elapsed 120s, timeLeft 180, fractionDone 0.4, targetUsed 54, deficit 54+1-10 → allow max 2
+    expect(allowance).toBe(2);
   });
 
   it("throttles when ahead of the budget curve", () => {
     const allowance = scanEnqueueAllowance({
       dueCount: 20,
-      maxPerTick: 4,
-      lead: 3,
+      maxPerTick: 2,
+      lead: 1,
       now: new Date("2026-07-14T03:00:30.000Z"),
       snapshot: {
         limit: 300,

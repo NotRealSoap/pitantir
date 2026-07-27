@@ -107,6 +107,23 @@ export class ScanAccountHandler {
       return { scan: failed, enqueuedProcessScan: false, inventorySource: this.inventory.id };
     }
 
+    // 140ers: PitPal covers presence. Never spend Hypixel quota unless the operator
+    // explicitly hits Scan now (triggeredBy=manual without a pitpal_* reason).
+    const pitpalReason =
+      typeof job.payload.reason === "string" && job.payload.reason.startsWith("pitpal_");
+    if (accountIs140er(account) && (triggeredBy !== "manual" || pitpalReason)) {
+      const failed = await this.scans.markFailure(scan.id, {
+        errorCode: "skipped_140er",
+        errorMessage:
+          "Skipped Hypixel scan for 140er-tagged account (PitPal presence only; use Scan now to force).",
+      });
+      return {
+        scan: failed,
+        enqueuedProcessScan: false,
+        inventorySource: this.inventory.id,
+      };
+    }
+
     if ((await getHypixelScansPaused(this.db)) || (await isHypixelApiCircuitOpen(this.db))) {
       const failed = await this.scans.markFailure(scan.id, {
         errorCode: "upstream_unavailable",
@@ -242,7 +259,7 @@ export class ScanAccountHandler {
     const wentOffline = !nextEffective.online && previousEffective.online;
 
     // Hotspot: keep online non-140er accounts on a short cadence.
-    // 140ers stay on their ≥30m Hypixel index floor.
+    // 140ers are never auto Hypixel-scanned.
     if (nextEffective.online && !accountIs140er(account)) {
       const hotAt = hotNextScanAt(
         fetched.observedAt,

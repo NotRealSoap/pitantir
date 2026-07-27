@@ -1,6 +1,6 @@
 import {
   DEFAULT_HYPIXEL_BUDGET_UTILIZATION,
-  HYPIXEL_140ER_INTERVAL_SECONDS,
+  HYPIXEL_140ER_PARK_INTERVAL_SECONDS,
   buildHypixelRateLimitSnapshot,
   hypixelBudgetPerWindow,
   parseHypixelRateLimitHeaders,
@@ -22,10 +22,15 @@ export interface HypixelUsageView {
   stale: boolean;
   watchlistCount: number;
   refreshingCount: number;
+  /** Enabled watchlist accounts that are actually Hypixel-scanned (non-140er). */
   normalRefreshingCount: number;
+  /** Enabled 140ers — parked / skipped for auto Hypixel. */
   slowRefreshingCount: number;
+  /** Alias: 140ers excluded from Hypixel auto scans. */
+  skipped140erCount: number;
   currentIntervalSeconds: number | null;
   recommendedIntervalSeconds: number | null;
+  /** Park interval for 140ers (not an active scan cadence). */
   recommendedSlowIntervalSeconds: number | null;
   estimatedRequestsPerWindow: number | null;
   estimatedBudgetPerWindow: number | null;
@@ -42,9 +47,11 @@ export function buildHypixelUsageView(input: {
   const refreshing = input.watchlist.filter((row) => row.enabled);
   const slowRefreshing = refreshing.filter((row) => notesIndicate140er(row.notes));
   const normalRefreshing = refreshing.filter((row) => !notesIndicate140er(row.notes));
-  const intervals = refreshing.map((row) => row.scanIntervalSeconds);
+  const intervals = normalRefreshing.map((row) => row.scanIntervalSeconds);
   const currentIntervalSeconds =
-    intervals.length > 0 ? Math.min(...intervals) : input.watchlist[0]?.scanIntervalSeconds ?? null;
+    intervals.length > 0
+      ? Math.min(...intervals)
+      : input.watchlist.find((row) => !notesIndicate140er(row.notes))?.scanIntervalSeconds ?? null;
 
   let resetAt: string | null = null;
   let secondsUntilReset: number | null = null;
@@ -56,21 +63,21 @@ export function buildHypixelUsageView(input: {
     stale = at.getTime() < now.getTime() - 5_000;
   }
 
+  // 140ers cost 0 Hypixel budget — recommendations pace only non-140ers.
   const split = input.snapshot
     ? recommendSplitScanIntervals({
         normalCount: normalRefreshing.length,
-        slowCount: slowRefreshing.length,
+        slowCount: 0,
         limit: input.snapshot.limit,
         windowSeconds: input.snapshot.windowSeconds,
-        slowIntervalSeconds: HYPIXEL_140ER_INTERVAL_SECONDS,
+        slowIntervalSeconds: HYPIXEL_140ER_PARK_INTERVAL_SECONDS,
       })
     : null;
 
-  // Keep a single "recommended" number for the UI primary button (non-140er pace).
   const recommendedIntervalSeconds = input.snapshot
     ? split?.normalIntervalSeconds ??
       recommendScanIntervalSeconds({
-        watchlistCount: Math.max(refreshing.length, 1),
+        watchlistCount: Math.max(normalRefreshing.length, 1),
         limit: input.snapshot.limit,
         windowSeconds: input.snapshot.windowSeconds,
       })
@@ -81,21 +88,16 @@ export function buildHypixelUsageView(input: {
     : null;
 
   const estimatedRequestsPerWindow =
-    input.snapshot && refreshing.length > 0
+    input.snapshot && normalRefreshing.length > 0
       ? Math.ceil(
           normalRefreshing.reduce((sum, row) => {
             const interval = Math.max(30, row.scanIntervalSeconds || 3600);
-            return sum + (input.snapshot!.windowSeconds / interval);
-          }, 0) +
-            slowRefreshing.reduce((sum, row) => {
-              const interval = Math.max(
-                HYPIXEL_140ER_INTERVAL_SECONDS,
-                row.scanIntervalSeconds || HYPIXEL_140ER_INTERVAL_SECONDS,
-              );
-              return sum + (input.snapshot!.windowSeconds / interval);
-            }, 0),
+            return sum + input.snapshot!.windowSeconds / interval;
+          }, 0),
         )
-      : null;
+      : input.snapshot
+        ? 0
+        : null;
 
   return {
     configured: input.configured,
@@ -108,9 +110,10 @@ export function buildHypixelUsageView(input: {
     refreshingCount: refreshing.length,
     normalRefreshingCount: normalRefreshing.length,
     slowRefreshingCount: slowRefreshing.length,
+    skipped140erCount: slowRefreshing.length,
     currentIntervalSeconds,
     recommendedIntervalSeconds,
-    recommendedSlowIntervalSeconds: split?.slowIntervalSeconds ?? null,
+    recommendedSlowIntervalSeconds: HYPIXEL_140ER_PARK_INTERVAL_SECONDS,
     estimatedRequestsPerWindow,
     estimatedBudgetPerWindow,
     budgetUtilization: DEFAULT_HYPIXEL_BUDGET_UTILIZATION,

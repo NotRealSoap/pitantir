@@ -1,10 +1,21 @@
 /** Hypixel API rate-limit helpers (response headers + scan pacing). */
 
-/** Target fraction of the key limit to consume each window (80% of 300 ≈ 240 / 5min). */
-export const DEFAULT_HYPIXEL_BUDGET_UTILIZATION = 0.8;
+/**
+ * Target fraction of the key limit to consume each window.
+ * Kept intentionally conservative (45% of 300 ≈ 135 / 5min) to leave headroom
+ * for PitPal confirm scans and avoid tripwire rate limits.
+ */
+export const DEFAULT_HYPIXEL_BUDGET_UTILIZATION = 0.45;
 
-/** 140er-labelled accounts never Hypixel-index faster than this. */
+/**
+ * Legacy floor when 140ers were still auto-indexed slowly.
+ * Auto Hypixel scans for 140ers are now skipped entirely; this remains for
+ * parked schedule cursors / older settings copy.
+ */
 export const HYPIXEL_140ER_INTERVAL_SECONDS = 30 * 60;
+
+/** How far to park 140er nextScanAt when the scheduler skips them. */
+export const HYPIXEL_140ER_PARK_INTERVAL_SECONDS = 24 * 60 * 60;
 
 export interface HypixelRateLimitSnapshot {
   /** Max requests allowed in the current window for this key. */
@@ -113,7 +124,7 @@ export function recommendScanIntervalSeconds(input: {
   watchlistCount: number;
   limit: number;
   windowSeconds: number;
-  /** Fraction of the limit to consume (default 80%). */
+  /** Fraction of the limit to consume (default 45%). */
   utilization?: number;
   /** @deprecated Use `utilization` — kept as an alias for older callers. */
   headroom?: number;
@@ -194,14 +205,14 @@ export function scanEnqueueAllowance(input: {
   const dueCount = Math.max(0, Math.floor(input.dueCount));
   if (dueCount === 0) return 0;
 
-  const maxPerTick = Math.max(1, Math.floor(input.maxPerTick ?? 4));
+  const maxPerTick = Math.max(1, Math.floor(input.maxPerTick ?? 2));
   if (!input.snapshot) {
     // No quota sample yet — keep a gentle drip.
     return Math.min(1, dueCount);
   }
 
   const utilization = input.utilization ?? DEFAULT_HYPIXEL_BUDGET_UTILIZATION;
-  const lead = input.lead ?? 3;
+  const lead = input.lead ?? 1;
   const now = input.now ?? new Date();
   const { limit, remaining, resetSeconds, windowSeconds, observedAt } = input.snapshot;
   const budget = hypixelBudgetPerWindow(limit, utilization);

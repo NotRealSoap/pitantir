@@ -206,7 +206,7 @@ export async function POST(request: Request) {
         const updated = await repo.setWatchlistScanInterval(seconds);
         return NextResponse.json({
           ok: true,
-          message: `Updated scan interval to every ${seconds}s for non-140ers (${updated} watch-list account(s); 140ers stay ≥30m).`,
+          message: `Updated scan interval to every ${seconds}s for non-140ers (${updated} watch-list account(s); 140ers stay parked / never auto-scanned).`,
           scanIntervalSeconds: seconds,
           updated,
           ...(await usagePayload()),
@@ -230,9 +230,9 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({
         ok: true,
-        message: `Pacing set for ~${Math.round((view.budgetUtilization ?? 0.8) * 100)}% of key budget: non-140ers every ${view.recommendedIntervalSeconds}s (${result.normalCount}), 140ers every ${view.recommendedSlowIntervalSeconds ?? 1800}s (${result.slowCount}).`,
+        message: `Pacing set for ~${Math.round((view.budgetUtilization ?? 0.45) * 100)}% of key budget: non-140ers every ${view.recommendedIntervalSeconds}s (${result.normalCount}), 140ers skipped/parked (${result.slowCount}).`,
         scanIntervalSeconds: view.recommendedIntervalSeconds,
-        slowIntervalSeconds: view.recommendedSlowIntervalSeconds ?? 1800,
+        slowIntervalSeconds: view.recommendedSlowIntervalSeconds ?? 86_400,
         updated: result.updated,
         ...(await usagePayload()),
       });

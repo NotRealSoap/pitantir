@@ -6,11 +6,15 @@ import { getHypixelScansPaused } from "../accounts/scan-control.js";
 import { getHypixelRateLimitSnapshot } from "../accounts/hypixel-usage.js";
 import { isHypixelApiCircuitOpen } from "../accounts/hypixel-circuit.js";
 import {
+  accountIs140er,
   effectiveScanIntervalSeconds,
   effectiveScanPriority,
 } from "../accounts/presence.js";
 import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
-import { scanEnqueueAllowance } from "@pitantir/shared/inventory";
+import {
+  HYPIXEL_140ER_PARK_INTERVAL_SECONDS,
+  scanEnqueueAllowance,
+} from "@pitantir/shared/inventory";
 import { JobsRepository } from "./repository.js";
 import { now } from "../identity/store.js";
 
@@ -20,6 +24,7 @@ export interface ScheduleTickResult {
   deferred: number;
   skippedDuplicate: number;
   skippedDisabled: number;
+  skipped140er: number;
   paused: boolean;
   allowance: number;
 }
@@ -28,15 +33,15 @@ export interface ScheduleTickResult {
  * Hard ceiling per worker loop tick. Budget pacing usually asks for fewer.
  * Keeps a due pile from becoming a burst when quota is far behind target.
  */
-export const MAX_SCAN_ENQUEUES_PER_TICK = 4;
+export const MAX_SCAN_ENQUEUES_PER_TICK = 2;
 
 /**
  * Enqueue `scan_account` jobs for watchlisted+enabled accounts whose `next_scan_at` is due.
  * Global `hypixel_scans_paused` stops scheduled refresh without removing the watch list.
  * Manual Scan now still works so one-off checks don't require unpausing.
  *
- * Cadence aims for ~80% of the Hypixel key window (e.g. ~240 of 300 / 5min) using the
- * latest RateLimit snapshot. Per-account intervals still apply (140ers ≥ 30 minutes).
+ * Cadence aims for ~45% of the Hypixel key window (e.g. ~135 of 300 / 5min) using the
+ * latest RateLimit snapshot. Accounts tagged 140er are never auto-scanned (PitPal only).
  */
 export class ScanScheduler {
   private readonly accounts: AccountsRepository;
@@ -55,17 +60,32 @@ export class ScanScheduler {
         deferred: 0,
         skippedDuplicate: 0,
         skippedDisabled: 0,
+        skipped140er: 0,
         paused: true,
         allowance: 0,
       };
     }
 
     const due = await this.accounts.listEnabledForScan(asOf);
+    const skipped140erAccounts = due.filter((account) => accountIs140er(account));
+    const eligible = due.filter((account) => !accountIs140er(account));
+
+    // Park 140er schedule cursors so they do not clog the due list every tick.
+    for (const account of skipped140erAccounts) {
+      const nextScanAt = new Date(
+        asOf.getTime() + HYPIXEL_140ER_PARK_INTERVAL_SECONDS * 1000,
+      );
+      await this.db
+        .update(accounts)
+        .set({ nextScanAt, updatedAt: asOf })
+        .where(eq(accounts.id, account.id));
+    }
+
     const presenceOpts = {
       pitpalAuthoritative: await isPitpalPresenceAuthoritative(this.db),
     };
     // Prefer hotspots first, then earliest nextScanAt.
-    const ordered = [...due].sort((a, b) => {
+    const ordered = [...eligible].sort((a, b) => {
       const pri =
         effectiveScanPriority(a, presenceOpts) - effectiveScanPriority(b, presenceOpts);
       if (pri !== 0) return pri;
@@ -105,7 +125,7 @@ export class ScanScheduler {
         skippedDuplicate += 1;
       }
 
-      // Each account uses its own effective interval (hot / cool / 140er floor).
+      // Each account uses its own effective interval (hot / cool).
       const nextScanAt = new Date(
         asOf.getTime() + effectiveScanIntervalSeconds(account, presenceOpts) * 1000,
       );
@@ -116,11 +136,12 @@ export class ScanScheduler {
     }
 
     return {
-      considered: due.length,
+      considered: eligible.length,
       enqueued,
       deferred,
       skippedDuplicate,
       skippedDisabled: 0,
+      skipped140er: skipped140erAccounts.length,
       paused: false,
       allowance,
     };

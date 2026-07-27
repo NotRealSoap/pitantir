@@ -148,18 +148,20 @@ async function savePitpalLobbySnapshot(
 
 async function enqueueHypixelPresenceConfirm(
   jobs: JobsRepository,
-  accountId: string,
+  account: Pick<Account, "id" | "notes">,
   reason: "entered" | "left" | "mismatch",
   observedAt: string,
 ): Promise<boolean> {
+  // 140ers never get Hypixel confirm scans — PitPal is enough for presence.
+  if (accountIs140er(account)) return false;
   try {
     // Enter/leave: hourly. Mismatch: daily (avoids spam for players online outside Pit).
     const bucket = reason === "mismatch" ? observedAt.slice(0, 10) : observedAt.slice(0, 13);
     const result = await jobs.enqueue({
       type: "scan_account",
-      payload: { accountId, triggeredBy: "manual", reason: `pitpal_${reason}` },
+      payload: { accountId: account.id, triggeredBy: "manual", reason: `pitpal_${reason}` },
       priority: reason === "mismatch" ? 20 : 15,
-      idempotencyKey: `pitpal_confirm_${reason}:${accountId}:${bucket}`,
+      idempotencyKey: `pitpal_confirm_${reason}:${account.id}:${bucket}`,
     });
     return result.created;
   } catch {
@@ -343,7 +345,7 @@ export async function ingestPitpalLobbies(
       const sessionLabel = [hit.lobbyName, hit.location].filter(Boolean).join(" · ") || null;
       const casingPatch =
         hit.name && hit.name !== account.mcUsername ? { mcUsername: hit.name } : {};
-      // Non-140ers: pull Hypixel confirm forward. 140ers keep ≥30m index floor.
+      // Non-140ers: pull Hypixel confirm forward. 140ers never get Hypixel confirms.
       const allowHotPull = !accountIs140er(account);
       const hotAt = hotNextScanAt(
         observedDate,
@@ -387,7 +389,7 @@ export async function ingestPitpalLobbies(
         });
       }
       if (events.some((event) => event.kind === "pitpal_entered")) {
-        if (await enqueueHypixelPresenceConfirm(jobs, account.id, "entered", observedAt)) {
+        if (await enqueueHypixelPresenceConfirm(jobs, account, "entered", observedAt)) {
           presenceConfirmsQueued += 1;
         }
       }
@@ -427,7 +429,7 @@ export async function ingestPitpalLobbies(
               : [previous?.lobby, previous?.location].filter(Boolean).join(" · ") || null,
         });
       }
-      if (await enqueueHypixelPresenceConfirm(jobs, account.id, "left", observedAt)) {
+      if (await enqueueHypixelPresenceConfirm(jobs, account, "left", observedAt)) {
         presenceConfirmsQueued += 1;
       }
       continue;
@@ -439,7 +441,7 @@ export async function ingestPitpalLobbies(
     if (account.lastHypixelOnline === true && !previousByName.has(key)) {
       const queued = await enqueueHypixelPresenceConfirm(
         jobs,
-        account.id,
+        account,
         "mismatch",
         observedAt,
       );

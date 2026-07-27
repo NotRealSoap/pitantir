@@ -5,12 +5,15 @@ import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 /** Treat PitPal lobby sightings as fresh within this window. */
 export const PITPAL_PRESENCE_FRESH_MS = 90_000;
 /** While effectively online (non-140er), scan at least this often. */
-export const PRESENCE_HOT_INTERVAL_SECONDS = 180;
+export const PRESENCE_HOT_INTERVAL_SECONDS = 300;
 /** Job priority bump while effectively online (lower runs sooner). */
 export const PRESENCE_HOT_PRIORITY = 35;
 /** PitPanda lastseen within this window counts as a weak online hint. */
 export const PITPANDA_LASTSEEN_FRESH_MS = 5 * 60_000;
-/** 140er-labelled accounts: Hypixel index at most this often. */
+/**
+ * 140er-labelled accounts are not auto-scanned on Hypixel (PitPal presence only).
+ * Kept as a park / legacy floor for schedule cursors.
+ */
 export const PRESENCE_140ER_INTERVAL_SECONDS = HYPIXEL_140ER_INTERVAL_SECONDS;
 
 export type EffectivePresence = {
@@ -103,8 +106,8 @@ export function effectiveScanIntervalSeconds(
   options?: ResolveEffectivePresenceOptions,
 ): number {
   const base = Math.max(30, Math.floor(account.scanIntervalSeconds || 3600));
-  // 140ers: presence dashboard still updates from PitPal, but Hypixel indexing
-  // is capped at 30 minutes — never the hot 3-minute path.
+  // 140ers: presence dashboard updates from PitPal only — never auto Hypixel.
+  // Interval is parked so any leftover schedule cursor stays cold.
   if (accountIs140er(account)) {
     return Math.max(base, PRESENCE_140ER_INTERVAL_SECONDS);
   }

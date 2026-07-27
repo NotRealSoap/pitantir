@@ -10,7 +10,7 @@ import {
   type DiscordPlayerRule,
 } from "./discord-webhook.js";
 import { notesIndicate140er } from "./notes-labels.js";
-import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
+import { HYPIXEL_140ER_PARK_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 
 export type FurryStashEntry = {
   username: string;
@@ -120,8 +120,8 @@ export async function syncFurryStashesWatchlist(
     if (account.notes !== noteLabel) {
       patches.notes = noteLabel;
     }
-    if (entry.is140er && account.scanIntervalSeconds < HYPIXEL_140ER_INTERVAL_SECONDS) {
-      patches.scanIntervalSeconds = HYPIXEL_140ER_INTERVAL_SECONDS;
+    if (entry.is140er && account.scanIntervalSeconds < HYPIXEL_140ER_PARK_INTERVAL_SECONDS) {
+      patches.scanIntervalSeconds = HYPIXEL_140ER_PARK_INTERVAL_SECONDS;
     }
     if (Object.keys(patches).length > 0) {
       await repo.update(account.id, patches);

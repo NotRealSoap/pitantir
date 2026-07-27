@@ -28,6 +28,8 @@ import type postgres from "postgres";
 import { WorkerLoop } from "./loop.js";
 
 const DEFAULT_POLL_MS = 2_000;
+/** Minimum pause after a Hypixel scan_account so we do not burst the key. */
+const DEFAULT_HYPIXEL_SCAN_GAP_MS = 2_500;
 const DEFAULT_LEASE_MS = 60_000;
 
 export interface WorkerRuntime {
@@ -215,6 +217,14 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
             workerId,
           }),
         );
+        // Pace Hypixel calls — without this the worker drains the queue back-to-back.
+        const source = (result.inventorySource ?? inventory.id).toLowerCase();
+        if (source.includes("hypixel") && result.scan.errorCode !== "skipped_140er") {
+          const gapMs = envInt("HYPIXEL_SCAN_GAP_MS", DEFAULT_HYPIXEL_SCAN_GAP_MS);
+          if (gapMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, gapMs));
+          }
+        }
       },
       process_scan: async (job) => {
         const result = await processScan.handle(job);
@@ -244,6 +254,7 @@ export async function runWorkerMain(): Promise<void> {
   }
 
   const pollMs = envInt("WORKER_POLL_MS", DEFAULT_POLL_MS);
+  const hypixelScanGapMs = envInt("HYPIXEL_SCAN_GAP_MS", DEFAULT_HYPIXEL_SCAN_GAP_MS);
   const { client, scheduler, loop, workerId, inventory, db } =
     await createWorkerRuntime(connectionString);
 
@@ -252,6 +263,7 @@ export async function runWorkerMain(): Promise<void> {
       msg: "worker started",
       workerId,
       pollMs,
+      hypixelScanGapMs,
       inventorySource: inventory.id,
       downwatchDiscord: Boolean(process.env.DISCORD_BOT_TOKEN?.trim()),
     }),

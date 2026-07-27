@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PublicAccount } from "@pitantir/db";
+import { HYPIXEL_140ER_PARK_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 import { buildHypixelUsageView } from "./hypixel-usage";
 
 function fakeAccount(overrides: Partial<PublicAccount> = {}): PublicAccount {
@@ -57,18 +58,18 @@ describe("buildHypixelUsageView", () => {
     expect(view.used).toBe(10);
     expect(view.refreshingCount).toBe(2);
     expect(view.recommendedIntervalSeconds).toBe(30);
-    expect(view.recommendedSlowIntervalSeconds).toBe(1800);
-    expect(view.estimatedBudgetPerWindow).toBe(240);
-    expect(view.budgetUtilization).toBe(0.8);
+    expect(view.recommendedSlowIntervalSeconds).toBe(HYPIXEL_140ER_PARK_INTERVAL_SECONDS);
+    expect(view.estimatedBudgetPerWindow).toBe(135);
+    expect(view.budgetUtilization).toBe(0.45);
     expect(view.currentIntervalSeconds).toBe(3600);
     expect(view.stale).toBe(false);
   });
 
-  it("splits 140er accounts out of the fast recommendation", () => {
+  it("excludes 140er accounts from Hypixel budget estimates", () => {
     const view = buildHypixelUsageView({
       configured: true,
       watchlist: [
-        fakeAccount({ id: "1", notes: null }),
+        fakeAccount({ id: "1", notes: null, scanIntervalSeconds: 300 }),
         fakeAccount({ id: "2", mcUsername: "Slow", notes: "furry-stashes: 140er" }),
       ],
       snapshot: {
@@ -82,6 +83,9 @@ describe("buildHypixelUsageView", () => {
     });
     expect(view.normalRefreshingCount).toBe(1);
     expect(view.slowRefreshingCount).toBe(1);
-    expect(view.recommendedSlowIntervalSeconds).toBe(1800);
+    expect(view.skipped140erCount).toBe(1);
+    expect(view.recommendedSlowIntervalSeconds).toBe(HYPIXEL_140ER_PARK_INTERVAL_SECONDS);
+    // Only the non-140er at 300s contributes: 300/300 = 1 request / window
+    expect(view.estimatedRequestsPerWindow).toBe(1);
   });
 });

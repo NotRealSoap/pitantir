@@ -150,6 +150,31 @@ code {
   animation: live-pulse 1.8s ease-in-out infinite;
 }
 
+.live-dot.is-paused {
+  background: var(--pit-muted);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.16);
+  animation: none;
+}
+
+.live-dot.is-hot {
+  background: #e07a5f;
+  box-shadow: 0 0 0 4px rgba(224, 122, 95, 0.2);
+}
+
+.live-status.is-rate-limited {
+  border-color: color-mix(in srgb, #e07a5f 45%, var(--pit-border));
+}
+
+.live-quota-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-top: 0.55rem;
+  color: var(--pit-muted);
+  font-size: 0.78rem;
+}
+
 @keyframes live-pulse {
   0%,
   100% {
@@ -414,6 +439,11 @@ code {
 .live-call-pill.is-fail {
   border-color: color-mix(in srgb, var(--pit-danger) 45%, var(--pit-border));
   color: #fecaca;
+}
+
+.live-call-pill.is-429 {
+  border-color: #e07a5f;
+  background: rgba(224, 122, 95, 0.12);
 }
 
 .live-call-empty {

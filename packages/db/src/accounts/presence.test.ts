@@ -124,7 +124,7 @@ describe("hotspot scheduling helpers", () => {
     expect(effectiveScanPriority(base)).toBe(100);
   });
 
-  it("caps 140er accounts at 30 minutes even when online", () => {
+  it("parks 140er accounts at 30 minutes even when online (auto Hypixel skipped)", () => {
     const labeled = {
       ...base,
       lastHypixelOnline: true,

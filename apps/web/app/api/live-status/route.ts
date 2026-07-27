@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import {
   getHypixelApiCalls,
+  getHypixelApiCircuit,
   getHypixelLiveEvents,
   getHypixelRateLimitSnapshot,
+  getHypixelScansPaused,
   isPitpalPresenceAuthoritative,
+  notesIndicate140er,
   resolveEffectivePresence,
 } from "@pitantir/db";
 import {
@@ -32,13 +35,16 @@ export async function GET() {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
 
-  const [snapshot, watchlist, events, recentCalls, pitpalAuthoritative] = await Promise.all([
-    getHypixelRateLimitSnapshot(db),
-    repo.listWatchlist(),
-    getHypixelLiveEvents(db),
-    getHypixelApiCalls(db),
-    isPitpalPresenceAuthoritative(db),
-  ]);
+  const [snapshot, watchlist, events, recentCalls, pitpalAuthoritative, scansPaused, circuit] =
+    await Promise.all([
+      getHypixelRateLimitSnapshot(db),
+      repo.listWatchlist(),
+      getHypixelLiveEvents(db),
+      getHypixelApiCalls(db),
+      isPitpalPresenceAuthoritative(db),
+      getHypixelScansPaused(db),
+      getHypixelApiCircuit(db),
+    ]);
 
   const usage = buildHypixelUsageView({
     configured: isHypixelConfigured(),
@@ -47,11 +53,11 @@ export async function GET() {
   });
 
   const now = Date.now();
-  const dueNow = watchlist.filter(
-    (row) => row.enabled && row.nextScanAt.getTime() <= now,
-  ).length;
-  const nextDue = watchlist
-    .filter((row) => row.enabled)
+  const hypixelEligible = watchlist.filter(
+    (row) => row.enabled && !notesIndicate140er(row.notes),
+  );
+  const dueNow = hypixelEligible.filter((row) => row.nextScanAt.getTime() <= now).length;
+  const nextDue = hypixelEligible
     .map((row) => row.nextScanAt.getTime())
     .sort((a, b) => a - b)
     .slice(0, 1)[0];
@@ -73,12 +79,21 @@ export async function GET() {
         killStreak: row.lastPitpalKillstreak,
         apiOff: presence.apiOff,
         isNicked: row.lastPitpalIsNicked === true,
+        is140er: notesIndicate140er(row.notes),
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
   const noteworthy = events.filter((event) => event.kind !== "scanned").slice(0, 20);
   const latestCall = recentCalls[0] ?? null;
+
+  const minuteAgo = now - 60_000;
+  const callsLastMinute = recentCalls.filter((call) => {
+    const at = Date.parse(call.at);
+    return Number.isFinite(at) && at >= minuteAgo;
+  }).length;
+  const rateLimitedRecent = recentCalls.filter((call) => call.statusCode === 429).length;
+  const failedRecent = recentCalls.filter((call) => !call.ok).length;
 
   const hintByAccount = new Map<string, string>();
   for (const event of noteworthy) {
@@ -113,6 +128,12 @@ export async function GET() {
     latestCall,
     dueNowCount: dueNow,
     nextDueAt: nextDue ? new Date(nextDue).toISOString() : null,
+    scansPaused,
+    circuitOpen: Boolean(circuit.trippedAt),
+    circuitDetail: circuit.lastFailureDetail,
+    callsLastMinute,
+    rateLimitedRecent,
+    failedRecent,
     statusChecksEnabled:
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "1" ||
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "true",

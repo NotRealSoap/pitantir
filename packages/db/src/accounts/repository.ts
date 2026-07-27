@@ -4,7 +4,7 @@ import { accounts, type AccountRow } from "../schema/accounts.js";
 import { newId, now } from "../identity/store.js";
 import { normalizeUuid } from "@pitantir/shared";
 import { notesIndicate140er } from "./notes-labels.js";
-import { HYPIXEL_140ER_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
+import { HYPIXEL_140ER_INTERVAL_SECONDS, HYPIXEL_140ER_PARK_INTERVAL_SECONDS } from "@pitantir/shared/inventory";
 import { staggeredNextScanAts } from "./scan-stagger.js";
 
 function normalizeOptionalUuid(value: string | null | undefined): string | null | undefined {
@@ -408,9 +408,8 @@ export class AccountsRepository {
   }
 
   /**
-   * Set scanIntervalSeconds for every watch-listed account and stagger nextScanAt
-   * across the window so the worker does not burst-scan the whole roster.
-   * 140er-labelled accounts are clamped to at least `slowIntervalSeconds` (default 30m).
+   * Set scanIntervalSeconds for every non-140er watch-listed account and stagger nextScanAt.
+   * 140er-labelled accounts are parked (no auto Hypixel) at `slowIntervalSeconds` (default 24h).
    */
   async setWatchlistScanInterval(
     scanIntervalSeconds: number,
@@ -420,29 +419,38 @@ export class AccountsRepository {
     if (!Number.isFinite(seconds) || seconds < 30 || seconds > 86_400) {
       throw new Error("scanIntervalSeconds must be between 30 and 86400");
     }
-    const slowFloor = Math.max(
-      30,
-      Math.floor(options?.slowIntervalSeconds ?? HYPIXEL_140ER_INTERVAL_SECONDS),
+    const parkSeconds = Math.max(
+      HYPIXEL_140ER_INTERVAL_SECONDS,
+      Math.floor(options?.slowIntervalSeconds ?? HYPIXEL_140ER_PARK_INTERVAL_SECONDS),
     );
     const timestamp = now();
     const watchlist = await this.listWatchlist();
+    const normal = watchlist.filter((row) => !notesIndicate140er(row.notes));
+    const slow = watchlist.filter((row) => notesIndicate140er(row.notes));
     const nextAts = staggeredNextScanAts({
-      count: watchlist.length,
+      count: normal.length,
       intervalSeconds: seconds,
       from: timestamp,
       mode: "rebalance",
     });
 
-    for (let i = 0; i < watchlist.length; i += 1) {
-      const account = watchlist[i]!;
-      const interval = notesIndicate140er(account.notes)
-        ? Math.max(seconds, slowFloor)
-        : seconds;
+    for (let i = 0; i < normal.length; i += 1) {
       await this.db
         .update(accounts)
         .set({
-          scanIntervalSeconds: interval,
+          scanIntervalSeconds: seconds,
           nextScanAt: nextAts[i]!,
+          updatedAt: timestamp,
+        })
+        .where(eq(accounts.id, normal[i]!.id));
+    }
+    const parkAt = new Date(timestamp.getTime() + parkSeconds * 1000);
+    for (const account of slow) {
+      await this.db
+        .update(accounts)
+        .set({
+          scanIntervalSeconds: parkSeconds,
+          nextScanAt: parkAt,
           updatedAt: timestamp,
         })
         .where(eq(accounts.id, account.id));
@@ -451,16 +459,17 @@ export class AccountsRepository {
   }
 
   /**
-   * Apply split pacing: 140ers at the slow floor, everyone else at `normalIntervalSeconds`.
+   * Apply split pacing for Hypixel-scanned accounts. 140ers are parked (no auto Hypixel);
+   * everyone else gets `normalIntervalSeconds`.
    */
   async setSplitWatchlistScanIntervals(input: {
     normalIntervalSeconds: number;
     slowIntervalSeconds?: number;
   }): Promise<{ updated: number; normalCount: number; slowCount: number }> {
     const normalSeconds = Math.floor(input.normalIntervalSeconds);
-    const slowSeconds = Math.max(
-      30,
-      Math.floor(input.slowIntervalSeconds ?? HYPIXEL_140ER_INTERVAL_SECONDS),
+    const parkSeconds = Math.max(
+      HYPIXEL_140ER_INTERVAL_SECONDS,
+      Math.floor(input.slowIntervalSeconds ?? HYPIXEL_140ER_PARK_INTERVAL_SECONDS),
     );
     if (!Number.isFinite(normalSeconds) || normalSeconds < 30 || normalSeconds > 86_400) {
       throw new Error("normalIntervalSeconds must be between 30 and 86400");
@@ -477,12 +486,6 @@ export class AccountsRepository {
       from: timestamp,
       mode: "rebalance",
     });
-    const slowAts = staggeredNextScanAts({
-      count: slow.length,
-      intervalSeconds: slowSeconds,
-      from: timestamp,
-      mode: "rebalance",
-    });
 
     for (let i = 0; i < normal.length; i += 1) {
       await this.db
@@ -494,15 +497,17 @@ export class AccountsRepository {
         })
         .where(eq(accounts.id, normal[i]!.id));
     }
-    for (let i = 0; i < slow.length; i += 1) {
+    // Park 140ers far out — scheduler also skips them, but this keeps due-lists clean.
+    const parkAt = new Date(timestamp.getTime() + parkSeconds * 1000);
+    for (const row of slow) {
       await this.db
         .update(accounts)
         .set({
-          scanIntervalSeconds: slowSeconds,
-          nextScanAt: slowAts[i]!,
+          scanIntervalSeconds: parkSeconds,
+          nextScanAt: parkAt,
           updatedAt: timestamp,
         })
-        .where(eq(accounts.id, slow[i]!.id));
+        .where(eq(accounts.id, row.id));
     }
 
     return {

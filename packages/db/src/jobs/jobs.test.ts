@@ -199,4 +199,42 @@ describe("T13/T14 job claim/lease + scheduler", () => {
     expect(dup.created).toBe(false);
     expect(dup.job.id).toBe(jobsForEnabled!.id);
   });
+
+  it("scheduler skips 140er accounts without enqueueing Hypixel scans", async () => {
+    await cancelOpenJobs();
+    const accounts = new AccountsRepository(db);
+    const labeled = await accounts.create({
+      mcUsername: "Slow140er",
+      scanIntervalSeconds: 120,
+      priority: 10,
+      watchlisted: true,
+      enabled: true,
+      notes: "furry-stashes: 140er",
+    });
+    const normal = await accounts.create({
+      mcUsername: "NormalDue",
+      scanIntervalSeconds: 3600,
+      priority: 10,
+      watchlisted: true,
+      enabled: true,
+    });
+
+    const scheduler = new ScanScheduler(db);
+    const result = await scheduler.tick();
+    expect(result.skipped140er).toBeGreaterThanOrEqual(1);
+    expect(result.enqueued).toBeGreaterThanOrEqual(1);
+
+    const labeledJob = await jobsA.getByIdempotencyKey(
+      `scan_account:${labeled.id}:${labeled.nextScanAt.toISOString()}`,
+    );
+    expect(labeledJob).toBeNull();
+
+    const parked = await accounts.get(labeled.id);
+    expect(parked!.nextScanAt.getTime()).toBeGreaterThan(Date.now() + 60_000);
+
+    const normalJob = await jobsA.getByIdempotencyKey(
+      `scan_account:${normal.id}:${normal.nextScanAt.toISOString()}`,
+    );
+    expect(normalJob).not.toBeNull();
+  });
 });
