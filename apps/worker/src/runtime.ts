@@ -15,7 +15,9 @@ import {
   getHypixelRateLimitSnapshot,
   setHypixelRateLimitSnapshot,
   appendHypixelApiCall,
+  getInventorySourceStatus,
   handleHypixelApiCallOutcome,
+  setInventorySourceStatus,
   type Database,
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
@@ -49,6 +51,30 @@ function envInt(name: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+async function recordInventorySourceStatus(
+  db: Database,
+  input: {
+    mode: string;
+    activeSource: string;
+    fallbackUsed?: boolean;
+    detail?: string | null;
+  },
+): Promise<void> {
+  const current = await getInventorySourceStatus(db).catch(() => null);
+  const timestamp = new Date().toISOString();
+  await setInventorySourceStatus(db, {
+    mode: input.mode,
+    activeSource: input.activeSource,
+    activeSince:
+      current && current.activeSource === input.activeSource ? current.activeSince : timestamp,
+    lastSuccessSource: input.activeSource,
+    lastSuccessAt: timestamp,
+    lastFallbackSource: input.fallbackUsed ? input.activeSource : current?.lastFallbackSource ?? null,
+    lastFallbackAt: input.fallbackUsed ? timestamp : current?.lastFallbackAt ?? null,
+    detail: input.detail ?? null,
+  });
 }
 
 /** Load root .env and apps/web/.env.local without overriding existing process env. */
@@ -169,7 +195,13 @@ function createInventorySource(db: Database): InventorySource {
     });
     if (pitPandaKey) {
       const pitpanda = new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
-      return new FailoverInventorySource({ primary: hypixel, secondary: pitpanda });
+      return new FailoverInventorySource({
+        primary: hypixel,
+        secondary: pitpanda,
+        onDecision: async (info) => {
+          await recordInventorySourceStatus(db, info);
+        },
+      });
     }
     return hypixel;
   }
@@ -277,7 +309,13 @@ function createInventorySource(db: Database): InventorySource {
         },
       });
       const pitpanda = new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
-      return new FailoverInventorySource({ primary: hypixel, secondary: pitpanda });
+      return new FailoverInventorySource({
+        primary: hypixel,
+        secondary: pitpanda,
+        onDecision: async (info) => {
+          await recordInventorySourceStatus(db, info);
+        },
+      });
     }
     if (hypixelKey) {
       process.env.INVENTORY_SOURCE = "hypixel_pit";
@@ -318,6 +356,12 @@ export async function createWorkerRuntime(connectionString: string): Promise<Wor
   const scheduler = new ScanScheduler(db);
   const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
   const inventory = createInventorySource(db);
+  await recordInventorySourceStatus(db, {
+    mode: (process.env.INVENTORY_SOURCE ?? inventory.id).toLowerCase(),
+    activeSource: inventory.id,
+    fallbackUsed: false,
+    detail: null,
+  }).catch(() => undefined);
   const identity = new IdentityService(new PostgresIdentityStore(db));
   const scanAccount = new ScanAccountHandler(db, inventory);
   const processScan = new ProcessScanHandler(db, identity);

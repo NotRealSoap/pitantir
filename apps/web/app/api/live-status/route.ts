@@ -5,6 +5,7 @@ import {
   getHypixelLiveEvents,
   getHypixelRateLimitSnapshot,
   getHypixelScansPaused,
+  getInventorySourceStatus,
   isPitpalPresenceAuthoritative,
   notesIndicate140er,
   resolveEffectivePresence,
@@ -35,7 +36,7 @@ export async function GET() {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
 
-  const [snapshot, watchlist, events, recentCalls, pitpalAuthoritative, scansPaused, circuit] =
+  const [snapshot, watchlist, events, recentCalls, pitpalAuthoritative, scansPaused, circuit, inventorySourceStatus] =
     await Promise.all([
       getHypixelRateLimitSnapshot(db),
       repo.listWatchlist(),
@@ -44,6 +45,7 @@ export async function GET() {
       isPitpalPresenceAuthoritative(db),
       getHypixelScansPaused(db),
       getHypixelApiCircuit(db),
+      getInventorySourceStatus(db),
     ]);
 
   const usage = buildHypixelUsageView({
@@ -131,6 +133,7 @@ export async function GET() {
     scansPaused,
     circuitOpen: Boolean(circuit.trippedAt),
     circuitDetail: circuit.lastFailureDetail,
+    inventorySourceStatus,
     callsLastMinute,
     rateLimitedRecent,
     failedRecent,

@@ -8,6 +8,13 @@ export interface FailoverInventorySourceOptions {
    * Defaults to upstream/network-ish problems rather than domain misses.
    */
   fallbackOn?: Set<string>;
+  onDecision?: (info: {
+    mode: string;
+    activeSource: string;
+    activeSince: Date;
+    fallbackUsed: boolean;
+    detail: string | null;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -35,11 +42,29 @@ export class FailoverInventorySource implements InventorySource {
 
   async fetchInventory(account: InventoryAccountRef): Promise<InventoryFetchResult> {
     const first = await this.options.primary.fetchInventory(account);
-    if (first.ok) return first;
+    if (first.ok) {
+      await this.options.onDecision?.({
+        mode: this.id,
+        activeSource: this.options.primary.id,
+        activeSince: new Date(),
+        fallbackUsed: false,
+        detail: null,
+      });
+      return first;
+    }
     if (!this.fallbackOn.has(first.errorCode)) return first;
 
     const second = await this.options.secondary.fetchInventory(account);
-    if (second.ok) return second;
+    if (second.ok) {
+      await this.options.onDecision?.({
+        mode: this.id,
+        activeSource: this.options.secondary.id,
+        activeSince: new Date(),
+        fallbackUsed: true,
+        detail: `${this.options.primary.id}: ${first.errorMessage}`,
+      });
+      return second;
+    }
 
     return {
       ok: false,

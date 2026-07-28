@@ -8,6 +8,7 @@ export * from "./accounts/repository.js";
 export * from "./accounts/scan-control.js";
 export * from "./accounts/hypixel-circuit.js";
 export * from "./accounts/hypixel-usage.js";
+export * from "./accounts/inventory-source-status.js";
 export * from "./accounts/live-events.js";
 export * from "./accounts/hypixel-api-calls.js";
 export * from "./accounts/scan-stagger.js";

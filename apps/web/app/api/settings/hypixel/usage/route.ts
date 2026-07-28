@@ -5,6 +5,7 @@ import {
   getHypixelApiCircuit,
   getHypixelRateLimitSnapshot,
   getHypixelScansPaused,
+  getInventorySourceStatus,
   handleHypixelApiCallOutcome,
   setHypixelRateLimitSnapshot,
   setHypixelScansPaused,
@@ -58,11 +59,12 @@ async function usagePayload() {
     };
   }
 
-  const [snapshot, watchlist, scansPaused, circuit] = await Promise.all([
+  const [snapshot, watchlist, scansPaused, circuit, inventorySourceStatus] = await Promise.all([
     getHypixelRateLimitSnapshot(db),
     repo.listWatchlist(),
     getHypixelScansPaused(db),
     getHypixelApiCircuit(db),
+    getInventorySourceStatus(db),
   ]);
   return {
     ...buildHypixelUsageView({ configured, snapshot, watchlist }),
@@ -71,6 +73,7 @@ async function usagePayload() {
     circuitOpen: Boolean(circuit.trippedAt),
     circuitDetail: circuit.lastFailureDetail,
     consecutiveFailures: circuit.consecutiveFailures,
+    inventorySourceStatus,
   };
 }
 

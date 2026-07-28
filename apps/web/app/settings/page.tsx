@@ -232,6 +232,16 @@ type HypixelUsagePayload = {
   circuitOpen?: boolean;
   circuitDetail?: string | null;
   consecutiveFailures?: number;
+  inventorySourceStatus?: {
+    mode: string;
+    activeSource: string;
+    activeSince: string;
+    lastSuccessSource?: string | null;
+    lastSuccessAt?: string | null;
+    lastFallbackSource?: string | null;
+    lastFallbackAt?: string | null;
+    detail?: string | null;
+  } | null;
   error?: string;
   message?: string;
   ok?: boolean;
@@ -307,6 +317,7 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
       ? Math.min(100, Math.round(((snapshot.limit - snapshot.remaining) / snapshot.limit) * 100))
       : 0;
   const scansOff = Boolean(usage?.scansPaused || usage?.circuitOpen);
+  const sourceStatus = usage?.inventorySourceStatus ?? null;
 
   return (
     <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
@@ -327,6 +338,11 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
       ) : (
         <>
           <div className="meta-row" style={{ marginTop: "0.75rem" }}>
+            {sourceStatus ? (
+              <span className="chip" title={sourceStatus.detail ?? sourceStatus.activeSource}>
+                source <strong>{sourceStatus.activeSource}</strong>
+              </span>
+            ) : null}
             <span className="chip">
               used{" "}
               <strong>
@@ -348,6 +364,17 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
               Paused or circuit open — use{" "}
               <a href="#hypixel-scan-control">Turn Hypixel scanning back on</a> at the top of
               Settings.
+            </p>
+          ) : null}
+
+          {sourceStatus ? (
+            <p className="muted" style={{ marginTop: "0.5rem", marginBottom: 0 }}>
+              Active inventory source: <strong>{sourceStatus.activeSource}</strong>
+              {sourceStatus.lastFallbackSource === sourceStatus.activeSource &&
+              sourceStatus.lastFallbackAt
+                ? ` (fallback in use since ${formatDuration(Math.round((Date.now() - new Date(sourceStatus.lastFallbackAt).getTime()) / 1000))} ago)`
+                : ""}
+              {sourceStatus.detail ? <> — {sourceStatus.detail}</> : null}
             </p>
           ) : null}
 

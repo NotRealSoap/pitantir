@@ -54,6 +54,16 @@ type LiveStatusPayload = {
   scansPaused?: boolean;
   circuitOpen?: boolean;
   circuitDetail?: string | null;
+  inventorySourceStatus?: {
+    mode: string;
+    activeSource: string;
+    activeSince: string;
+    lastSuccessSource?: string | null;
+    lastSuccessAt?: string | null;
+    lastFallbackSource?: string | null;
+    lastFallbackAt?: string | null;
+    detail?: string | null;
+  } | null;
   callsLastMinute?: number;
   rateLimitedRecent?: number;
   failedRecent?: number;
@@ -179,6 +189,7 @@ export function LiveStatusBar() {
   const skipped140er = status?.skipped140erCount ?? status?.slowRefreshingCount ?? 0;
   const pacingBlocked = Boolean(status?.scansPaused || status?.circuitOpen);
   const hitRateLimit = (status?.rateLimitedRecent ?? 0) > 0;
+  const sourceStatus = status?.inventorySourceStatus ?? null;
 
   let subhead = "Waiting for quota sample";
   if (status?.circuitOpen) {
@@ -246,6 +257,21 @@ export function LiveStatusBar() {
               scanning {status?.normalRefreshingCount ?? "—"}
               {skipped140er > 0 ? ` · ${skipped140er} 140er skipped` : null}
             </span>
+            {sourceStatus ? (
+              <span
+                title={
+                  sourceStatus.detail
+                    ? `${sourceStatus.activeSource} · ${sourceStatus.detail}`
+                    : sourceStatus.activeSource
+                }
+              >
+                source {sourceStatus.activeSource}
+                {sourceStatus.lastFallbackSource === sourceStatus.activeSource &&
+                sourceStatus.lastFallbackAt
+                  ? ` · fallback ${formatAge(sourceStatus.lastFallbackAt, nowMs)}`
+                  : ""}
+              </span>
+            ) : null}
           </div>
         </section>
 
