@@ -265,7 +265,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'Unknown action. Use "probe", "rebalance_schedule", "apply_recommended_interval", or "set_interval".',
+          'Unknown action. Use "probe", "resume_scans", "pause_scans", "rebalance_schedule", "apply_recommended_interval", or "set_interval".',
       },
       { status: 400 },
     );

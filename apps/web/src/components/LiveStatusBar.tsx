@@ -208,8 +208,8 @@ export function LiveStatusBar() {
               <div className="live-kicker">Live Hypixel</div>
               <div className="live-subhead">{subhead}</div>
             </div>
-            <Link href="/settings" className="live-settings-link">
-              Settings
+            <Link href="/settings#hypixel-scan-control" className="live-settings-link">
+              Scan control
             </Link>
           </header>
 

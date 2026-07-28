@@ -92,6 +92,117 @@ function KeySection({
   );
 }
 
+type ScanControlPayload = {
+  paused?: boolean;
+  circuitOpen?: boolean;
+  circuitDetail?: string | null;
+  consecutiveFailures?: number;
+  error?: string;
+};
+
+/** Always at top of Settings — big obvious control to unpause Hypixel. */
+function HypixelScanControlBanner() {
+  const [control, setControl] = useState<ScanControlPayload | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/scan-control", { cache: "no-store" });
+      const payload = (await response.json()) as ScanControlPayload;
+      if (response.ok) setControl(payload);
+    } catch {
+      // keep last state
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const id = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  async function resumeScans() {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/scan-control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: false }),
+      });
+      const payload = (await response.json()) as ScanControlPayload;
+      if (!response.ok) {
+        setError(payload.error ?? "Could not resume scanning.");
+        return;
+      }
+      setControl(payload);
+      setMessage("Hypixel scanning turned back on — pause and failure circuit cleared.");
+    } catch {
+      setError("Could not resume scanning.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const scansOff = Boolean(control?.paused || control?.circuitOpen);
+  const statusLabel = control == null ? "Checking…" : scansOff ? "OFF" : "ON";
+
+  return (
+    <section id="hypixel-scan-control" className="hypixel-scan-control panel">
+      <div className="hypixel-scan-control-head">
+        <div>
+          <h2 className="section-title hypixel-scan-control-title">Hypixel player scanning</h2>
+          <p className="muted hypixel-scan-control-lede">
+            If inventory scans stopped after rate limits, use the button below. Also make sure the
+            worker is running (<code>npx pnpm@10.11.0 start:worker</code>).
+          </p>
+        </div>
+        <span
+          className={`hypixel-scan-status-pill${scansOff ? " is-off" : control == null ? " is-unknown" : " is-on"}`}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      {scansOff ? (
+        <p className="hypixel-scan-control-detail" role="status">
+          {control?.circuitOpen
+            ? `Blocked${control.circuitDetail ? `: ${control.circuitDetail}` : " by failure circuit"}.`
+            : "Paused — scheduled and manual Hypixel calls are stopped."}
+        </p>
+      ) : control != null ? (
+        <p className="muted hypixel-scan-control-detail">
+          Status says scanning is enabled. If players still are not updating, click anyway to clear
+          any stuck pause/circuit, then confirm the worker is running.
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        className="primary hypixel-scan-resume-btn"
+        disabled={busy}
+        onClick={() => void resumeScans()}
+      >
+        {busy ? "Working…" : "Turn Hypixel scanning back on"}
+      </button>
+
+      {message ? (
+        <p role="status" className="hypixel-scan-control-feedback">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="alert hypixel-scan-control-feedback">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 type HypixelUsagePayload = {
   configured?: boolean;
   used?: number | null;
@@ -195,6 +306,7 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
     snapshot && snapshot.limit > 0
       ? Math.min(100, Math.round(((snapshot.limit - snapshot.remaining) / snapshot.limit) * 100))
       : 0;
+  const scansOff = Boolean(usage?.scansPaused || usage?.circuitOpen);
 
   return (
     <section className="panel" style={{ marginTop: "1.5rem", maxWidth: "36rem" }}>
@@ -228,7 +340,16 @@ function HypixelUsagePanel({ enabled }: { enabled: boolean }) {
               resets in <strong>{formatDuration(usage?.secondsUntilReset)}</strong>
             </span>
             {usage?.stale ? <span className="chip">stale — refresh</span> : null}
+            {scansOff ? <span className="chip">scanning off</span> : null}
           </div>
+
+          {scansOff ? (
+            <p className="muted" style={{ marginTop: "0.5rem", marginBottom: 0 }}>
+              Paused or circuit open — use{" "}
+              <a href="#hypixel-scan-control">Turn Hypixel scanning back on</a> at the top of
+              Settings.
+            </p>
+          ) : null}
 
           <div
             aria-hidden="true"
@@ -1580,6 +1701,8 @@ export default function SettingsPage() {
       <p className="muted">
         Current inventory source for the worker: <code>{inventorySource}</code>
       </p>
+
+      <HypixelScanControlBanner />
 
       <KeySection
         title="PitPanda"

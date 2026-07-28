@@ -165,6 +165,77 @@ code {
   border-color: color-mix(in srgb, #e07a5f 45%, var(--pit-border));
 }
 
+.hypixel-scan-control {
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  max-width: 42rem;
+  padding: 1.15rem 1.25rem;
+  border-color: color-mix(in srgb, var(--pit-aqua) 35%, var(--pit-border));
+  background:
+    radial-gradient(900px 200px at 0% 0%, rgba(78, 205, 196, 0.12), transparent 55%),
+    linear-gradient(180deg, #1a2430 0%, var(--pit-bg-elevated) 100%);
+}
+
+.hypixel-scan-control-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.hypixel-scan-control-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.hypixel-scan-control-lede {
+  margin: 0.35rem 0 0;
+  max-width: 36rem;
+}
+
+.hypixel-scan-status-pill {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--pit-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hypixel-scan-status-pill.is-on {
+  border-color: color-mix(in srgb, var(--pit-ok) 55%, var(--pit-border));
+  color: #b8f0d0;
+}
+
+.hypixel-scan-status-pill.is-off {
+  border-color: color-mix(in srgb, #e07a5f 55%, var(--pit-border));
+  color: #fecaca;
+  background: rgba(224, 122, 95, 0.12);
+}
+
+.hypixel-scan-control-detail {
+  margin: 0 0 0.85rem;
+  font-size: 0.92rem;
+}
+
+.hypixel-scan-resume-btn {
+  display: block;
+  width: 100%;
+  min-height: 3.25rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hypixel-scan-control-feedback {
+  margin: 0.75rem 0 0;
+  margin-bottom: 0;
+}
+
 .live-quota-meta {
   display: flex;
   flex-wrap: wrap;
