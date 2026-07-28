@@ -117,6 +117,10 @@ type HypixelUsagePayload = {
   estimatedBudgetPerWindow?: number | null;
   budgetUtilization?: number;
   databaseReady?: boolean;
+  scansPaused?: boolean;
+  circuitOpen?: boolean;
+  circuitDetail?: string | null;
+  consecutiveFailures?: number;
   error?: string;
   message?: string;
   ok?: boolean;

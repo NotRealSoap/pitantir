@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   appendHypixelApiCall,
+  clearHypixelApiCircuit,
+  getHypixelApiCircuit,
   getHypixelRateLimitSnapshot,
+  getHypixelScansPaused,
   handleHypixelApiCallOutcome,
   setHypixelRateLimitSnapshot,
+  setHypixelScansPaused,
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
 import {
@@ -47,16 +51,26 @@ async function usagePayload() {
       estimatedRequestsPerWindow: null,
       estimatedBudgetPerWindow: null,
       databaseReady: false,
+      scansPaused: false,
+      circuitOpen: false,
+      circuitDetail: null as string | null,
+      consecutiveFailures: 0,
     };
   }
 
-  const [snapshot, watchlist] = await Promise.all([
+  const [snapshot, watchlist, scansPaused, circuit] = await Promise.all([
     getHypixelRateLimitSnapshot(db),
     repo.listWatchlist(),
+    getHypixelScansPaused(db),
+    getHypixelApiCircuit(db),
   ]);
   return {
     ...buildHypixelUsageView({ configured, snapshot, watchlist }),
     databaseReady: true,
+    scansPaused,
+    circuitOpen: Boolean(circuit.trippedAt),
+    circuitDetail: circuit.lastFailureDetail,
+    consecutiveFailures: circuit.consecutiveFailures,
   };
 }
 
@@ -68,6 +82,8 @@ export async function GET() {
 /**
  * POST actions:
  * - { action: "probe" } — spend 1 request to refresh RateLimit headers
+ * - { action: "resume_scans" } — clear pause + failure circuit so Hypixel scanning runs again
+ * - { action: "pause_scans" } — stop scheduled + manual Hypixel calls
  * - { action: "apply_recommended_interval" } — set watch-list scan intervals to recommendation
  * - { action: "set_interval", scanIntervalSeconds: number } — set a custom interval for the watch list
  */
@@ -107,6 +123,25 @@ export async function POST(request: Request) {
       : "probe";
 
   try {
+    if (action === "resume_scans") {
+      await setHypixelScansPaused(db, false);
+      await clearHypixelApiCircuit(db);
+      return NextResponse.json({
+        ok: true,
+        message: "Hypixel scanning turned back on — pause and failure circuit cleared.",
+        ...(await usagePayload()),
+      });
+    }
+
+    if (action === "pause_scans") {
+      await setHypixelScansPaused(db, true);
+      return NextResponse.json({
+        ok: true,
+        message: "Hypixel scanning paused (scheduled + manual).",
+        ...(await usagePayload()),
+      });
+    }
+
     if (action === "probe") {
       const apiKey = getHypixelApiKey();
       if (!apiKey) {
