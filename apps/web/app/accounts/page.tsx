@@ -237,16 +237,27 @@ export default function AccountsPage() {
           </button>
         </div>
         <p className="muted" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
-          Pause stops all Hypixel API calls (scheduled + manual). After 3 consecutive Hypixel
-          failures the worker auto-pauses and pings Discord ops. “Fix username casing” uses Mojang
+          Pause stops all Hypixel API calls (scheduled + manual). After 3 consecutive hard
+          Hypixel failures (not rate limits) the worker auto-pauses and pings Discord ops. Rate
+          limits back off on their own — if you see “API circuit open” from a 429, wait for the
+          quota window to reset (or click Resume refreshing). “Fix username casing” uses Mojang
           (not Hypixel) so lowercase imports like <code>3amcatnoises9</code> become{" "}
           <code>3AMCatNoises9</code>.
         </p>
         {circuitOpen ? (
           <p role="alert" className="alert" style={{ marginBottom: 0, marginTop: "0.65rem" }}>
             Hypixel API circuit is open
-            {circuitDetail ? <> — {circuitDetail}</> : null}. Fix the outage, then click Resume
-            refreshing.
+            {circuitDetail ? <> — {circuitDetail}</> : null}.
+            {circuitDetail && /\b429\b|rate limit/i.test(circuitDetail) ? (
+              <>
+                {" "}
+                This looks like a rate-limit lockout. Wait until the live quota bar resets, then
+                click Resume refreshing (or pull the latest worker — it auto-resumes after the
+                window).
+              </>
+            ) : (
+              <> Fix the outage, then click Resume refreshing.</>
+            )}
           </p>
         ) : null}
         {hypixelUsageLabel ? (

@@ -4,7 +4,7 @@ import { accounts } from "../schema/accounts.js";
 import { AccountsRepository } from "../accounts/repository.js";
 import { getHypixelScansPaused } from "../accounts/scan-control.js";
 import { getHypixelRateLimitSnapshot } from "../accounts/hypixel-usage.js";
-import { isHypixelApiCircuitOpen } from "../accounts/hypixel-circuit.js";
+import { isHypixelApiCircuitOpen, maybeAutoResumeAfterRateLimitWindow } from "../accounts/hypixel-circuit.js";
 import {
   accountIs140er,
   effectiveScanIntervalSeconds,
@@ -53,6 +53,10 @@ export class ScanScheduler {
   }
 
   async tick(asOf: Date = now()): Promise<ScheduleTickResult> {
+    // Rate-limit circuits auto-clear once the Hypixel window resets so scanning
+    // does not stay stuck until someone finds Resume on Accounts.
+    await maybeAutoResumeAfterRateLimitWindow(this.db, asOf).catch(() => false);
+
     if (await getHypixelScansPaused(this.db)) {
       return {
         considered: 0,

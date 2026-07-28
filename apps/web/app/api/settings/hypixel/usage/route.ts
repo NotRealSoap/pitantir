@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   appendHypixelApiCall,
-  getHypixelApiCircuit,
   getHypixelRateLimitSnapshot,
-  getHypixelScansPaused,
   handleHypixelApiCallOutcome,
   setHypixelRateLimitSnapshot,
 } from "@pitantir/db";
@@ -113,15 +111,6 @@ export async function POST(request: Request) {
       const apiKey = getHypixelApiKey();
       if (!apiKey) {
         return NextResponse.json({ error: "Hypixel API key is not configured." }, { status: 400 });
-      }
-      if ((await getHypixelScansPaused(db)) || (await getHypixelApiCircuit(db)).trippedAt) {
-        return NextResponse.json(
-          {
-            error:
-              "Hypixel API calls are paused (manual pause or consecutive-failure circuit). Resume from Accounts first.",
-          },
-          { status: 503 },
-        );
       }
       const previous = await getHypixelRateLimitSnapshot(db);
       try {

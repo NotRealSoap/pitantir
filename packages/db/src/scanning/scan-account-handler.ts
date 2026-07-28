@@ -16,7 +16,10 @@ import { notifyDiscordForLiveEvents } from "../accounts/discord-webhook.js";
 import {
   getHypixelScansPaused,
 } from "../accounts/scan-control.js";
-import { isHypixelApiCircuitOpen } from "../accounts/hypixel-circuit.js";
+import {
+  isHypixelApiCircuitOpen,
+  maybeAutoResumeAfterRateLimitWindow,
+} from "../accounts/hypixel-circuit.js";
 import {
   accountIs140er,
   hotNextScanAt,
@@ -25,10 +28,12 @@ import {
   resolveEffectivePresence,
 } from "../accounts/presence.js";
 import { isPitpalPresenceAuthoritative } from "../accounts/pitpal-lobbies.js";
+import { getHypixelRateLimitSnapshot } from "../accounts/hypixel-usage.js";
 import { probePitpandaNoncePresence } from "../accounts/pitpanda-presence.js";
 import { ScansRepository, type Scan, type ScanTriggeredBy } from "./scans-repository.js";
 import type { Database } from "../client.js";
 import { newId } from "../identity/store.js";
+import { resetAtFromSnapshot } from "@pitantir/shared/inventory";
 
 export interface ScanAccountHandlerResult {
   scan: Scan;
@@ -125,6 +130,11 @@ export class ScanAccountHandler {
     }
 
     if ((await getHypixelScansPaused(this.db)) || (await isHypixelApiCircuitOpen(this.db))) {
+      // Rate-limit lockouts clear themselves once the window resets.
+      await maybeAutoResumeAfterRateLimitWindow(this.db).catch(() => false);
+    }
+
+    if ((await getHypixelScansPaused(this.db)) || (await isHypixelApiCircuitOpen(this.db))) {
       const failed = await this.scans.markFailure(scan.id, {
         errorCode: "upstream_unavailable",
         errorMessage:
@@ -135,6 +145,26 @@ export class ScanAccountHandler {
         enqueuedProcessScan: false,
         inventorySource: this.inventory.id,
       };
+    }
+
+    // Do not burn another 429 when the key is already empty this window.
+    const snapshot = await getHypixelRateLimitSnapshot(this.db);
+    if (snapshot) {
+      const resetAt = resetAtFromSnapshot(snapshot);
+      const exhausted =
+        snapshot.remaining <= Math.max(2, Math.floor(snapshot.limit * 0.05)) &&
+        resetAt.getTime() > Date.now();
+      if (exhausted) {
+        const failed = await this.scans.markFailure(scan.id, {
+          errorCode: "upstream_rate_limited",
+          errorMessage: `Hypixel quota exhausted (${snapshot.remaining} left); deferring until window resets.`,
+        });
+        return {
+          scan: failed,
+          enqueuedProcessScan: false,
+          inventorySource: this.inventory.id,
+        };
+      }
     }
 
     const fetched = await this.inventory.fetchInventory({

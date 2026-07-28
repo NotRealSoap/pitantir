@@ -63,6 +63,18 @@ describe("hypixel api circuit streak", () => {
   });
 });
 
+describe("isHypixelRateLimitOutcome", () => {
+  it("treats 429 and rate-limit details as soft failures", async () => {
+    const { isHypixelRateLimitOutcome } = await import("./hypixel-circuit.js");
+    expect(isHypixelRateLimitOutcome({ statusCode: 429 })).toBe(true);
+    expect(isHypixelRateLimitOutcome({ detail: "rate limited", statusCode: 0 })).toBe(true);
+    expect(isHypixelRateLimitOutcome({ detail: "upstream_rate_limited", statusCode: null })).toBe(
+      true,
+    );
+    expect(isHypixelRateLimitOutcome({ statusCode: 500, detail: "boom" })).toBe(false);
+  });
+});
+
 describe("ops alert mention config", () => {
   it("validates Discord snowflake user IDs", () => {
     expect(isDiscordUserId("123456789012345678")).toBe(true);
