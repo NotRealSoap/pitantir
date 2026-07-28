@@ -21,6 +21,7 @@ import {
 import { randomUUID } from "node:crypto";
 import {
   MockInventorySource,
+  PitPandaPlayerInventorySource,
   type InventorySource,
 } from "@pitantir/shared/inventory";
 import { HypixelPitInventorySource } from "@pitantir/shared/inventory/hypixel";
@@ -162,6 +163,15 @@ function createInventorySource(db: Database): InventorySource {
         }
       },
     });
+  }
+  if (mode === "pitpanda_player" || mode === "pitpanda_players") {
+    const apiKey = process.env.PITPANDA_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error(
+        "INVENTORY_SOURCE=pitpanda_player requires PITPANDA_API_KEY (save it on /settings and restart the worker)",
+      );
+    }
+    return new PitPandaPlayerInventorySource({ apiKey });
   }
   console.warn(
     JSON.stringify({
