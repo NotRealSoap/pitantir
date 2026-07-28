@@ -55,4 +55,31 @@ async function persistApiKey(apiKey: string): Promise<void> {
   lines.push(line);
 
   await writeFile(filePath, `${lines.join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
+
+  // Mirror into repo-root .env so `pnpm start:worker` can pick it up after restart.
+  await mirrorRootEnv(apiKey);
+}
+
+async function mirrorRootEnv(apiKey: string): Promise<void> {
+  const rootEnv = path.join(process.cwd(), "..", "..", ".env");
+  let existing = "";
+  try {
+    await access(rootEnv);
+    existing = await readFile(rootEnv, "utf8");
+  } catch {
+    existing = "";
+  }
+
+  const lines = existing
+    .split(/\r?\n/)
+    .filter(
+      (entry) =>
+        entry.trim().length > 0 &&
+        !entry.startsWith(`${KEY_NAME}=`) &&
+        !entry.startsWith("ITEM_DATA_PROVIDER="),
+    );
+
+  lines.push("ITEM_DATA_PROVIDER=pitpanda");
+  lines.push(`${KEY_NAME}=${apiKey}`);
+  await writeFile(rootEnv, `${lines.join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
 }
