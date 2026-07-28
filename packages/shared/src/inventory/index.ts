@@ -5,6 +5,7 @@ export * from "./mystic-display.js";
 export * from "./pit-materials.js";
 export * from "./extract.js";
 export * from "./inventory-diff.js";
+export * from "./failover.js";
 export * from "./mock.js";
 export * from "./mojang.js";
 export * from "./hypixel-rate-limit.js";

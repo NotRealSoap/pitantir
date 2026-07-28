@@ -20,6 +20,7 @@ import {
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
 import {
+  FailoverInventorySource,
   MockInventorySource,
   PitPandaPlayerInventorySource,
   type InventorySource,
@@ -59,7 +60,10 @@ export function loadWorkerEnv(): void {
 }
 
 function createInventorySource(db: Database): InventorySource {
-  const mode = (process.env.INVENTORY_SOURCE ?? "mock").toLowerCase();
+  const pitPandaKey = process.env.PITPANDA_API_KEY?.trim();
+  const defaultMode =
+    process.env.HYPIXEL_API_KEY?.trim() || pitPandaKey ? "auto" : "mock";
+  const mode = (process.env.INVENTORY_SOURCE ?? defaultMode).toLowerCase();
   if (mode === "mock") {
     return new MockInventorySource();
   }
@@ -74,7 +78,7 @@ function createInventorySource(db: Database): InventorySource {
     const fetchOnlineStatus =
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "1" ||
       (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "true";
-    return new HypixelPitInventorySource({
+    const hypixel = new HypixelPitInventorySource({
       apiKey,
       fetchOnlineStatus,
       getPreviousWindowSeconds: async () => {
@@ -163,15 +167,128 @@ function createInventorySource(db: Database): InventorySource {
         }
       },
     });
+    if (pitPandaKey) {
+      const pitpanda = new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
+      return new FailoverInventorySource({ primary: hypixel, secondary: pitpanda });
+    }
+    return hypixel;
   }
   if (mode === "pitpanda_player" || mode === "pitpanda_players") {
-    const apiKey = process.env.PITPANDA_API_KEY?.trim();
-    if (!apiKey) {
+    if (!pitPandaKey) {
       throw new Error(
         "INVENTORY_SOURCE=pitpanda_player requires PITPANDA_API_KEY (save it on /settings and restart the worker)",
       );
     }
-    return new PitPandaPlayerInventorySource({ apiKey });
+    return new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
+  }
+  if (mode === "auto" || mode === "hybrid" || mode === "failover") {
+    const hypixelKey = process.env.HYPIXEL_API_KEY?.trim();
+    if (hypixelKey && pitPandaKey) {
+      const accounts = new AccountsRepository(db);
+      const fetchOnlineStatus =
+        (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "1" ||
+        (process.env.HYPIXEL_STATUS_CHECKS ?? "").toLowerCase() === "true";
+      const hypixel = new HypixelPitInventorySource({
+        apiKey: hypixelKey,
+        fetchOnlineStatus,
+        getPreviousWindowSeconds: async () => {
+          const previous = await getHypixelRateLimitSnapshot(db);
+          return previous?.windowSeconds ?? null;
+        },
+        onRateLimitObserved: async (snapshot) => {
+          try {
+            await setHypixelRateLimitSnapshot(db, snapshot);
+          } catch (error) {
+            console.warn(
+              JSON.stringify({
+                msg: "failed to persist hypixel rate limit",
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          }
+        },
+        onApiCall: async (call) => {
+          try {
+            await appendHypixelApiCall(db, {
+              id: randomUUID(),
+              at: new Date().toISOString(),
+              endpoint: call.endpoint,
+              accountId: call.accountId ?? null,
+              mcUsername: call.mcUsername ?? null,
+              ok: call.ok,
+              statusCode: call.statusCode,
+              detail: call.detail ?? null,
+            });
+          } catch (error) {
+            console.warn(
+              JSON.stringify({
+                msg: "failed to persist hypixel api call",
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          }
+          try {
+            const circuit = await handleHypixelApiCallOutcome(db, {
+              ok: call.ok,
+              detail: call.detail ?? null,
+              endpoint: call.endpoint,
+              statusCode: call.statusCode,
+            });
+            if (circuit.tripped) {
+              console.error(
+                JSON.stringify({
+                  msg: "hypixel api circuit open — paused after consecutive failures",
+                  consecutiveFailures: circuit.consecutiveFailures,
+                  detail: call.detail ?? null,
+                  endpoint: call.endpoint,
+                  statusCode: call.statusCode,
+                }),
+              );
+            }
+          } catch (error) {
+            console.warn(
+              JSON.stringify({
+                msg: "failed to update hypixel api circuit",
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          }
+        },
+        onIdentityResolved: async (accountId, identity) => {
+          try {
+            await accounts.update(accountId, {
+              mcUuid: identity.mcUuid,
+              mcUsername: identity.mcUsername,
+            });
+          } catch (error) {
+            try {
+              await accounts.update(accountId, { mcUuid: identity.mcUuid });
+            } catch (uuidError) {
+              console.warn(
+                JSON.stringify({
+                  msg: "failed to persist resolved identity",
+                  accountId,
+                  error: error instanceof Error ? error.message : String(error),
+                  uuidError: uuidError instanceof Error ? uuidError.message : String(uuidError),
+                }),
+              );
+            }
+          }
+        },
+      });
+      const pitpanda = new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
+      return new FailoverInventorySource({ primary: hypixel, secondary: pitpanda });
+    }
+    if (hypixelKey) {
+      process.env.INVENTORY_SOURCE = "hypixel_pit";
+      return createInventorySource(db);
+    }
+    if (pitPandaKey) {
+      return new PitPandaPlayerInventorySource({ apiKey: pitPandaKey });
+    }
+    throw new Error(
+      "INVENTORY_SOURCE=auto requires HYPIXEL_API_KEY and/or PITPANDA_API_KEY (save one on /settings and restart the worker)",
+    );
   }
   console.warn(
     JSON.stringify({
