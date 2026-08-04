@@ -21,13 +21,12 @@ import {
   type Database,
 } from "@pitantir/db";
 import { randomUUID } from "node:crypto";
+import { MockInventorySource, type InventorySource } from "@pitantir/shared/inventory";
 import {
   FailoverInventorySource,
-  MockInventorySource,
+  HypixelPitInventorySource,
   PitPandaPlayerInventorySource,
-  type InventorySource,
-} from "@pitantir/shared/inventory";
-import { HypixelPitInventorySource } from "@pitantir/shared/inventory/hypixel";
+} from "@pitantir/shared/inventory/node";
 import type postgres from "postgres";
 import { WorkerLoop } from "./loop.js";
 
