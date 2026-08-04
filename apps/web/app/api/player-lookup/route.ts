@@ -40,33 +40,78 @@ function asNumber(value: unknown): number | null {
 function normalizeSlot(raw: unknown, index: number) {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
-  const name = typeof row.name === "string" ? stripMcFormatting(row.name) ?? row.name : null;
-  const lore = Array.isArray(row.lore)
-    ? row.lore
+
+  // PitPanda decoded bags use `name` / `desc` / numeric `id` / `meta` / `nonce`.
+  const titleFromName =
+    typeof row.name === "string" ? stripMcFormatting(row.name) ?? row.name : null;
+  const titleFromDisplay =
+    typeof row.title === "string" ? stripMcFormatting(row.title) ?? row.title : null;
+  const title = titleFromName ?? titleFromDisplay;
+
+  const loreSource = Array.isArray(row.desc)
+    ? row.desc
+    : Array.isArray(row.lore)
+      ? row.lore
+      : null;
+  const lore = loreSource
+    ? loreSource
         .filter((line): line is string => typeof line === "string")
         .map((line) => stripMcFormatting(line) ?? line)
     : null;
+
   const extras =
     row.ExtraAttributes && typeof row.ExtraAttributes === "object"
       ? (row.ExtraAttributes as Record<string, unknown>)
       : row;
-  const nonce = coerceInventoryNonce(extras.Nonce ?? extras.nonce ?? row.nonce ?? row.Nonce);
+
+  const nonce = coerceInventoryNonce(
+    row.nonce ?? row.Nonce ?? extras.Nonce ?? extras.nonce,
+  );
   const count = asNumber(row.count ?? row.Count) ?? 1;
-  const id = typeof row.id === "string" ? row.id : typeof row.itemId === "string" ? row.itemId : null;
+
+  let id: string | null = null;
+  if (typeof row.id === "number" && Number.isFinite(row.id)) id = String(Math.trunc(row.id));
+  else if (typeof row.id === "string") id = row.id;
+  else if (typeof row.itemId === "string") id = row.itemId;
+  else if (typeof row.type === "string") id = row.type;
+
+  const metaRaw = row.meta ?? row.damage ?? row.Damage ?? extras.color ?? extras.Color ?? null;
+  let meta: string | number | null = null;
+  if (typeof metaRaw === "number" && Number.isFinite(metaRaw)) meta = Math.trunc(metaRaw);
+  else if (typeof metaRaw === "string" && metaRaw.trim()) meta = metaRaw.trim();
+
+  const customFromMystic = Array.isArray(row.mysticEnchants)
+    ? Object.fromEntries(
+        row.mysticEnchants
+          .filter(
+            (ench): ench is { key?: unknown; tier?: unknown } =>
+              Boolean(ench && typeof ench === "object" && !Array.isArray(ench)),
+          )
+          .map((ench) => {
+            const key = String(ench.key ?? "").trim();
+            const tier = Number.isFinite(Number(ench.tier)) ? Math.trunc(Number(ench.tier)) : 0;
+            return [key, tier] as const;
+          })
+          .filter((entry) => entry[0].length > 0 && entry[1] > 0),
+      )
+    : null;
+
   return {
     slot: asNumber(row.slot) ?? index,
     id,
+    meta,
     count,
-    title: name,
+    title,
     nonce,
     lore,
     customEnchants:
-      extras.CustomEnchants && typeof extras.CustomEnchants === "object"
-        ? (extras.CustomEnchants as Record<string, number>)
-        : null,
-    lives: asNumber(extras.Lives ?? extras.lives),
-    maxLives: asNumber(extras.MaxLives ?? extras.maxLives),
-    raw: row,
+      customFromMystic && Object.keys(customFromMystic).length > 0
+        ? customFromMystic
+        : extras.CustomEnchants && typeof extras.CustomEnchants === "object"
+          ? (extras.CustomEnchants as Record<string, number>)
+          : null,
+    lives: asNumber(extras.Lives ?? extras.lives ?? row.lives),
+    maxLives: asNumber(extras.MaxLives ?? extras.maxLives ?? row.maxLives),
   };
 }
 

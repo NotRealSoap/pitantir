@@ -1,0 +1,65 @@
+/* PitPal / PitPanda-inspired Minecraft inventory chrome */
+.mc-inventory {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: calc(9 * 55.4px);
+  margin: 0.35rem 0 0.75rem;
+}
+
+.mc-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 1.7px;
+  padding: 0;
+  border-radius: 10px;
+  border: 2px solid #333;
+  background: #333;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.1s ease;
+}
+
+.mc-slot:hover,
+.mc-slot:focus-visible {
+  border-color: #aaa;
+  outline: none;
+}
+
+.mc-slot.is-empty {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.mc-slot.is-mystic {
+  box-shadow: inset 0 0 0 1px rgba(192, 132, 252, 0.35);
+}
+
+.mc-slot.is-legendary {
+  border-color: #e0b14a;
+}
+
+.mc-slot.is-rare {
+  border-color: #4ecdc4;
+}
+
+.mc-item-count {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.item_ {
+  position: relative;
+  image-rendering: pixelated;
+}

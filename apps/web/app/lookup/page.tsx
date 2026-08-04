@@ -3,10 +3,14 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MysticItemCard } from "../../src/components/MysticItemCard";
+import { MinecraftItemIcon } from "../../src/components/MinecraftItemIcon";
+import "../mc-items.css";
+import "../mc-inventory.css";
 
 type LookupItem = {
   slot: number;
   id: string | null;
+  meta?: string | number | null;
   count: number;
   title: string | null;
   nonce: string | null;
@@ -73,33 +77,64 @@ function formatLastSave(ts: number | null | undefined): string {
   return `${days} days ago`;
 }
 
+function slotAccentClass(item: LookupItem | null): string {
+  if (!item?.title) return "";
+  const name = item.title.toLowerCase();
+  if (name.includes("legendary")) return "is-legendary";
+  if (item.lore?.some((line) => /rare/i.test(line))) return "is-rare";
+  if (item.nonce) return "is-mystic";
+  return "";
+}
+
 function BagSection({
   title,
   items,
+  rows = 3,
   onSelect,
 }: {
   title: string;
   items: LookupItem[];
+  rows?: number;
   onSelect: (item: LookupItem) => void;
 }) {
+  const width = 9;
+  const minSlots = rows * width;
+  const paddedLen = Math.max(minSlots, Math.ceil(Math.max(items.length, 1) / width) * width);
+  const slots: Array<LookupItem | null> = Array.from({ length: paddedLen }, (_, index) => items[index] ?? null);
+
   return (
     <section className="lookup-bag">
       <h3 className="section-title">{title}</h3>
-      {items.length === 0 ? <p className="muted">Empty.</p> : null}
-      <div className="lookup-grid">
-        {items.map((item, index) => (
-          <button
-            key={`${title}-${item.slot}-${item.nonce ?? index}`}
-            type="button"
-            className="lookup-slot"
-            onClick={() => onSelect(item)}
-            title={item.title ?? "Item"}
-          >
-            <span className="lookup-slot-title">{item.title ?? item.id ?? "Item"}</span>
-            {item.count > 1 ? <span className="lookup-slot-count">{item.count}</span> : null}
-            {item.nonce ? <span className="lookup-slot-nonce">{item.nonce}</span> : null}
-          </button>
-        ))}
+      <div className="mc-inventory" role="list" aria-label={title}>
+        {slots.map((item, index) => {
+          if (!item) {
+            return (
+              <div
+                key={`${title}-empty-${index}`}
+                className="mc-slot is-empty"
+                role="listitem"
+                aria-label="Empty slot"
+              />
+            );
+          }
+          return (
+            <button
+              key={`${title}-${item.slot}-${item.nonce ?? item.id ?? index}`}
+              type="button"
+              className={`mc-slot ${slotAccentClass(item)}`}
+              onClick={() => onSelect(item)}
+              title={item.title ?? "Item"}
+              role="listitem"
+            >
+              <MinecraftItemIcon
+                id={item.id}
+                title={item.title}
+                meta={item.meta}
+                count={item.count}
+              />
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -168,7 +203,17 @@ function ItemModal({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="lookup-modal-head">
-          <h2 className="lookup-modal-title">{item.title ?? "Item"}</h2>
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+            <span className="mc-slot" style={{ pointerEvents: "none" }}>
+              <MinecraftItemIcon
+                id={item.id}
+                title={item.title}
+                meta={item.meta}
+                count={item.count}
+              />
+            </span>
+            <h2 className="lookup-modal-title">{item.title ?? "Item"}</h2>
+          </div>
           <button type="button" className="events-filter" onClick={onClose}>
             Close
           </button>
@@ -360,14 +405,21 @@ function LookupPageInner() {
             <BagSection
               title="Ender Chest"
               items={data?.storage?.enderChest ?? []}
+              rows={3}
               onSelect={setSelected}
             />
             <BagSection
               title="Inventory"
               items={data?.storage?.inventory ?? []}
+              rows={4}
               onSelect={setSelected}
             />
-            <BagSection title="Stash" items={data?.storage?.stash ?? []} onSelect={setSelected} />
+            <BagSection
+              title="Stash"
+              items={data?.storage?.stash ?? []}
+              rows={3}
+              onSelect={setSelected}
+            />
           </div>
         </div>
       ) : null}

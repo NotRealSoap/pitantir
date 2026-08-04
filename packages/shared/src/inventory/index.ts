@@ -15,4 +15,5 @@ export * from "./mojang.js";
 export * from "./hypixel-rate-limit.js";
 export * from "./hypixel-presence.js";
 export * from "./mc-text.js";
+export * from "./legacy-item-id.js";
 
