@@ -219,9 +219,14 @@ export function LiveStatusBar() {
               <div className="live-kicker">Live Hypixel</div>
               <div className="live-subhead">{subhead}</div>
             </div>
-            <Link href="/settings#hypixel-scan-control" className="live-settings-link">
-              Scan control
-            </Link>
+            <div className="live-settings-links">
+              <Link href="/api-board" className="live-settings-link">
+                API board
+              </Link>
+              <Link href="/settings#hypixel-scan-control" className="live-settings-link">
+                Scan control
+              </Link>
+            </div>
           </header>
 
           <div className="live-quota-readout">

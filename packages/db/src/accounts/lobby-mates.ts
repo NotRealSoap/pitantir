@@ -624,7 +624,6 @@ async function saveLobbyMateSessions(
   await db.insert(adminSettings).values({
     key: LOBBY_MATE_SESSIONS_KEY,
     value: state,
-    createdAt: stamp,
     updatedAt: stamp,
   });
 }

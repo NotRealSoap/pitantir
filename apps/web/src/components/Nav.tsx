@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+/** Pitantir 2.0 primary chrome — see PITANTIR_2.md */
 const links = [
-  { href: "/accounts", label: "Watch" },
-  { href: "/events", label: "Events" },
-  { href: "/account", label: "History" },
-  { href: "/items", label: "Items" },
-  { href: "/search", label: "Search" },
-  { href: "/scans", label: "Scans" },
-  { href: "/settings", label: "Settings" },
+  { href: "/api-board", label: "API" },
+  { href: "/news", label: "News" },
+  { href: "/lookup", label: "Player Lookup" },
+  { href: "/duped", label: "Duped" },
+  { href: "/extras", label: "Extras" },
 ];
 
 export function Nav() {

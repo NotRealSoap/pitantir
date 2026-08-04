@@ -1184,7 +1184,7 @@ async function editDiscordWebhookMessage(
   payload: {
     content: string;
     embeds: Array<Record<string, unknown>>;
-    allowed_mentions?: { parse?: string[]; users?: string[] };
+    allowed_mentions?: { parse?: string[]; users?: string[]; roles?: string[] };
   },
 ): Promise<boolean> {
   const result = await discordFetch(`${webhookUrl}/messages/${messageId}`, {
@@ -1200,7 +1200,7 @@ async function postRawDiscordWebhook(
   payload: {
     content: string;
     embeds?: Array<Record<string, unknown>>;
-    allowed_mentions?: { parse?: string[]; users?: string[] };
+    allowed_mentions?: { parse?: string[]; users?: string[]; roles?: string[] };
   },
 ): Promise<{ ok: boolean; status: number; messageId?: string; error?: string }> {
   const result = await discordFetch(`${webhookUrl}?wait=true`, {

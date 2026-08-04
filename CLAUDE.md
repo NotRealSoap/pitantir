@@ -5,12 +5,13 @@ This file orients coding agents and humans implementing Pitantir. Product requir
 ## Read first
 
 1. `SPEC.md` — purpose and constraints  
-2. `ARCHITECTURE.md` — package boundaries and MVP infra limits  
-3. `DATA_MODEL.md` — schema truth  
-4. `ITEM_IDENTITY.md` — identity, merges, splits, clone collisions  
-5. `SCANNING_RULES.md` — scan idempotency and location inference  
-6. `IMPORT_FORMAT.md` — external claims  
-7. `MVP_TASKS.md` — ordered tasks  
+2. `PITANTIR_2.md` — 2.0 operator shell (API / News / Lookup / Duped / Extras)  
+3. `ARCHITECTURE.md` — package boundaries and MVP infra limits  
+4. `DATA_MODEL.md` — schema truth  
+5. `ITEM_IDENTITY.md` — identity, merges, splits, clone collisions  
+6. `SCANNING_RULES.md` — scan idempotency and location inference  
+7. `IMPORT_FORMAT.md` — external claims  
+8. `MVP_TASKS.md` — ordered tasks  
 
 If code and docs disagree, **fix the docs** or update docs in the same change with rationale.
 
