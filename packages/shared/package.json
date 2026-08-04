@@ -24,6 +24,10 @@
       "types": "./src/inventory/hypixel.ts",
       "default": "./src/inventory/hypixel.ts"
     },
+    "./inventory/node": {
+      "types": "./src/inventory/node.ts",
+      "default": "./src/inventory/node.ts"
+    },
     "./account-history": {
       "types": "./src/account-history/index.ts",
       "default": "./src/account-history/index.ts"

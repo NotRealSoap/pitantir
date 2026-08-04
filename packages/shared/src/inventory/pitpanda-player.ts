@@ -3,7 +3,7 @@ import type {
   InventoryFetchResult,
   InventorySource,
 } from "./types.js";
-import { stripMcFormatting } from "./pit-nbt.js";
+import { stripMcFormatting } from "./mc-text.js";
 import { coerceInventoryNonce } from "./nonce.js";
 
 export interface PitPandaPlayerInventorySourceOptions {

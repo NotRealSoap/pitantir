@@ -3,6 +3,8 @@
  * Textures map to vanilla Minecraft items used as Pit currencies/tools.
  */
 
+import { stripMcFormatting } from "./mc-text.js";
+
 export type PitMaterialKey = "vile" | "gem" | "feather" | "shears";
 
 export type PitMaterialDef = {
@@ -51,11 +53,6 @@ for (const def of PIT_TRACKED_MATERIALS) {
 
 export function pitMaterialDef(key: PitMaterialKey): PitMaterialDef {
   return PIT_TRACKED_MATERIALS.find((row) => row.key === key)!;
-}
-
-function stripMcFormatting(value: string | null | undefined): string | null {
-  if (!value) return null;
-  return value.replace(/§./g, "").trim() || null;
 }
 
 /**

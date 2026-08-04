@@ -2,6 +2,9 @@ import { gunzipSync } from "node:zlib";
 import nbt from "prismarine-nbt";
 import { coerceInventoryUuid, pickInventoryNonce } from "./nonce.js";
 import { resolvePitMaterialKey, pitMaterialDef } from "./pit-materials.js";
+import { stripMcFormatting } from "./mc-text.js";
+
+export { stripMcFormatting } from "./mc-text.js";
 
 export interface DecodedInventoryItem {
   slot: number | null;
@@ -219,9 +222,4 @@ function normalizePages(pages: unknown): string | null {
   return pages
     .map((page) => (typeof page === "string" ? stripMcFormatting(page) : String(page)))
     .join("\n");
-}
-
-export function stripMcFormatting(value: string | null): string | null {
-  if (value === null) return null;
-  return value.replace(/§./g, "").trim();
 }
