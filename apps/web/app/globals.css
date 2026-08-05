@@ -54,7 +54,7 @@ code {
 }
 
 .shell {
-  max-width: 1100px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 1.25rem 1.25rem 3rem;
 }
@@ -1076,4 +1076,130 @@ label {
   .mystic-card {
     padding: 0.75rem;
   }
+}
+
+/* —— Pitantir 2.0 —— */
+.live-settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.api-section { margin-top: 1.5rem; }
+.api-section-head { display: flex; align-items: center; gap: 0.6rem; }
+.api-list { display: grid; gap: 0.65rem; }
+.api-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.85rem 1rem; border-radius: 10px;
+  border: 1px solid var(--pit-border); background: var(--pit-bg-elevated);
+}
+.api-row.outline-green {
+  border-color: color-mix(in srgb, var(--pit-ok) 75%, var(--pit-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pit-ok) 45%, transparent);
+}
+.api-row.outline-yellow {
+  border-color: color-mix(in srgb, var(--pit-warn) 80%, var(--pit-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pit-warn) 40%, transparent);
+}
+.api-row-name { font-family: var(--font-display); font-size: 1.05rem; }
+.api-row-meta { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.25rem; font-size: 0.85rem; }
+.api-row-ping { font-family: var(--font-mono); font-size: 0.9rem; color: var(--pit-aqua); white-space: nowrap; }
+
+.lookup-search { display: flex; flex-wrap: wrap; gap: 0.65rem; margin: 1rem 0 1.25rem; }
+.lookup-search input {
+  flex: 1 1 16rem; min-width: 12rem; padding: 0.7rem 0.85rem; border-radius: 8px;
+  border: 1px solid var(--pit-border); background: var(--pit-bg-soft); color: var(--pit-text);
+}
+.lookup-search button {
+  padding: 0.7rem 1.1rem; border-radius: 8px; border: 0;
+  background: var(--pit-aqua); color: #062a28; font-weight: 600; cursor: pointer;
+}
+.lookup-layout {
+  display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 1rem; align-items: flex-start;
+}
+.lookup-profile-head { display: flex; gap: 0.85rem; align-items: center; margin-bottom: 1rem; }
+.lookup-avatar { border-radius: 8px; image-rendering: pixelated; border: 1px solid var(--pit-border); }
+.lookup-ign { font-family: var(--font-display); font-size: 1.25rem; color: var(--pit-aqua); }
+.lookup-stats { display: grid; gap: 0.55rem; margin: 0 0 1rem; }
+.lookup-stats div {
+  display: flex; justify-content: space-between; gap: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--pit-border) 70%, transparent);
+  padding-bottom: 0.35rem;
+}
+.lookup-stats dt { color: var(--pit-muted); }
+.lookup-stats dd { margin: 0; text-align: right; }
+.delta-up { color: var(--pit-ok); margin-left: 0.35rem; font-size: 0.85rem; }
+.delta-down { color: var(--pit-danger); margin-left: 0.35rem; font-size: 0.85rem; }
+.lookup-gold { color: var(--pit-gold); }
+.lookup-bag + .lookup-bag { margin-top: 1.25rem; }
+.lookup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.45rem; }
+.lookup-slot {
+  position: relative; min-height: 4.5rem; padding: 0.45rem; border-radius: 8px;
+  border: 1px solid var(--pit-border); background: #0c1017; color: inherit; text-align: left; cursor: pointer;
+}
+.lookup-slot:hover { border-color: var(--pit-aqua); }
+.lookup-slot-title { display: block; font-size: 0.78rem; line-height: 1.25; }
+.lookup-slot-count {
+  position: absolute; right: 0.3rem; bottom: 0.2rem;
+  font-family: var(--font-mono); font-size: 0.75rem; color: var(--pit-gold);
+}
+.lookup-slot-nonce {
+  display: block; margin-top: 0.35rem; font-family: var(--font-mono);
+  font-size: 0.65rem; color: var(--pit-muted); word-break: break-all;
+}
+.lookup-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65);
+  display: grid; place-items: center; padding: 1rem; z-index: 40;
+}
+.lookup-modal {
+  width: min(560px, 100%); max-height: min(90vh, 900px); overflow: auto;
+  padding: 1.1rem 1.2rem 1.3rem; border-radius: 12px;
+  border: 1px solid var(--pit-border); background: var(--pit-bg-elevated); box-shadow: var(--shadow);
+}
+.lookup-modal-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: flex-start; }
+.lookup-modal-title { margin: 0; color: #f07178; font-family: var(--font-display); font-size: 1.2rem; }
+.suspicious-check { display: flex; gap: 0.55rem; align-items: flex-start; margin: 0.85rem 0; }
+
+.duped-layout {
+  display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 1rem; align-items: flex-start;
+}
+.duped-family { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.85rem; }
+.duped-chip {
+  border: 1px solid var(--pit-border); background: var(--pit-bg-soft); color: inherit;
+  border-radius: 999px; padding: 0.35rem 0.7rem; cursor: pointer;
+}
+.duped-chip.is-active { border-color: var(--pit-gold); color: var(--pit-gold); }
+.duped-item-head {
+  display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; margin-bottom: 0.85rem;
+}
+.duped-grid { background: #050608; border-color: #1a1d24; min-height: 320px; }
+.duped-axis { font-size: 0.8rem; margin-bottom: 0.55rem; }
+.duped-days { display: grid; gap: 0.25rem; max-height: 520px; overflow: auto; }
+.duped-day {
+  display: grid; grid-template-columns: 3.2rem 1fr; gap: 0.55rem; align-items: center;
+  padding: 0.2rem 0.35rem; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left;
+}
+.duped-day.is-active { background: rgba(78, 205, 196, 0.08); }
+.duped-day-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--pit-muted); }
+.duped-day-track {
+  position: relative; height: 18px; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+.duped-node {
+  position: absolute; top: 3px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--pit-aqua); border: 1px solid #0b0f16;
+}
+.duped-node.is-manual { background: var(--pit-gold); }
+.duped-dot-gap {
+  position: absolute; inset: 8px 8% auto;
+  border-top: 1px dotted rgba(154, 167, 189, 0.55);
+}
+.linkish {
+  background: none; border: 0; color: var(--pit-aqua); cursor: pointer; padding: 0; text-decoration: underline;
+}
+@media (max-width: 860px) {
+  .lookup-layout, .duped-layout { grid-template-columns: 1fr; }
 }

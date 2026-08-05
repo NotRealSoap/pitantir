@@ -38,6 +38,9 @@ importers:
       next:
         specifier: ^15.5.20
         version: 15.5.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       react:
         specifier: ^19.2.7
         version: 19.2.7

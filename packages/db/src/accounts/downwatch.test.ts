@@ -18,6 +18,21 @@ describe("parseDownwatchCommand", () => {
     expect(parseDownwatchCommand("!dw help")).toEqual({ action: "help" });
   });
 
+  it("parses quiet / soft / silent add and remove", () => {
+    expect(parseDownwatchCommand("!dw quiet add Alice")).toEqual({
+      action: "quiet_add",
+      mcUsername: "Alice",
+    });
+    expect(parseDownwatchCommand("!downwatch soft remove Bob")).toEqual({
+      action: "quiet_remove",
+      mcUsername: "Bob",
+    });
+    expect(parseDownwatchCommand("!dw silent Steve")).toEqual({
+      action: "quiet_add",
+      mcUsername: "Steve",
+    });
+  });
+
   it("treats bare !downwatch Name as add", () => {
     expect(parseDownwatchCommand("!downwatch Steve")).toEqual({
       action: "add",

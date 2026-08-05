@@ -15,6 +15,7 @@
     "@pitantir/db": "workspace:*",
     "@pitantir/shared": "workspace:*",
     "next": "^15.5.20",
+    "postgres": "^3.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-force-graph-2d": "^1.29.1"

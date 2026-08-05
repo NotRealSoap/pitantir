@@ -511,6 +511,8 @@ export async function POST(request: Request) {
         ? non140erDashboard.url
         : current.non140erDashboardWebhookUrl,
       monitorWebhookUrl: monitor.provided ? monitor.url : current.monitorWebhookUrl,
+      monitorDashboardMessageId: current.monitorDashboardMessageId,
+      monitorDashboardKey: current.monitorDashboardKey,
       downwatchWebhookUrl: downwatchWebhook.provided
         ? downwatchWebhook.url
         : current.downwatchWebhookUrl,
