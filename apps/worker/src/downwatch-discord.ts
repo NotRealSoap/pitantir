@@ -1,12 +1,15 @@
 import type { Database } from "@pitantir/db";
 import {
   addDownwatch,
+  addQuietDownwatch,
   getDiscordWebhookSettings,
   getDownwatchState,
   listDownwatch,
+  listQuietDownwatch,
   parseDownwatchCommand,
   refreshDiscordOnlineDashboard,
   removeDownwatch,
+  removeQuietDownwatch,
   setDownwatchCursor,
 } from "@pitantir/db";
 
@@ -133,21 +136,27 @@ export async function pollDownwatchDiscordCommands(db: Database): Promise<{
           channelId,
           [
             "**Downwatch commands**",
-            "`!downwatch add <IGN>` — ping role when they go PitPal DOWN",
-            "`!downwatch remove <IGN>`",
+            "`!downwatch add <IGN>` — webhook + role ping on PitPal DOWN",
+            "`!downwatch quiet add <IGN>` — webhook only (no role ping)",
+            "`!downwatch remove <IGN>` / `!downwatch quiet remove <IGN>`",
             "`!downwatch list`",
-            "Aliases: `!dw …`",
+            "Aliases: `!dw …`, `quiet`/`soft`/`silent`",
           ].join("\n"),
         );
       } else if (command.action === "list") {
-        const entries = await listDownwatch(db);
-        await reply(
-          token,
-          channelId,
+        const [entries, quiet] = await Promise.all([
+          listDownwatch(db),
+          listQuietDownwatch(db),
+        ]);
+        const lines = [
           entries.length === 0
-            ? "Downwatch list is empty."
-            : `Downwatch (${entries.length}): ${entries.map((row) => row.mcUsername).join(", ")}`,
-        );
+            ? "Ping list: (empty)"
+            : `Ping list (${entries.length}): ${entries.map((row) => row.mcUsername).join(", ")}`,
+          quiet.length === 0
+            ? "Quiet list: (empty)"
+            : `Quiet list (${quiet.length}): ${quiet.map((row) => row.mcUsername).join(", ")}`,
+        ];
+        await reply(token, channelId, lines.join("\n"));
       } else if (command.action === "add") {
         const result = await addDownwatch(db, command.mcUsername, { addedBy: who });
         await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
@@ -155,10 +164,10 @@ export async function pollDownwatchDiscordCommands(db: Database): Promise<{
           token,
           channelId,
           result.created
-            ? `Added **${result.entry.mcUsername}** to downwatch${
+            ? `Added **${result.entry.mcUsername}** to downwatch (role ping)${
                 result.promoted ? " (promoted to watchlist)" : ""
               }.`
-            : `**${result.entry.mcUsername}** is already on downwatch.`,
+            : `**${result.entry.mcUsername}** is already on downwatch (role ping).`,
         );
       } else if (command.action === "remove") {
         const result = await removeDownwatch(db, command.mcUsername);
@@ -169,6 +178,28 @@ export async function pollDownwatchDiscordCommands(db: Database): Promise<{
           result.removed
             ? `Removed **${result.mcUsername}** from downwatch.`
             : `**${result.mcUsername}** was not on downwatch.`,
+        );
+      } else if (command.action === "quiet_add") {
+        const result = await addQuietDownwatch(db, command.mcUsername, { addedBy: who });
+        await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+        await reply(
+          token,
+          channelId,
+          result.created
+            ? `Added **${result.entry.mcUsername}** to quiet downwatch (no role ping)${
+                result.promoted ? " (promoted to watchlist)" : ""
+              }.`
+            : `**${result.entry.mcUsername}** is already on quiet downwatch.`,
+        );
+      } else if (command.action === "quiet_remove") {
+        const result = await removeQuietDownwatch(db, command.mcUsername);
+        await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+        await reply(
+          token,
+          channelId,
+          result.removed
+            ? `Removed **${result.mcUsername}** from quiet downwatch.`
+            : `**${result.mcUsername}** was not on quiet downwatch.`,
         );
       }
       processed += 1;

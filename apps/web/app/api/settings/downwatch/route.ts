@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   addDownwatch,
+  addQuietDownwatch,
   getDiscordWebhookSettings,
   listDownwatch,
+  listQuietDownwatch,
   refreshDiscordOnlineDashboard,
   removeDownwatch,
+  removeQuietDownwatch,
 } from "@pitantir/db";
 import { getDatabase, isUsingPostgres } from "../../../../src/server/runtime";
 import { InMemoryRateLimiter } from "../../../../src/server/rate-limit";
@@ -27,12 +30,14 @@ export async function GET() {
   if (!db) {
     return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
   }
-  const [entries, settings] = await Promise.all([
+  const [entries, quietEntries, settings] = await Promise.all([
     listDownwatch(db),
+    listQuietDownwatch(db),
     getDiscordWebhookSettings(db),
   ]);
   return NextResponse.json({
     entries,
+    quietEntries,
     downwatchRoleId: settings.downwatchRoleId,
     downwatchChannelId: settings.downwatchChannelId,
     downwatchWebhookConfigured: Boolean(settings.downwatchWebhookUrl),
@@ -74,10 +79,11 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: true,
         message: result.created
-          ? `Added ${result.entry.mcUsername} to downwatch.`
+          ? `Added ${result.entry.mcUsername} to downwatch (role ping).`
           : `${result.entry.mcUsername} already on downwatch.`,
         entry: result.entry,
         entries: await listDownwatch(db),
+        quietEntries: await listQuietDownwatch(db),
       });
     }
     if (action === "remove") {
@@ -89,10 +95,36 @@ export async function POST(request: Request) {
           ? `Removed ${result.mcUsername} from downwatch.`
           : `${result.mcUsername} was not on downwatch.`,
         entries: await listDownwatch(db),
+        quietEntries: await listQuietDownwatch(db),
+      });
+    }
+    if (action === "quiet_add") {
+      const result = await addQuietDownwatch(db, mcUsername, { addedBy: "settings" });
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+      return NextResponse.json({
+        ok: true,
+        message: result.created
+          ? `Added ${result.entry.mcUsername} to quiet downwatch (no role ping).`
+          : `${result.entry.mcUsername} already on quiet downwatch.`,
+        entry: result.entry,
+        entries: await listDownwatch(db),
+        quietEntries: await listQuietDownwatch(db),
+      });
+    }
+    if (action === "quiet_remove") {
+      const result = await removeQuietDownwatch(db, mcUsername);
+      await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+      return NextResponse.json({
+        ok: true,
+        message: result.removed
+          ? `Removed ${result.mcUsername} from quiet downwatch.`
+          : `${result.mcUsername} was not on quiet downwatch.`,
+        entries: await listDownwatch(db),
+        quietEntries: await listQuietDownwatch(db),
       });
     }
     return NextResponse.json(
-      { error: 'Unknown action. Use "add" or "remove".' },
+      { error: 'Unknown action. Use "add", "remove", "quiet_add", or "quiet_remove".' },
       { status: 400 },
     );
   } catch (error) {

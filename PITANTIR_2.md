@@ -59,7 +59,7 @@ Reference: PitPal Player Lookup + item details modal.
 
 ## Constants (do not upend)
 
-- **Pitantir Downwatch** — list semantics, Discord `!downwatch` / `!dw`, role ping on PitPal DOWN.
+- **Pitantir Downwatch** — list semantics, Discord `!downwatch` / `!dw`, role ping on PitPal DOWN for the **ping** list; **quiet** list posts the same webhook message without mentioning the role.
 - **Webhook setup** — channel routing and delivery behavior.
 
 Controls for both live under **Extras**.

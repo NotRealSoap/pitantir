@@ -10,7 +10,7 @@ import {
 import type { LiveEventKind } from "./live-events.js";
 import { AccountsRepository } from "./repository.js";
 import { notesIndicate140er } from "./notes-labels.js";
-import { eventIndicatesWentDown, getDownwatchState, isOnDownwatch } from "./downwatch.js";
+import { eventIndicatesWentDown, getDownwatchState, isOnDownwatch, isOnQuietDownwatch } from "./downwatch.js";
 import { resolveEffectivePresence } from "./presence.js";
 
 export const DISCORD_WEBHOOK_SETTINGS_KEY = "discord_webhook";
@@ -1753,8 +1753,9 @@ export async function notifyPitpalStatusEvents(
 }
 
 /**
- * Role-ping when a downwatch-listed account transitions to PitPal DOWN.
- * Independent of per-player PitPal mute flags (140er rules still get this ping).
+ * DOWN alerts for Downwatch lists.
+ * - Ping list: role mention + webhook message (requires role id).
+ * - Quiet list: same webhook message, no role ping.
  */
 export async function notifyDownwatchWentDown(
   db: Database,
@@ -1768,13 +1769,13 @@ export async function notifyDownwatchWentDown(
       getDiscordWebhookSettings(db),
       getDownwatchState(db),
     ]);
-    if (state.entries.length === 0) return 0;
+    if (state.entries.length === 0 && state.quietEntries.length === 0) return 0;
 
     const roleId =
       settings.downwatchRoleId?.trim() ||
       (process.env.DISCORD_DOWNWATCH_ROLE_ID ?? "").trim() ||
       null;
-    if (!roleId || !isDiscordSnowflakeId(roleId)) return 0;
+    const roleOk = Boolean(roleId && isDiscordSnowflakeId(roleId));
 
     const webhookUrl =
       settings.downwatchWebhookUrl ||
@@ -1785,11 +1786,14 @@ export async function notifyDownwatchWentDown(
 
     let posted = 0;
     for (const event of downEvents) {
-      if (!isOnDownwatch(state, event.mcUsername)) continue;
-      const mention = `<@&${roleId}>`;
+      const onPing = isOnDownwatch(state, event.mcUsername);
+      const onQuiet = !onPing && isOnQuietDownwatch(state, event.mcUsername);
+      if (!onPing && !onQuiet) continue;
+      if (onPing && !roleOk) continue;
+
       const detail = appendNickedLabel(event.detail?.trim() || "DOWN", event.isNicked) || "DOWN";
-      const content =
-        `${mention} **${event.mcUsername}** went DOWN · ${detail}`.slice(0, 2000);
+      const mention = onPing && roleId ? `<@&${roleId}> ` : "";
+      const content = `${mention}**${event.mcUsername}** went DOWN · ${detail}`.slice(0, 2000);
       const result = await postRawDiscordWebhook(webhookUrl, {
         content,
         embeds: [
@@ -1798,10 +1802,13 @@ export async function notifyDownwatchWentDown(
             description: detail.slice(0, 1000),
             color: 0xed4245,
             timestamp: event.at ?? new Date().toISOString(),
-            footer: { text: "Pitantir downwatch" },
+            footer: {
+              text: onPing ? "Pitantir downwatch" : "Pitantir quiet downwatch",
+            },
           },
         ],
-        allowed_mentions: { parse: [], roles: [roleId] },
+        allowed_mentions:
+          onPing && roleId ? { parse: [], roles: [roleId] } : { parse: [] },
       });
       if (result.ok) posted += 1;
     }
