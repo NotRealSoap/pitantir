@@ -471,7 +471,8 @@ export async function ingestPitpalLobbies(
     await notifyDiscordForLiveEvents(db, presenceLiveEvents).catch(() => undefined);
   }
   // Soft-online roster (incl. API Off) lives on the presence dashboard.
-  await refreshDiscordOnlineDashboard(db, { force: true }).catch(() => undefined);
+  // Do not force: rosterKey dedupe edits in place; force was reposting on edit failures.
+  await refreshDiscordOnlineDashboard(db).catch(() => undefined);
 
   return {
     playerCount: byName.size,
