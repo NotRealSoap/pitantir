@@ -13,6 +13,7 @@ import {
   resolveNotifyFlagsForEvent,
   resolvePlayerFlags,
   rosterKeyFor,
+  shouldReplaceDashboardMessage,
   webhookUrlForEvent,
 } from "./discord-webhook.js";
 
@@ -363,6 +364,13 @@ describe("online dashboard", () => {
     const payload = buildOnlineDashboardPayload(entries, "2026-07-21T12:00:00.000Z");
     expect(payload.content).toContain("Online now (2)");
     expect(rosterKeyFor(entries)).toBe(rosterKeyFor([...entries].reverse()));
+  });
+
+  it("does not replace sticky dashboard messages on rate-limit / transient edit failures", () => {
+    expect(shouldReplaceDashboardMessage(null)).toBe(true);
+    expect(shouldReplaceDashboardMessage({ ok: true, missing: false })).toBe(false);
+    expect(shouldReplaceDashboardMessage({ ok: false, missing: true })).toBe(true);
+    expect(shouldReplaceDashboardMessage({ ok: false, missing: false })).toBe(false);
   });
 
   it("marks API Off accounts on the roster", () => {

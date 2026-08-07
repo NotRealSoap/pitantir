@@ -1186,13 +1186,31 @@ async function editDiscordWebhookMessage(
     embeds: Array<Record<string, unknown>>;
     allowed_mentions?: { parse?: string[]; users?: string[]; roles?: string[] };
   },
-): Promise<boolean> {
+): Promise<{ ok: boolean; status: number; missing: boolean }> {
   const result = await discordFetch(`${webhookUrl}/messages/${messageId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return result.ok;
+  return {
+    ok: result.ok,
+    status: result.status,
+    // Unknown/deleted message — safe to create a replacement.
+    missing: result.status === 404,
+  };
+}
+
+/**
+ * After a failed in-place PATCH, only POST a replacement when Discord says the
+ * sticky message is gone. Rate limits (429) and other errors must not spawn spam.
+ */
+export function shouldReplaceDashboardMessage(edit: {
+  ok: boolean;
+  missing: boolean;
+} | null): boolean {
+  if (!edit) return true; // no prior message id
+  if (edit.ok) return false;
+  return edit.missing;
 }
 
 async function postRawDiscordWebhook(
@@ -1461,9 +1479,13 @@ export async function refreshPitpalMonitorDashboard(
       settings.monitorDashboardMessageId,
       payload,
     );
-    if (edited) {
+    if (edited.ok) {
       await setDiscordOnlineDashboardMeta(db, { monitorDashboardKey: built.key });
       return { ok: true, pinged: Boolean(input.transition) };
+    }
+    if (!shouldReplaceDashboardMessage(edited)) {
+      // Keep the sticky message id; retry edit on a later poll.
+      return { ok: false, pinged: false };
     }
   }
 
@@ -1529,10 +1551,15 @@ async function upsertDashboardMessage(options: {
       options.messageId,
       options.payload,
     );
-    if (edited) {
+    if (edited.ok) {
       await setDiscordOnlineDashboardMeta(options.db, {
         [options.rosterKeyField]: options.nextKey,
       });
+      return;
+    }
+    // 429 / 5xx / auth blips: keep the sticky id and try again later.
+    // Only recreate when Discord confirms the message is gone (404).
+    if (!shouldReplaceDashboardMessage(edited)) {
       return;
     }
   }
