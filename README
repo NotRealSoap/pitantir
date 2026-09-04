@@ -20,3 +20,7 @@ Implementation has not started. Design docs:
 Start with `SPEC.md`, then follow `MVP_TASKS.md` for build order.
 
 Upstream item search providers: see [ITEM_DATA_PROVIDERS.md](./ITEM_DATA_PROVIDERS.md).
+
+## Deploy (~$5 VPS)
+
+Always-on web + worker + Postgres: see [DEPLOY.md](./DEPLOY.md) (`docker-compose.prod.yml`).

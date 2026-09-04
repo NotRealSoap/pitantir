@@ -226,6 +226,8 @@ Single VPS or container host:
 - `worker` service (long-running Node process)
 - managed or local PostgreSQL
 
+Practical ~$5/mo path: [DEPLOY.md](./DEPLOY.md) + `docker-compose.prod.yml`.
+
 Horizontal scale later by adding workers with row-level job claiming.
 
 ## 13. Extension points for overlap analysis
