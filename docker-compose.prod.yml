@@ -55,8 +55,6 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pitantir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pitantir}
       NODE_ENV: production
       PORT: "3000"
-      # Workspace @pitantir/db exports .ts — load via tsx for `next start`.
-      NODE_OPTIONS: "--import=tsx"
     # Bind all interfaces so Windows Tampermonkey can reach the VPS IP.
     command:
       [

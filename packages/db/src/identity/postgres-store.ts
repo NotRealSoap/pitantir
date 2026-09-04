@@ -629,38 +629,23 @@ export class PostgresIdentityStore implements IdentityStore {
 }
 
 export async function seedAdminSettings(db: Database): Promise<void> {
-  const existing = await db.select().from(adminSettings).where(eq(adminSettings.key, "auto_resolve"));
-  if (existing[0]) {
-    const paused = await db
-      .select()
-      .from(adminSettings)
-      .where(eq(adminSettings.key, "hypixel_scans_paused"));
-    if (!paused[0]) {
-      await db.insert(adminSettings).values({
-        key: "hypixel_scans_paused",
-        value: false,
+  // Migrations may already insert some keys (e.g. hypixel_scans_paused).
+  // Seed must be idempotent so worker/web restarts never crash on duplicates.
+  const defaults: Array<{ key: string; value: unknown }> = [
+    { key: "auto_resolve", value: DEFAULT_AUTO_RESOLVE_SETTINGS },
+    { key: "scan_default_interval_seconds", value: 3600 },
+    { key: "hypixel_scans_paused", value: false },
+  ];
+  for (const row of defaults) {
+    await db
+      .insert(adminSettings)
+      .values({
+        key: row.key,
+        value: row.value,
         updatedAt: now(),
-      });
-    }
-    return;
+      })
+      .onConflictDoNothing({ target: adminSettings.key });
   }
-  await db.insert(adminSettings).values([
-    {
-      key: "auto_resolve",
-      value: DEFAULT_AUTO_RESOLVE_SETTINGS,
-      updatedAt: now(),
-    },
-    {
-      key: "scan_default_interval_seconds",
-      value: 3600,
-      updatedAt: now(),
-    },
-    {
-      key: "hypixel_scans_paused",
-      value: false,
-      updatedAt: now(),
-    },
-  ]);
 }
 
 export { sql };

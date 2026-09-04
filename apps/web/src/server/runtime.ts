@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type postgres from "postgres";
@@ -57,10 +58,19 @@ let ingestor: UpstreamObservationIngestor | null = null;
 let ownershipIngestor: PitPandaOwnershipIngestor | null = null;
 
 function migrationsFolder(): string {
-  return path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../../../packages/db/migrations",
-  );
+  const candidates = [
+    // Docker / monorepo cwd is usually the repo root.
+    path.join(process.cwd(), "packages", "db", "migrations"),
+    // Dev / Next source layout relative to this file.
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../../packages/db/migrations",
+    ),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return candidates[0]!;
 }
 
 async function ensureDatabase(): Promise<{
