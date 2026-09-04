@@ -28,8 +28,6 @@ RUN pnpm --filter @pitantir/web build
 
 FROM base AS runtime
 ENV NODE_ENV=production
-# Workspace packages export .ts — tsx loader required for next start + worker.
-ENV NODE_OPTIONS=--import=tsx
 WORKDIR /app
 
 COPY --from=build /app /app
