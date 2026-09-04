@@ -622,8 +622,9 @@ function PitPalBridgePanel() {
           <code>scripts/pitpal-lobbies.user.js</code>
         </li>
         <li>
-          Keep Pitantir web running on <code>http://127.0.0.1:3000</code> (change the script URL if
-          needed).
+          Keep Pitantir web reachable (local <code>http://127.0.0.1:3000</code>, or your VPS URL
+          from <code>DEPLOY.md</code>). Update <code>PITANTIR_BASE</code> /{" "}
+          <code>@connect</code> in the userscript.
         </li>
         <li>
           Open <code>https://pitpal.rocks/admin/lobbies</code> (and ideally{" "}

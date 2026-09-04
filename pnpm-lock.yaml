@@ -50,6 +50,9 @@ importers:
       react-force-graph-2d:
         specifier: ^1.29.1
         version: 1.29.1(react@19.2.7)
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
     devDependencies:
       '@types/react':
         specifier: ^19.1.8
@@ -1414,6 +1417,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'

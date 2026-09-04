@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Pitantir ← PitPal Lobby + Furry Stashes
 // @namespace    pitantir
-// @version      1.3.0
-// @description  Push PitPal lobby monitor + furry-stashes watchlist (140er = online-only) to local Pitantir.
+// @version      1.4.0
+// @description  Push PitPal lobby monitor + furry-stashes watchlist (140er = online-only) to Pitantir (local or VPS).
 // @author       Pitantir
 // @match        https://pitpal.rocks/*
 // @match        https://www.pitpal.rocks/*
@@ -15,7 +15,10 @@
 (function () {
   "use strict";
 
-  /** Change if your Next.js app is not on 3000. */
+  /**
+   * Local: http://127.0.0.1:3000
+   * VPS (DEPLOY.md): http://YOUR_VPS_IP:3000 and add a Tampermonkey @connect for that host.
+   */
   const PITANTIR_BASE = "http://127.0.0.1:3000";
   const PITANTIR_LOBBIES = PITANTIR_BASE + "/api/pitpal/lobbies";
   const PITANTIR_STASHES = PITANTIR_BASE + "/api/pitpal/furry-stashes";

@@ -1,0 +1,94 @@
+# Production stack for a single ~$5–6/mo VPS (prefer 2GB+ RAM).
+# Usage: see DEPLOY.md
+#
+#   cp deploy/env.production.example .env
+#   # edit secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pitantir-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pitantir}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pitantir}
+    volumes:
+      - pitantir_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # Not published to the host — only app containers reach it.
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pitantir-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pitantir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pitantir}
+    entrypoint: ["pnpm", "--filter", "@pitantir/db", "migrate"]
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pitantir-web
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${PITANTIR_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pitantir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pitantir}
+      NODE_ENV: production
+      PORT: "3000"
+      # Workspace @pitantir/db exports .ts — load via tsx for `next start`.
+      NODE_OPTIONS: "--import=tsx"
+    # Bind all interfaces so Windows Tampermonkey can reach the VPS IP.
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@pitantir/web",
+        "exec",
+        "next",
+        "start",
+        "-H",
+        "0.0.0.0",
+        "-p",
+        "3000",
+      ]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pitantir-worker
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pitantir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pitantir}
+      NODE_ENV: production
+      INVENTORY_SOURCE: ${INVENTORY_SOURCE:-hypixel_pit}
+      WORKER_ID: ${WORKER_ID:-vps-worker-1}
+    command: ["pnpm", "start:worker"]
+
+volumes:
+  pitantir_pg_data:
