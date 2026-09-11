@@ -8,10 +8,13 @@ from typing import Any, Mapping
 
 import pytest
 
+from round105.config import _find_font
 from round105.errors import PlayerNotFound, UpstreamUnavailable
 from round105.mojang import MojangProfile
-from round105.service import StatsService
+from round105.rendering import Theme
+from round105.service import PlayerSnapshot, StatsService
 from round105.store import PlayerStore
+from round105.ranks import resolve_rank
 from round105.zombies import parse_zombies_stats
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -99,6 +102,11 @@ def store(tmp_path: Path, clock: Clock) -> PlayerStore:
 
 
 @pytest.fixture
+def theme() -> Theme:
+    return Theme(font_regular=_find_font("regular"), font_bold=_find_font("bold"))
+
+
+@pytest.fixture
 def service(store: PlayerStore, clock: Clock, sample_player):
     """A service wired to fake upstreams and a real on-disk cache."""
 
@@ -117,3 +125,18 @@ def service(store: PlayerStore, clock: Clock, sample_player):
     stats_service.fake_mojang = mojang  # type: ignore[attr-defined]
     stats_service.fake_hypixel = hypixel  # type: ignore[attr-defined]
     return stats_service
+
+
+@pytest.fixture
+def snapshot(sample_player) -> PlayerSnapshot:
+    """A snapshot built directly from the fixture, for renderer tests."""
+
+    return PlayerSnapshot(
+        uuid=SAMPLE_UUID,
+        name=SAMPLE_NAME,
+        rank=resolve_rank(sample_player),
+        stats=parse_zombies_stats(sample_player),
+        fetched_at=1_700_000_000.0,
+        source="live",
+        player=sample_player,
+    )
