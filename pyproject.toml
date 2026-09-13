@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "round105"
+version = "0.1.0"
+description = "A Discord bot for Hypixel Zombies player statistics"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py>=2.4,<3",
+    "aiohttp>=3.9",
+    "Pillow>=10.3",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+round105 = "round105.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["round105*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error::DeprecationWarning:round105.*",
+    # Raised by discord.py's voice support, which this bot does not use.
+    "ignore:'audioop' is deprecated:DeprecationWarning",
+]
